@@ -38,7 +38,7 @@ If you have a suggestion that would make this better, please fork the repo and c
 2. Create your Branch (`git checkout -b some_dir/cool_thing`)
 3. Commit your Changes (`git commit -m '<conventional commit>: Add some cool_thing'`)
 4. Push to the Branch (`git push origin some_dir/cool_thing`)
-5. Open a Pull Request against `dev`
+5. Open a Pull Request
 
 ## License
 

@@ -19,7 +19,7 @@ For actual project development, it is recommended that you get your hands on `cl
 
 To facilitate a smooth review process, all PRs should:
 
-- **Target the `dev` branch**: Active development occurs here; `main` is for stable releases.
+- **Target the `main` branch**: Active development happens on branches off of main, with releases frozen with tags
 - **Include documentation**: Explain changes in the PR description or link to a relevant issue.
 - **Be self-contained**: Do not impact unrelated subsystems.
 - **Include tests**: Ensure changes are covered by unit tests in the relevant libraries.
