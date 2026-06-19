@@ -1,6 +1,10 @@
 <h1 align="center">cairn</h1>
 
 <p align="center">
+<img src="https://img.shields.io/badge/C%2B%2B-23-blue?logo=c%2B%2B&logoColor=white" alt="C++23" /> <a href="https://ziglang.org/download/"><img src="https://img.shields.io/badge/Zig-0.16.0-orange?logo=zig" alt="Zig 0.16.0"/></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/trevorswan11/cairn" alt="License" /></a>
+</p>
+
+<p align="center">
 A standalone, single-node, client/server relational database engine
 <br/>
 <a href="https://github.com/trevorswan11/cairn/issues/new?labels=bug&template=bug-report.md">Report Bug</a>
