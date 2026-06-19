@@ -1,0 +1,11 @@
+CompileFlags:
+    CompilationDatabase: .zig-cache
+    Add:
+        [
+            -Wno-gnu-statement-expression,
+            -Wno-gnu-statement-expression-from-macro-expansion,
+        ]
+
+Diagnostics:
+    Suppress: [static_non_static]
+    MissingIncludes: Strict
