@@ -2,4 +2,161 @@
 //
 // For more documentation on how to configure debug tasks,
 // see: https://zed.dev/docs/debugger
-[]
+[
+    {
+        "adapter": "CodeLLDB",
+        "label": "cairnd (C++)",
+        "request": "launch",
+        "name": "cairnd",
+        "program": "zig-out/bin/cairnd",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build"
+            ]
+        },
+        "stopOnEntry": false,
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "cairnctl (C++)",
+        "request": "launch",
+        "name": "cairnctl",
+        "program": "zig-out/bin/cairnctl",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build"
+            ]
+        },
+        "stopOnEntry": false,
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-exec (C++)",
+        "request": "launch",
+        "name": "test-exec",
+        "program": "zig-out/tests/exec",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-exec",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-net (C++)",
+        "request": "launch",
+        "name": "test-net",
+        "program": "zig-out/tests/net",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-net",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-opt (C++)",
+        "request": "launch",
+        "name": "test-opt",
+        "program": "zig-out/tests/opt",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-opt",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-sql (C++)",
+        "request": "launch",
+        "name": "test-sql",
+        "program": "zig-out/tests/sql",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-sql",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-storage (C++)",
+        "request": "launch",
+        "name": "test-storage",
+        "program": "zig-out/tests/storage",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-storage",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-support (C++)",
+        "request": "launch",
+        "name": "test-support",
+        "program": "zig-out/tests/support",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-support",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-txn (C++)",
+        "request": "launch",
+        "name": "test-txn",
+        "program": "zig-out/tests/txn",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-txn",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+    {
+        "adapter": "CodeLLDB",
+        "label": "test-wal (C++)",
+        "request": "launch",
+        "name": "test-wal",
+        "program": "zig-out/tests/wal",
+        "build": {
+            "command": "zig",
+            "args": [
+                "build",
+                "test-wal",
+                "-Dinstall-tests-only"
+            ]
+        },
+        "stopOnEntry": false
+    },
+]
