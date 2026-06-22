@@ -46,7 +46,7 @@ jobs:
                   command: zig build --fetch=all
 
             - name: Run tests (debug)
-              run: zig build test
+              run: zig build test-all
 
             - name: Run tests (release)
-              run: zig build test --release
+              run: zig build test-all --release
