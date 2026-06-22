@@ -500,10 +500,10 @@ fn addToolingSteps(b: *std.Build, config: struct {
         .zig = &.{"build.zig"},
     };
 
-    _ = try stdx.steps.addFmt(b, .{
+    _ = stdx.steps.addFmt(b, .{
         .paths = tooling_paths,
-        .formatter = .{ .version = "21.1" },
-    });
+        .formatter = .{ .version = "21.1.8" },
+    }) catch {};
 
     _ = stdx.steps.addCppcheck(b, .{
         .cppcheck = config.cppcheck,
