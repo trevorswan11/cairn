@@ -1,7 +1,7 @@
 <h1 align="center">cairn</h1>
 
 <p align="center">
-<img src="https://img.shields.io/badge/C%2B%2B-23-blue?logo=c%2B%2B&logoColor=white" alt="C++23" /> <a href="https://ziglang.org/download/"><img src="https://img.shields.io/badge/Zig-0.16.0-orange?logo=zig" alt="Zig 0.16.0"/></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/trevorswan11/cairn" alt="License" /></a>
+<img src="https://img.shields.io/badge/C%2B%2B-23-blue?logo=c%2B%2B&logoColor=white" alt="C++23" /> <a href="https://ziglang.org/download/"><img src="https://img.shields.io/badge/Zig-0.16.0-orange?logo=zig" alt="Zig 0.16.0"/></a> <a href="LICENSE"><img src="https://img.shields.io/github/license/trevorswan11/cairn" alt="License" /></a> <a href="https://github.com/trevorswan11/cairn/actions/workflows/format.yml"><img src="https://github.com/trevorswan11/cairn/actions/workflows/format.yml/badge.svg" alt="Formatting" /></a> <a href="https://github.com/trevorswan11/cairn/actions/workflows/ci.yml"><img src="https://github.com/trevorswan11/cairn/actions/workflows/ci.yml/badge.svg" alt="CI" /></a> <img src="https://raw.githubusercontent.com/trevorswan11/cairn/coverage/coverage.svg" alt="Coverage" />
 </p>
 
 <p align="center">

@@ -1,0 +1,51 @@
+name: Coverage
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - ".github/workflows/coverage.yml"
+            - "cairn/**"
+            - "lib/**"
+            - "tests/**"
+            - "build.zig"
+            - "build.zig.zon"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    coverage:
+        permissions:
+            contents: write
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repo
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 1
+
+            - uses: mlugg/setup-zig@v2
+              with:
+                  version: 0.16.0
+
+            - name: Fetch dependencies
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 10
+                  max_attempts: 4
+                  retry_wait_seconds: 30
+                  command: zig build --fetch=all
+
+            - name: Run coverage reporter
+              run: |
+                  zig build coverage -Dinstall-merged
+
+            - name: Deploy merged report
+              uses: JamesIves/github-pages-deploy-action@v4
+              with:
+                  folder: zig-out
+                  branch: coverage
+                  single-commit: true

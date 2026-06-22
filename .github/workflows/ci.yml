@@ -1,0 +1,52 @@
+name: CI
+
+on:
+    pull_request:
+        branches: [main, dev]
+        paths:
+            - ".github/workflows/ci.yml"
+            - "cairn/**"
+            - "lib/**"
+            - "tests/**"
+            - "build.zig"
+            - "build.zig.zon"
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build-test:
+        permissions:
+            contents: read
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                    - os: macos-latest
+                    - os: windows-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 1
+
+            - uses: mlugg/setup-zig@v2
+              with:
+                  version: 0.16.0
+
+            - name: Fetch dependencies
+              uses: nick-fields/retry@v3
+              with:
+                  timeout_minutes: 10
+                  max_attempts: 4
+                  retry_wait_seconds: 30
+                  command: zig build --fetch=all
+
+            - name: Run tests (debug)
+              run: zig build test
+
+            - name: Run tests (release)
+              run: zig build test --release
