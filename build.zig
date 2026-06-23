@@ -21,19 +21,18 @@ pub fn build(b: *std.Build) !void {
         .run_cdb_gen = false,
     });
 
-    var compiler_flags: std.ArrayList([]const u8) = .empty;
-    try compiler_flags.appendSlice(b.allocator, &stdx.utils.base_cxx_flags);
-    try compiler_flags.append(b.allocator, "-DMAGIC_ENUM_RANGE_MAX=255");
+    var compiler_flags: stdx.ArrayList([]const u8) = .fromSlice(b, &stdx.utils.base_cxx_flags);
+    compiler_flags.append("-DMAGIC_ENUM_RANGE_MAX=255");
     const dist_flags: []const []const u8 = &.{ "-DNDEBUG", "-DCAIRN_DIST" };
 
-    var package_flags = try compiler_flags.clone(b.allocator);
-    try package_flags.appendSlice(b.allocator, dist_flags);
-    stdx.CDBGenerator.addCdbFlags(b, &compiler_flags);
+    var package_flags = compiler_flags.clone();
+    package_flags.appendSlice(dist_flags);
+    stdx.CDBGenerator.addCdbFlags(b, &compiler_flags.wrapped);
 
     switch (optimize) {
-        .Debug => try compiler_flags.appendSlice(b.allocator, &.{ "-g", "-DCAIRN_DEBUG" }),
-        .ReleaseSafe => try compiler_flags.appendSlice(b.allocator, &.{"-DCAIRN_RELEASE"}),
-        .ReleaseFast, .ReleaseSmall => try compiler_flags.appendSlice(b.allocator, dist_flags),
+        .Debug => compiler_flags.appendSlice(&.{ "-g", "-DCAIRN_DEBUG" }),
+        .ReleaseSafe => compiler_flags.appendSlice(&.{"-DCAIRN_RELEASE"}),
+        .ReleaseFast, .ReleaseSmall => compiler_flags.appendSlice(dist_flags),
     }
 
     const install_tests_only = b.option(
@@ -43,16 +42,16 @@ pub fn build(b: *std.Build) !void {
     ) orelse false;
 
     const cdb_gen: *CDBGenerator = .init(b);
-    var cdb_steps: std.ArrayList(*std.Build.Step) = .empty;
+    var cdb_steps: stdx.ArrayList(*std.Build.Step) = .init(b);
     const artifacts = try addArtifacts(b, .{
         .optimize = optimize,
-        .cxx_flags = compiler_flags.items,
+        .cxx_flags = compiler_flags.items(),
         .cdb_steps = &cdb_steps,
         .install_tests_only = install_tests_only,
         .stdx_dep = stdx_dep,
         .profile = profile,
     });
-    for (cdb_steps.items) |cdb_step| cdb_gen.step.dependOn(cdb_step);
+    for (cdb_steps.items()) |cdb_step| cdb_gen.step.dependOn(cdb_step);
 
     try addToolingSteps(b, .{
         .cdb_gen = cdb_gen,
@@ -60,39 +59,39 @@ pub fn build(b: *std.Build) !void {
     });
 
     try addPackageStep(b, .{
-        .cxx_flags = package_flags.items,
+        .cxx_flags = package_flags.items(),
         .compressor = stdx_dep.artifact("compressor"),
     });
 
     if (stdx.KcovBuilder.allowedTarget(b.graph.host)) {
         if (artifacts.tests) |tests| {
-            var include_patterns: std.ArrayList([]const u8) = .empty;
+            var include_patterns: stdx.ArrayList([]const u8) = .init(b);
             const libraries = [_][]const u8{
                 "support", "storage", "wal", "txn",
                 "sql",     "exec",    "opt", "net",
             };
             for (libraries) |library| {
-                try include_patterns.append(b.allocator, b.fmt("lib/{s}/src", .{library}));
-                try include_patterns.append(b.allocator, b.fmt("lib/{s}/include", .{library}));
+                include_patterns.append(b.fmt("lib/{s}/src", .{library}));
+                include_patterns.append(b.fmt("lib/{s}/include", .{library}));
             }
 
-            var configs: std.ArrayList(stdx.steps.RunKcovConfig) = .empty;
+            var configs: stdx.ArrayList(stdx.steps.RunKcovConfig) = .init(b);
             const test_suites = [_]Test{
                 tests.support,     tests.storage, tests.wal, tests.txn,
                 tests.sql,         tests.exec,    tests.opt, tests.net,
                 tests.integration,
             };
             for (test_suites) |suite| {
-                try configs.append(b.allocator, .{
+                configs.append(.{
                     .artifact = suite.artifact,
-                    .include_patterns = include_patterns.items,
+                    .include_patterns = include_patterns.items(),
                 });
             }
 
             try stdx.steps.addCoverage(b, .{
                 .curl = stdx_dep.artifact("curl"),
                 .kcov = stdx_dep.artifact("kcov"),
-                .run_configs = configs.items,
+                .run_configs = configs.items(),
             });
         }
     }
@@ -104,7 +103,7 @@ const ArtifactConfig = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     cxx_flags: []const []const u8,
-    cdb_steps: ?*std.ArrayList(*std.Build.Step),
+    cdb_steps: ?*stdx.ArrayList(*std.Build.Step),
     config_h: *std.Build.Step.ConfigHeader,
     stdx_dep: *std.Build.Dependency,
     auto_install: bool,
@@ -168,30 +167,29 @@ const Library = struct {
             .{ .allowed_extensions = &.{".cc"} },
         ) catch @panic("OOM");
 
-        const include_paths = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
-            config.include_paths, &.{ b.path(include), b.path(src) },
-        }) catch @panic("OOM");
-        const link_libraries = std.mem.concat(b.allocator, *std.Build.Step.Compile, &.{
-            config.link_libraries, &.{config.stdx_dep.artifact("stdx")},
-        }) catch @panic("OOM");
+        var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
+        link_libraries.append(config.stdx_dep.artifact("stdx"));
+        
+        var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
+        include_paths.appendSlice(&.{ b.path(include), b.path(src) });
 
         const lib = b.addLibrary(.{
             .name = config.name,
             .root_module = stdx.utils.createModule(b, .{
                 .target = config.target,
                 .optimize = config.optimize,
-                .include_paths = include_paths,
+                .include_paths = include_paths.items(),
                 .system_include_paths = config.system_include_paths,
                 .cxx = .{
                     .files = src_paths,
                     .flags = config.cxx_flags,
                 },
                 .config_headers = &.{config.config_h},
-                .link_libraries = link_libraries,
+                .link_libraries = link_libraries.items(),
             }),
         });
         lib.installHeadersDirectory(b.path(include), "", .{ .include_extensions = &.{".hh"} });
-        if (config.cdb_steps) |cdb_steps| cdb_steps.append(b.allocator, &lib.step) catch @panic("OOM");
+        if (config.cdb_steps) |cdb_steps| cdb_steps.append(&lib.step);
         if (config.auto_install) b.installArtifact(lib);
 
         return .{
@@ -220,27 +218,27 @@ const Test = struct {
         const tests_dir = b.pathJoin(&.{ tests_root, config.name });
         const libstdx = config.stdx_dep.artifact("stdx");
 
-        var link_libraries: std.ArrayList(*std.Build.Step.Compile) = .empty;
-        link_libraries.appendSlice(b.allocator, config.link_libraries) catch @panic("OOM");
-        link_libraries.append(b.allocator, libstdx) catch @panic("OOM");
-        if (config.libtesthelpers) |lib| link_libraries.append(b.allocator, lib) catch @panic("OOM");
-        const include_paths = std.mem.concat(b.allocator, std.Build.LazyPath, &.{
-            config.include_paths, &.{ b.path(tests_dir), b.path("tests/helpers") },
-        }) catch @panic("OOM");
+        var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
+        link_libraries.append(libstdx);
+        if (config.libtesthelpers) |lib| link_libraries.append(lib);
+
+        var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
+        include_paths.appendSlice(&.{ b.path(tests_dir), b.path("tests/helpers") });
 
         const step_name = b.fmt("test-{s}", .{config.name});
         const desc = b.fmt("Build/run {s} tests", .{config.name});
 
-        const test_artifact = stdx.builders.strappedTest(config.stdx_dep.builder, .{
+        const test_artifact = stdx.builders.strappedTest(b, .{
             .target = config.target,
             .optimize = config.optimize,
-            .libstdx = libstdx,
-            .libcatch2 = config.stdx_dep.artifact("catch2"),
+            .stdx = .{
+                .dep = config.stdx_dep
+            },
             .cxx_files = stdx.utils.collectFiles(b, tests_dir, .{}) catch @panic("OOM"),
             .cxx_flags = config.cxx_flags,
             .profile = config.profile,
-            .include_paths = include_paths,
-            .link_libraries = link_libraries.items,
+            .include_paths = include_paths.items(),
+            .link_libraries = link_libraries.items(),
             .config_headers = &.{config.config_h},
             .executable_config = .{
                 .name = config.name,
@@ -253,9 +251,8 @@ const Test = struct {
                     },
                 },
             },
-            .asking_builder = b,
         });
-        if (config.cdb_steps) |cdb| cdb.append(b.allocator, &test_artifact.step) catch @panic("OOM");
+        if (config.cdb_steps) |cdb| cdb.append(&test_artifact.step);
 
         return .{
             .step = &test_artifact.step,
@@ -317,7 +314,7 @@ fn addArtifacts(b: *std.Build, config: struct {
     target: ?std.Build.ResolvedTarget = null,
     optimize: std.builtin.OptimizeMode,
     cxx_flags: []const []const u8,
-    cdb_steps: ?*std.ArrayList(*std.Build.Step),
+    cdb_steps: ?*stdx.ArrayList(*std.Build.Step),
     exe_override_behavior: ?stdx.utils.ExecutableBehavior = null,
     auto_install: bool = true,
     packaging: bool = false,
@@ -395,7 +392,7 @@ fn addArtifacts(b: *std.Build, config: struct {
         },
     });
     if (config.auto_install) b.installArtifact(cairnd);
-    if (config.cdb_steps) |cdb_steps| try cdb_steps.append(b.allocator, &cairnd.step);
+    if (config.cdb_steps) |cdb_steps| cdb_steps.append(&cairnd.step);
 
     const cairnctl = stdx.utils.createExecutable(b, .{
         .target = target,
@@ -415,7 +412,7 @@ fn addArtifacts(b: *std.Build, config: struct {
         },
     });
     if (config.auto_install) b.installArtifact(cairnctl);
-    if (config.cdb_steps) |cdb_steps| try cdb_steps.append(b.allocator, &cairnctl.step);
+    if (config.cdb_steps) |cdb_steps| cdb_steps.append(&cairnctl.step);
 
     var tests: ?Tests = null;
     if (config.target == null) {
@@ -487,16 +484,15 @@ fn addToolingSteps(b: *std.Build, config: struct {
     cdb_gen: *CDBGenerator,
     cppcheck: *std.Build.Step.Compile,
 }) !void {
-    const cdb_step = b.step("cdb", "Generate " ++ CDBGenerator.cdb_filename);
-    cdb_step.dependOn(&config.cdb_gen.step);
-    b.getInstallStep().dependOn(&config.cdb_gen.step);
-
     const tooling_paths: stdx.steps.FmtPaths = .{
-        .cxx = try std.mem.concat(b.allocator, []const u8, &.{
-            try stdx.utils.collectFiles(b, "lib", .{ .allowed_extensions = &.{ ".hh", ".cc" } }),
-            try stdx.utils.collectFiles(b, "tests", .{ .allowed_extensions = &.{ ".hh", ".cc" } }),
-            try stdx.utils.collectFiles(b, "cairn", .{}),
-        }),
+        .cxx = blk: {
+            var paths: stdx.ArrayList([]const u8) = .init(b);
+            try stdx.utils.collectFilesInto(b, "lib", .{ .allowed_extensions = &.{ ".hh", ".cc" } }, &paths);
+            try stdx.utils.collectFilesInto(b, "tests", .{ .allowed_extensions = &.{ ".hh", ".cc" } }, &paths);
+            try stdx.utils.collectFilesInto(b, "cairn", .{}, &paths);
+            try stdx.utils.collectFilesInto(b, "fuzz", .{}, &paths);
+            break :blk paths.items();
+        },
         .zig = &.{"build.zig"},
     };
 
@@ -510,12 +506,10 @@ fn addToolingSteps(b: *std.Build, config: struct {
         .cdb_gen = config.cdb_gen,
     });
 
-    const cloc: *LOCCounter = .init(b, try std.mem.concat(b.allocator, []const u8, &.{
-        tooling_paths.cxx,
-        tooling_paths.zig,
-    }));
-    const cloc_step = b.step("cloc", "Count lines of code across the project");
-    cloc_step.dependOn(&cloc.step);
+    var counted_files: stdx.ArrayList([]const u8) = .init(b);
+    counted_files.appendSlice(tooling_paths.cxx);
+    counted_files.appendSlice(tooling_paths.zig);
+    _ = LOCCounter.init(b, counted_files.items());
 }
 
 fn addPackageStep(b: *std.Build, config: struct {
