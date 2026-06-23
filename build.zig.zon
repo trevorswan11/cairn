@@ -3,8 +3,8 @@
     .version = "0.0.1",
     .dependencies = .{
         .stdx = .{
-            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.3.2.tar.gz",
-            .hash = "stdx-1.3.2-dNitg3jBBwDm2ibDTdWkfhm-HVarPA2uFzvmEnVawj3R",
+            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.4.0.tar.gz",
+            .hash = "stdx-1.4.0-dNitg56pCAB1Xxc3PFefaEFkzqHXXx0FdWSaTnukEcgM",
         },
     },
     .minimum_zig_version = "0.16.0",
