@@ -324,6 +324,17 @@ const Tests = struct {
             );
         }
 
+        const test_all_step = b.step("test-all", "Build/run all tests, including integration");
+        _ = stdx.utils.ExecutableBehavior.installArtifact(
+            b,
+            self.integration.artifact,
+            test_all_step,
+            config.test_install_dir,
+            config.install_only,
+        );
+        test_all_step.dependOn(test_step);
+
+        // Fuzz tests aren't looped into normal tests since they're more expensive
         var fuzz_step: ?*std.Build.Step = null;
         if (self.fuzz_suites.len > 0) {
             fuzz_step = b.step("fuzz", "Build/run all fuzz tests");
@@ -337,18 +348,6 @@ const Tests = struct {
                 );
             }
         }
-
-        const test_all_step = b.step("test-all", "Build/run all tests, including integration");
-        _ = stdx.utils.ExecutableBehavior.installArtifact(
-            b,
-            self.integration.artifact,
-            test_all_step,
-            config.test_install_dir,
-            config.install_only,
-        );
-
-        test_all_step.dependOn(test_step);
-        if (fuzz_step) |fz| test_all_step.dependOn(fz);
     }
 };
 
