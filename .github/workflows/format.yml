@@ -6,6 +6,7 @@ on:
         paths:
             - ".github/workflows/format.yml"
             - "cairn/**"
+            - "fuzz/**"
             - "lib/**"
             - "tests/**"
             - "build.zig"
