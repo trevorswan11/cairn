@@ -331,7 +331,7 @@ const Tests = struct {
                 _ = stdx.utils.ExecutableBehavior.installArtifact(
                     b,
                     suite.artifact,
-                    test_step,
+                    fuzz_step.?,
                     config.fuzz_install_dir,
                     config.install_only,
                 );
