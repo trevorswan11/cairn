@@ -1,13 +1,14 @@
 .{
     .name = .cairn,
     .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x6b2fcd62bcf49471,
     .dependencies = .{
         .stdx = .{
-            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.4.0.tar.gz",
-            .hash = "stdx-1.4.0-dNitg56pCAB1Xxc3PFefaEFkzqHXXx0FdWSaTnukEcgM",
+            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.4.1.tar.gz",
+            .hash = "stdx-1.4.1-dNitg2KpCAAT5ASw5zJVTROpxk5l55LOPz1JxUOVFcUn",
         },
     },
-    .minimum_zig_version = "0.16.0",
     .paths = .{
         "cairn",
         "lib",
@@ -18,5 +19,4 @@
         "LICENSE",
         "README.md",
     },
-    .fingerprint = 0x6b2fcd62bcf49471,
 }

@@ -45,13 +45,13 @@ pub fn build(b: *std.Build) !void {
     var cdb_steps: stdx.ArrayList(*std.Build.Step) = .init(b);
     const artifacts = try addArtifacts(b, .{
         .optimize = optimize,
-        .cxx_flags = compiler_flags.items(),
+        .cxx_flags = compiler_flags.wrapped.items,
         .cdb_steps = &cdb_steps,
         .install_tests_only = install_tests_only,
         .stdx_dep = stdx_dep,
         .profile = profile,
     });
-    for (cdb_steps.items()) |cdb_step| cdb_gen.step.dependOn(cdb_step);
+    for (cdb_steps.wrapped.items) |cdb_step| cdb_gen.step.dependOn(cdb_step);
 
     try addToolingSteps(b, .{
         .cdb_gen = cdb_gen,
@@ -59,7 +59,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     try addPackageStep(b, .{
-        .cxx_flags = package_flags.items(),
+        .cxx_flags = package_flags.wrapped.items,
         .compressor = stdx_dep.artifact("compressor"),
     });
 
@@ -76,22 +76,18 @@ pub fn build(b: *std.Build) !void {
             }
 
             var configs: stdx.ArrayList(stdx.steps.RunKcovConfig) = .init(b);
-            const test_suites = [_]Test{
-                tests.support,     tests.storage, tests.wal, tests.txn,
-                tests.sql,         tests.exec,    tests.opt, tests.net,
-                tests.integration,
-            };
-            for (test_suites) |suite| {
+            const test_suites: stdx.ArrayList(Test) = .fromSlice(b, tests.unit_suites);
+            for (test_suites.wrapped.items) |suite| {
                 configs.append(.{
                     .artifact = suite.artifact,
-                    .include_patterns = include_patterns.items(),
+                    .include_patterns = include_patterns.wrapped.items,
                 });
             }
 
             try stdx.steps.addCoverage(b, .{
                 .curl = stdx_dep.artifact("curl"),
                 .kcov = stdx_dep.artifact("kcov"),
-                .run_configs = configs.items(),
+                .run_configs = configs.wrapped.items,
             });
         }
     }
@@ -169,7 +165,7 @@ const Library = struct {
 
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
         link_libraries.append(config.stdx_dep.artifact("stdx"));
-        
+
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
         include_paths.appendSlice(&.{ b.path(include), b.path(src) });
 
@@ -178,14 +174,14 @@ const Library = struct {
             .root_module = stdx.utils.createModule(b, .{
                 .target = config.target,
                 .optimize = config.optimize,
-                .include_paths = include_paths.items(),
+                .include_paths = include_paths.wrapped.items,
                 .system_include_paths = config.system_include_paths,
                 .cxx = .{
                     .files = src_paths,
                     .flags = config.cxx_flags,
                 },
                 .config_headers = &.{config.config_h},
-                .link_libraries = link_libraries.items(),
+                .link_libraries = link_libraries.wrapped.items,
             }),
         });
         lib.installHeadersDirectory(b.path(include), "", .{ .include_extensions = &.{".hh"} });
@@ -216,14 +212,11 @@ const Test = struct {
 
     pub fn init(b: *std.Build, config: ArtifactConfig) Test {
         const tests_dir = b.pathJoin(&.{ tests_root, config.name });
-        const libstdx = config.stdx_dep.artifact("stdx");
-
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
-        link_libraries.append(libstdx);
         if (config.libtesthelpers) |lib| link_libraries.append(lib);
 
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
-        include_paths.appendSlice(&.{ b.path(tests_dir), b.path("tests/helpers") });
+        include_paths.append(b.path(tests_dir));
 
         const step_name = b.fmt("test-{s}", .{config.name});
         const desc = b.fmt("Build/run {s} tests", .{config.name});
@@ -231,14 +224,12 @@ const Test = struct {
         const test_artifact = stdx.builders.strappedTest(b, .{
             .target = config.target,
             .optimize = config.optimize,
-            .stdx = .{
-                .dep = config.stdx_dep
-            },
+            .stdx = .{ .dep = config.stdx_dep },
             .cxx_files = stdx.utils.collectFiles(b, tests_dir, .{}) catch @panic("OOM"),
             .cxx_flags = config.cxx_flags,
             .profile = config.profile,
-            .include_paths = include_paths.items(),
-            .link_libraries = link_libraries.items(),
+            .include_paths = include_paths.wrapped.items,
+            .link_libraries = link_libraries.wrapped.items,
             .config_headers = &.{config.config_h},
             .executable_config = .{
                 .name = config.name,
@@ -261,49 +252,103 @@ const Test = struct {
     }
 };
 
-const Tests = struct {
-    support: Test,
-    storage: Test,
-    wal: Test,
-    txn: Test,
-    sql: Test,
-    exec: Test,
-    opt: Test,
-    net: Test,
-    integration: Test,
+const FuzzTest = struct {
+    const fuzz_root = "fuzz/";
 
-    pub fn configure(
-        self: *const Tests,
+    step: *std.Build.Step,
+    artifact: *std.Build.Step.Compile,
+
+    /// The configured name should be the same as the test file minus the `.cc` extension
+    pub fn init(
         b: *std.Build,
-        install_dir: ?[]const u8,
-        install_only: bool,
-    ) !void {
-        const unit_suites = [_]Test{
-            self.support, self.storage, self.wal, self.txn,
-            self.sql,     self.exec,    self.opt, self.net,
-        };
+        config: ArtifactConfig,
+    ) FuzzTest {
+        var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
+        if (config.libtesthelpers) |lib| link_libraries.append(lib);
 
+        var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
+        include_paths.append(b.path(fuzz_root ++ "helpers"));
+
+        const step_name = b.fmt("fuzz-{s}", .{config.name});
+        const desc = b.fmt("Build/run {s} fuzz tests", .{config.name});
+
+        const fuzz_artifact = stdx.builders.fuzzTest(b, .{
+            .target = config.target,
+            .optimize = config.optimize,
+            .stdx = .{ .dep = config.stdx_dep },
+            .cxx_files = &.{b.fmt(fuzz_root ++ "{s}.cc", .{config.name})},
+            .cxx_flags = config.cxx_flags,
+            .profile = config.profile,
+            .include_paths = include_paths.wrapped.items,
+            .link_libraries = link_libraries.wrapped.items,
+            .executable_config = .{
+                .name = config.name,
+                .behavior = .{
+                    .installable = .{
+                        .cmd_name = step_name,
+                        .cmd_desc = desc,
+                        .install_dir = config.install_dir,
+                        .install_only = config.install_only,
+                    },
+                },
+            },
+        });
+        if (config.cdb_steps) |cdb| cdb.append(&fuzz_artifact.step);
+
+        return .{
+            .step = &fuzz_artifact.step,
+            .artifact = fuzz_artifact,
+        };
+    }
+};
+
+const Tests = struct {
+    unit_suites: []const Test,
+    integration: Test,
+    fuzz_suites: []const FuzzTest,
+
+    pub fn configure(self: *const Tests, config: struct {
+        test_install_dir: ?[]const u8,
+        fuzz_install_dir: ?[]const u8,
+        install_only: bool,
+    }) !void {
+        const b = self.integration.step.owner;
         const test_step = b.step("test", "Build/run all unit tests");
-        for (unit_suites) |suite| {
+        for (self.unit_suites) |suite| {
             _ = stdx.utils.ExecutableBehavior.installArtifact(
                 b,
                 suite.artifact,
                 test_step,
-                install_dir,
-                install_only,
+                config.test_install_dir,
+                config.install_only,
             );
         }
 
-        const test_all_step = b.step("test-all", "Build/run all tests, including integration");
-        test_all_step.dependOn(test_step);
+        var fuzz_step: ?*std.Build.Step = null;
+        if (self.fuzz_suites.len > 0) {
+            fuzz_step = b.step("fuzz", "Build/run all fuzz tests");
+            for (self.fuzz_suites) |suite| {
+                _ = stdx.utils.ExecutableBehavior.installArtifact(
+                    b,
+                    suite.artifact,
+                    test_step,
+                    config.fuzz_install_dir,
+                    config.install_only,
+                );
+            }
+        }
 
+        const test_all_step = b.step("test-all", "Build/run all tests, including integration");
         _ = stdx.utils.ExecutableBehavior.installArtifact(
             b,
             self.integration.artifact,
             test_all_step,
-            install_dir,
-            install_only,
+            config.test_install_dir,
+            config.install_only,
         );
+
+        test_all_step.dependOn(test_step);
+        if (fuzz_step) |fz| test_all_step.dependOn(fz);
     }
 };
 
@@ -417,6 +462,7 @@ fn addArtifacts(b: *std.Build, config: struct {
     var tests: ?Tests = null;
     if (config.target == null) {
         const test_install_dir: ?[]const u8 = if (config.auto_install) "tests" else null;
+        const fuzz_install_dir: ?[]const u8 = if (config.auto_install) "fuzz" else null;
 
         var testhelpers_config = base_lib_config.with("testhelpers", .{
             .link_libraries = &.{config.stdx_dep.artifact("catch2")},
@@ -439,28 +485,48 @@ fn addArtifacts(b: *std.Build, config: struct {
             .libtesthelpers = libtesthelpers.artifact,
         };
 
-        const test_support: Test = .init(b, base_test_config.with("support", .{}));
-        const test_storage: Test = .init(b, base_test_config.with("storage", .{}));
-        const test_wal: Test = .init(b, base_test_config.with("wal", .{}));
-        const test_txn: Test = .init(b, base_test_config.with("txn", .{}));
-        const test_sql: Test = .init(b, base_test_config.with("sql", .{}));
-        const test_exec: Test = .init(b, base_test_config.with("exec", .{}));
-        const test_opt: Test = .init(b, base_test_config.with("opt", .{}));
-        const test_net: Test = .init(b, base_test_config.with("net", .{}));
-        const test_integration: Test = .init(b, base_test_config.with("integration", .{}));
+        var unit_suites: stdx.ArrayList(Test) = .init(b);
+        unit_suites.append(.init(b, base_test_config.with("support", .{})));
+        unit_suites.append(.init(b, base_test_config.with("storage", .{})));
+        unit_suites.append(.init(b, base_test_config.with("wal", .{})));
+        unit_suites.append(.init(b, base_test_config.with("txn", .{})));
+        unit_suites.append(.init(b, base_test_config.with("sql", .{})));
+        unit_suites.append(.init(b, base_test_config.with("exec", .{})));
+        unit_suites.append(.init(b, base_test_config.with("opt", .{})));
+        unit_suites.append(.init(b, base_test_config.with("net", .{})));
+        const integration: Test = .init(b, base_test_config.with("integration", .{}));
+
+        const base_fuzz_config: ArtifactConfig = .{
+            .name = undefined,
+            .target = target,
+            .optimize = config.optimize,
+            .cxx_flags = config.cxx_flags,
+            .cdb_steps = config.cdb_steps,
+            .config_h = config_h,
+            .stdx_dep = config.stdx_dep,
+            .auto_install = config.auto_install,
+            .profile = config.profile,
+            .install_dir = fuzz_install_dir,
+            .install_only = config.install_tests_only,
+            .libtesthelpers = libtesthelpers.artifact,
+        };
+
+        var fuzz_suites: stdx.ArrayList(FuzzTest) = .init(b);
+        if (stdx.FuzztestBuilder.canFuzz(target)) {
+            fuzz_suites.append(.init(b, base_fuzz_config.with("stub_one", .{})));
+            fuzz_suites.append(.init(b, base_fuzz_config.with("stub_two", .{})));
+        }
 
         tests = .{
-            .support = test_support,
-            .storage = test_storage,
-            .wal = test_wal,
-            .txn = test_txn,
-            .sql = test_sql,
-            .exec = test_exec,
-            .opt = test_opt,
-            .net = test_net,
-            .integration = test_integration,
+            .unit_suites = unit_suites.wrapped.items,
+            .integration = integration,
+            .fuzz_suites = fuzz_suites.wrapped.items,
         };
-        try tests.?.configure(b, test_install_dir, config.install_tests_only);
+        try tests.?.configure(.{
+            .test_install_dir = test_install_dir,
+            .fuzz_install_dir = fuzz_install_dir,
+            .install_only = config.install_tests_only,
+        });
     }
 
     return .{
@@ -491,7 +557,7 @@ fn addToolingSteps(b: *std.Build, config: struct {
             try stdx.utils.collectFilesInto(b, "tests", .{ .allowed_extensions = &.{ ".hh", ".cc" } }, &paths);
             try stdx.utils.collectFilesInto(b, "cairn", .{}, &paths);
             try stdx.utils.collectFilesInto(b, "fuzz", .{}, &paths);
-            break :blk paths.items();
+            break :blk paths.wrapped.items;
         },
         .zig = &.{"build.zig"},
     };
@@ -509,7 +575,7 @@ fn addToolingSteps(b: *std.Build, config: struct {
     var counted_files: stdx.ArrayList([]const u8) = .init(b);
     counted_files.appendSlice(tooling_paths.cxx);
     counted_files.appendSlice(tooling_paths.zig);
-    _ = LOCCounter.init(b, counted_files.items());
+    _ = LOCCounter.init(b, counted_files.wrapped.items);
 }
 
 fn addPackageStep(b: *std.Build, config: struct {
