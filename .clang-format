@@ -33,7 +33,6 @@ ShortNamespaceLines: 0
 AllowShortNamespacesOnASingleLine: true
 IndentPPDirectives: AfterHash
 LineEnding: LF
-RemoveSemicolon: true
 RemoveEmptyLinesInUnwrappedLines: true
 EnumTrailingComma: Insert
 IndentRequiresClause: true
