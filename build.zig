@@ -1,6 +1,5 @@
 const std = @import("std");
 const zon = @import("build.zig.zon");
-
 pub const stdx = @import("stdx");
 
 const CDBGenerator = stdx.CDBGenerator;
@@ -22,7 +21,7 @@ pub fn build(b: *std.Build) !void {
     });
 
     var compiler_flags: stdx.ArrayList([]const u8) = .fromSlice(b, &stdx.utils.base_cxx_flags);
-    compiler_flags.append("-DMAGIC_ENUM_RANGE_MAX=255");
+    compiler_flags.appendSlice(&.{ "-DMAGIC_ENUM_RANGE_MAX=255", "-DSPDLOG_COMPILED_LIB" });
     const dist_flags: []const []const u8 = &.{ "-DNDEBUG", "-DCAIRN_DIST" };
 
     var package_flags = compiler_flags.clone();
@@ -106,7 +105,7 @@ const ArtifactConfig = struct {
     /// The library's include and source dirs are implicitly included
     include_paths: []const std.Build.LazyPath = &.{},
     system_include_paths: []const std.Build.LazyPath = &.{},
-    /// libstdx is implicitly linked
+    /// libstdx & spdlog are implicitly linked
     link_libraries: []const *std.Build.Step.Compile = &.{},
     profile: bool = false,
     install_dir: ?[]const u8 = null,
@@ -215,8 +214,9 @@ const Test = struct {
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
         if (config.libtesthelpers) |lib| link_libraries.append(lib);
 
+        const include_dir = b.pathJoin(&.{ Library.library_root, config.name, Library.include_root });
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
-        include_paths.append(b.path(tests_dir));
+        include_paths.appendSlice(&.{ b.path(tests_dir), b.path(include_dir) });
 
         const step_name = b.fmt("test-{s}", .{config.name});
         const desc = b.fmt("Build/run {s} tests", .{config.name});
@@ -485,14 +485,30 @@ fn addArtifacts(b: *std.Build, config: struct {
         };
 
         var unit_suites: stdx.ArrayList(Test) = .init(b);
-        unit_suites.append(.init(b, base_test_config.with("support", .{})));
-        unit_suites.append(.init(b, base_test_config.with("storage", .{})));
-        unit_suites.append(.init(b, base_test_config.with("wal", .{})));
-        unit_suites.append(.init(b, base_test_config.with("txn", .{})));
-        unit_suites.append(.init(b, base_test_config.with("sql", .{})));
-        unit_suites.append(.init(b, base_test_config.with("exec", .{})));
-        unit_suites.append(.init(b, base_test_config.with("opt", .{})));
-        unit_suites.append(.init(b, base_test_config.with("net", .{})));
+        unit_suites.append(.init(b, base_test_config.with("support", .{
+            .link_libraries = &.{libsupport.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("storage", .{
+            .link_libraries = &.{libstorage.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("wal", .{
+            .link_libraries = &.{libwal.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("txn", .{
+            .link_libraries = &.{libtxn.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("sql", .{
+            .link_libraries = &.{libsql.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("exec", .{
+            .link_libraries = &.{libexec.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("opt", .{
+            .link_libraries = &.{libopt.artifact},
+        })));
+        unit_suites.append(.init(b, base_test_config.with("net", .{
+            .link_libraries = &.{libnet.artifact},
+        })));
         const integration: Test = .init(b, base_test_config.with("integration", .{}));
 
         const base_fuzz_config: ArtifactConfig = .{
