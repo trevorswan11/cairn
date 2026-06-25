@@ -11,7 +11,7 @@ namespace cairn::tests {
 TEST_CASE("Well-formed config parsing") {
     auto logging = GENERATE(true, false);
 
-    const auto input{fmt::format(
+    const auto input = fmt::format(
         R"({{
         "development": {{
             "host": "127.0.0.1",
@@ -22,7 +22,7 @@ TEST_CASE("Well-formed config parsing") {
             {}, "logfile": "log.log"
           }}
         }})",
-        logging ? "" : "//")};
+        logging ? "" : "//");
     const auto config{helpers::unwrap(support::config::parse("development", input))};
 
     CHECK(config.host == "127.0.0.1");
