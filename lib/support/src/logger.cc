@@ -1,10 +1,11 @@
+#include "support/logger.hh"
+
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/null_sink.h>
 #include <spdlog/spdlog.h>
 #include <stdx/memory.hh>
 
 #include "support/config.hh"
-#include "support/logger.hh"
 
 namespace cairn::support {
 
