@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <fstream>
+#include <ios>
 
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/types.hh>
@@ -18,7 +20,7 @@ using namespace cairn::storage;
 
 namespace {
 
-auto seeded_pattern(std::array<std::byte, storage::DB_PAGE_SIZE>& buf, u8 seed) -> void {
+template <usize N> auto seeded_pattern(std::array<std::byte, N>& buf, u8 seed) -> void {
     for (usize i{0}; auto& b : buf) { b = static_cast<std::byte>((i++ + seed) & 0xFF); }
 }
 
@@ -42,10 +44,10 @@ TEST_CASE("Disk manager round-trips page contents") {
     const auto                          pid{helpers::unwrap(dm->allocate_page())};
     std::array<std::byte, DB_PAGE_SIZE> buf_out{};
     seeded_pattern(buf_out, 42);
-    REQUIRE(dm->write_page(pid, buf_out.data()));
+    REQUIRE(dm->write_page(pid, buf_out));
 
     std::array<std::byte, DB_PAGE_SIZE> buf_in{};
-    REQUIRE(dm->read_page(pid, buf_in.data()));
+    REQUIRE(dm->read_page(pid, buf_in));
     CHECK(std::ranges::equal(buf_out, buf_in));
 }
 
@@ -55,9 +57,8 @@ TEST_CASE("Disk manager rejects invalid page IDs") {
     REQUIRE(dm->allocate_page());
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{5}, buf.data())) == error_t::INVALID_PAGE_ID);
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{-1}, buf.data())) ==
-          error_t::INVALID_PAGE_ID);
+    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{5}, buf)) == error_t::INVALID_PAGE_ID);
+    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{-1}, buf)) == error_t::INVALID_PAGE_ID);
 }
 
 TEST_CASE("Disk manager persists across reopens") {
@@ -70,15 +71,29 @@ TEST_CASE("Disk manager persists across reopens") {
         auto dm{helpers::unwrap(disk_manager::open(file.path))};
         pid = helpers::unwrap(dm->allocate_page());
         REQUIRE(dm->allocate_page());
-        REQUIRE(dm->write_page(pid, buf_out.data()));
+        REQUIRE(dm->write_page(pid, buf_out));
     }
 
     auto reopened{helpers::unwrap(disk_manager::open(file.path))};
     CHECK(reopened->num_pages() == 2);
 
     std::array<std::byte, DB_PAGE_SIZE> buf_in{};
-    REQUIRE(reopened->read_page(pid, buf_in.data()));
+    REQUIRE(reopened->read_page(pid, buf_in));
     CHECK(std::ranges::equal(buf_out, buf_in));
+}
+
+TEST_CASE("Disk manager short reads are detected") {
+    helpers::tempfile file{"dm_short"};
+    {
+        std::fstream                            f{file.path, std::ios::out | std::ios::binary};
+        std::array<std::byte, DB_PAGE_SIZE / 2> buf{};
+        seeded_pattern(buf, 67);
+        f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
+    }
+
+    std::array<std::byte, DB_PAGE_SIZE> buf{};
+    auto                                dm{helpers::unwrap(disk_manager::open(file.path))};
+    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{0}, buf)) == error_t::SHORT_READ);
 }
 
 } // namespace cairn::tests

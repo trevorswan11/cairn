@@ -6,6 +6,7 @@
 #include <mutex>
 #include <utility>
 
+#include <gsl/span>
 #include <stdx/memory.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
@@ -31,10 +32,12 @@ class disk_manager {
     [[nodiscard]] auto allocate_page() -> result<page_id_t>;
 
     // The destination pointer must be at least PAGE_SIZE size
-    [[nodiscard]] auto read_page(page_id_t pid, std::byte* buf) -> result<void>;
+    [[nodiscard]] auto read_page(page_id_t pid, gsl::span<std::byte, DB_PAGE_SIZE> buf)
+        -> result<void>;
 
     // Writes and flushes the buffer out to the file
-    [[nodiscard]] auto write_page(page_id_t pid, const std::byte* buf) -> result<void>;
+    [[nodiscard]] auto write_page(page_id_t pid, gsl::span<const std::byte, DB_PAGE_SIZE> buf)
+        -> result<void>;
 
     // The number of pages the underlying file currently spans
     [[nodiscard]] auto num_pages() const noexcept -> i64 {

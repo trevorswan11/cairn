@@ -8,6 +8,7 @@
 #include <mutex>
 #include <utility>
 
+#include <gsl/span>
 #include <stdx/memory.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -54,7 +55,11 @@ auto disk_manager::open(const std::filesystem::path& path) -> result<stdx::box<d
     if (file.fail()) { return stdx::err{error_t::IO_ERROR}; }
     const auto end{file.tellg()};
     if (end < 0) { return stdx::err{error_t::IO_ERROR}; }
-    const auto num_pages{static_cast<i64>(end) / static_cast<i64>(DB_PAGE_SIZE)};
+
+    // Ceiling division is needed to that partial pages are not dropped on open
+    const auto     end_pos{static_cast<i64>(end)};
+    constexpr auto page_sz{static_cast<i64>(DB_PAGE_SIZE)};
+    const auto     num_pages{(end_pos + page_sz - 1) / page_sz};
 
     return stdx::box<disk_manager>{new disk_manager{std::move(file), num_pages}};
 }
@@ -75,7 +80,8 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
     return pid;
 }
 
-auto disk_manager::read_page(page_id_t pid, std::byte* buf) -> result<void> {
+auto disk_manager::read_page(page_id_t pid, gsl::span<std::byte, DB_PAGE_SIZE> buf)
+    -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
@@ -84,23 +90,24 @@ auto disk_manager::read_page(page_id_t pid, std::byte* buf) -> result<void> {
     file_.seekg(page_offset(pid), std::ios::beg);
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
-    file_.read(reinterpret_cast<char*>(buf), DB_PAGE_SIZE);
+    file_.read(reinterpret_cast<char*>(buf.data()), buf.size_bytes());
     if (static_cast<usize>(file_.gcount()) != DB_PAGE_SIZE) {
         return stdx::err{error_t::SHORT_READ};
     }
     return {};
 }
 
-auto disk_manager::write_page(page_id_t pid, const std::byte* buf) -> result<void> {
+auto disk_manager::write_page(page_id_t pid, gsl::span<const std::byte, DB_PAGE_SIZE> buf)
+    -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
 
     file_.clear();
-    file_.seekg(page_offset(pid), std::ios::beg);
+    file_.seekp(page_offset(pid), std::ios::beg);
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
-    file_.write(reinterpret_cast<const char*>(buf), DB_PAGE_SIZE);
+    file_.write(reinterpret_cast<const char*>(buf.data()), buf.size_bytes());
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
     file_.flush();
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }

@@ -12,4 +12,4 @@ Diagnostics:
 
 Style:
     QuotedHeaders: ["lib/.*", "tests/.*", "fuzz/.*"]
-    AngledHeaders: ["stdx/.*", "fmt/.*", "spdlog/.*", "magic_enum/.*"]
+    AngledHeaders: ["stdx/.*", "fmt/.*", "spdlog/.*", "magic_enum/.*", "gsl/.*"]
