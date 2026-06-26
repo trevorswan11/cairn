@@ -1,0 +1,125 @@
+<?xml version="1.0" ?>
+<!DOCTYPE coverage SYSTEM 'http://cobertura.sourceforge.net/xml/coverage-04.dtd'>
+<coverage line-rate="1.000" lines-covered="96" lines-valid="96" branch-rate="1.0" branches-covered="1.0" branches-rate="1.0" complexity="1.0" version="1.9" timestamp="1782443675">
+	<sources>
+		<source>/home/runner/work/cairn/cairn/lib/</source>
+	</sources>
+	<packages>
+		<package name="" line-rate="1.000" lines-covered="96" lines-valid="96" branch-rate="1.0" complexity="1.0">
+			<classes>
+				<class name="disk_manager_cc__4" filename="storage/src/disk_manager.cc" branch-rate="1.0" complexity="1.0" line-rate="1.000">
+					<lines>
+						<line number="23" hits="1"/>
+						<line number="24" hits="1"/>
+						<line number="30" hits="1"/>
+						<line number="32" hits="1"/>
+						<line number="33" hits="1"/>
+						<line number="34" hits="1"/>
+						<line number="35" hits="1"/>
+						<line number="36" hits="1"/>
+						<line number="37" hits="1"/>
+						<line number="39" hits="1"/>
+						<line number="40" hits="1"/>
+						<line number="42" hits="1"/>
+						<line number="43" hits="1"/>
+						<line number="44" hits="1"/>
+						<line number="47" hits="1"/>
+						<line number="48" hits="1"/>
+						<line number="49" hits="1"/>
+						<line number="50" hits="1"/>
+						<line number="51" hits="1"/>
+						<line number="52" hits="1"/>
+						<line number="54" hits="1"/>
+						<line number="55" hits="1"/>
+						<line number="56" hits="1"/>
+						<line number="57" hits="1"/>
+						<line number="60" hits="1"/>
+						<line number="61" hits="1"/>
+						<line number="62" hits="1"/>
+						<line number="64" hits="1"/>
+						<line number="65" hits="1"/>
+						<line number="67" hits="1"/>
+						<line number="68" hits="1"/>
+						<line number="69" hits="1"/>
+						<line number="72" hits="1"/>
+						<line number="73" hits="1"/>
+						<line number="74" hits="1"/>
+						<line number="75" hits="1"/>
+						<line number="76" hits="1"/>
+						<line number="77" hits="1"/>
+						<line number="79" hits="1"/>
+						<line number="80" hits="1"/>
+						<line number="81" hits="1"/>
+						<line number="84" hits="1"/>
+						<line number="85" hits="1"/>
+						<line number="86" hits="1"/>
+						<line number="87" hits="1"/>
+						<line number="89" hits="1"/>
+						<line number="90" hits="1"/>
+						<line number="91" hits="1"/>
+						<line number="93" hits="1"/>
+						<line number="94" hits="1"/>
+						<line number="95" hits="1"/>
+						<line number="97" hits="1"/>
+						<line number="98" hits="1"/>
+						<line number="101" hits="1"/>
+						<line number="102" hits="1"/>
+						<line number="103" hits="1"/>
+						<line number="104" hits="1"/>
+						<line number="106" hits="1"/>
+						<line number="107" hits="1"/>
+						<line number="108" hits="1"/>
+						<line number="110" hits="1"/>
+						<line number="111" hits="1"/>
+						<line number="112" hits="1"/>
+						<line number="113" hits="1"/>
+						<line number="114" hits="1"/>
+						<line number="115" hits="1"/>
+					</lines>
+				</class>
+				<class name="disk_manager_hh__5" filename="storage/include/storage/disk_manager.hh" branch-rate="1.0" complexity="1.0" line-rate="1.000">
+					<lines>
+						<line number="43" hits="1"/>
+						<line number="44" hits="1"/>
+						<line number="45" hits="1"/>
+						<line number="46" hits="1"/>
+						<line number="49" hits="1"/>
+						<line number="50" hits="1"/>
+					</lines>
+				</class>
+				<class name="config_cc__6" filename="support/src/config.cc" branch-rate="1.0" complexity="1.0" line-rate="1.000">
+					<lines>
+						<line number="20" hits="1"/>
+						<line number="21" hits="1"/>
+						<line number="22" hits="1"/>
+						<line number="23" hits="1"/>
+						<line number="27" hits="1"/>
+						<line number="28" hits="1"/>
+						<line number="30" hits="1"/>
+						<line number="31" hits="1"/>
+						<line number="34" hits="1"/>
+						<line number="35" hits="1"/>
+						<line number="36" hits="1"/>
+						<line number="37" hits="1"/>
+						<line number="38" hits="1"/>
+						<line number="40" hits="1"/>
+						<line number="41" hits="1"/>
+						<line number="42" hits="1"/>
+						<line number="43" hits="1"/>
+						<line number="44" hits="1"/>
+						<line number="45" hits="1"/>
+						<line number="46" hits="1"/>
+						<line number="47" hits="1"/>
+						<line number="49" hits="1"/>
+						<line number="50" hits="1"/>
+					</lines>
+				</class>
+				<class name="config_hh__7" filename="support/include/support/config.hh" branch-rate="1.0" complexity="1.0" line-rate="1.000">
+					<lines>
+						<line number="13" hits="1"/>
+					</lines>
+				</class>
+			</classes>
+		</package>
+	</packages>
+</coverage>

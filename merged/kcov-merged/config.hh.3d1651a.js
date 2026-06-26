@@ -1,0 +1,30 @@
+var data = {lines:[
+{"lineNum":"    1","line":"#pragma once"},
+{"lineNum":"    2","line":""},
+{"lineNum":"    3","line":"#include <string>"},
+{"lineNum":"    4","line":"#include <string_view>"},
+{"lineNum":"    5","line":""},
+{"lineNum":"    6","line":"#include <stdx/option.hh>"},
+{"lineNum":"    7","line":"#include <stdx/types.hh>"},
+{"lineNum":"    8","line":""},
+{"lineNum":"    9","line":"#include \"support/error.hh\""},
+{"lineNum":"   10","line":""},
+{"lineNum":"   11","line":"namespace cairn::support {"},
+{"lineNum":"   12","line":""},
+{"lineNum":"   13","line":"struct config {","class":"lineCov","hits":"1","order":"1",},
+{"lineNum":"   14","line":"    std::string               table;"},
+{"lineNum":"   15","line":"    std::string               host;"},
+{"lineNum":"   16","line":"    std::string               database;"},
+{"lineNum":"   17","line":"    std::string               username;"},
+{"lineNum":"   18","line":"    std::string               password;"},
+{"lineNum":"   19","line":"    stdx::option<std::string> logfile;"},
+{"lineNum":"   20","line":"    u32                       port;"},
+{"lineNum":"   21","line":""},
+{"lineNum":"   22","line":"    [[nodiscard]] static auto parse(std::string_view table, std::string contents) -> result<config>;"},
+{"lineNum":"   23","line":"};"},
+{"lineNum":"   24","line":""},
+{"lineNum":"   25","line":"} // namespace cairn::support"},
+]};
+var percent_low = 25;var percent_high = 75;
+var header = { "command" : "", "date" : "2026-06-26 03:14:35", "instrumented" : 1, "covered" : 1,};
+var merged_data = [];

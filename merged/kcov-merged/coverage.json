@@ -1,0 +1,15 @@
+{
+  "files": [
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/src/disk_manager.cc", "percent_covered": "100.00", "covered_lines": "66", "total_lines": "66"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/disk_manager.hh", "percent_covered": "100.00", "covered_lines": "6", "total_lines": "6"},
+    {"file": "/home/runner/work/cairn/cairn/lib/support/src/config.cc", "percent_covered": "100.00", "covered_lines": "23", "total_lines": "23"},
+    {"file": "/home/runner/work/cairn/cairn/lib/support/include/support/config.hh", "percent_covered": "100.00", "covered_lines": "1", "total_lines": "1"}
+  ],
+  "percent_covered": "100.00",
+  "covered_lines": 96,
+  "total_lines": 96,
+  "percent_low": 25,
+  "percent_high": 75,
+  "command": "",
+  "date": "2026-06-26 03:14:35"
+}
