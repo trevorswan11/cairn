@@ -39,7 +39,7 @@ class page {
   public:
     constexpr page() noexcept = default;
     ~page()                   = default;
-    MAKE_PINNED(page)
+    MAKE_PINNED(page);
 
     [[nodiscard]] constexpr auto data(this auto&& self) noexcept -> auto* { return self.data_; }
     [[nodiscard]] constexpr auto page_id() const noexcept -> page_id_t { return page_id_; }

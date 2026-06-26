@@ -210,13 +210,17 @@ const Test = struct {
     artifact: *std.Build.Step.Compile,
 
     pub fn init(b: *std.Build, config: ArtifactConfig) Test {
-        const tests_dir = b.pathJoin(&.{ tests_root, config.name });
-        var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
-        if (config.libtesthelpers) |lib| link_libraries.append(lib);
-
         const include_dir = b.pathJoin(&.{ Library.library_root, config.name, Library.include_root });
+        const tests_dir = b.pathJoin(&.{ tests_root, config.name });
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
         include_paths.appendSlice(&.{ b.path(tests_dir), b.path(include_dir) });
+
+        var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
+        if (config.libtesthelpers) |lib| {
+            const testhelpers_dir = b.pathJoin(&.{ Library.library_root, "testhelpers", Library.include_root });
+            include_paths.append(b.path(testhelpers_dir));
+            link_libraries.append(lib);
+        }
 
         const step_name = b.fmt("test-{s}", .{config.name});
         const desc = b.fmt("Build/run {s} tests", .{config.name});

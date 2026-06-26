@@ -21,7 +21,7 @@ namespace cairn::storage {
 class disk_manager {
   public:
     ~disk_manager();
-    MAKE_PINNED(disk_manager)
+    MAKE_PINNED(disk_manager);
 
     // Opens or creates a file at the provided path
     [[nodiscard]] static auto open(const std::filesystem::path& path)
