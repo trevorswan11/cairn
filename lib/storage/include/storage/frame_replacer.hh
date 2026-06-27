@@ -1,12 +1,12 @@
 #pragma once
 
 #include <array>
+#include <utility>
 
 #include <stdx/assert.hh>
 #include <stdx/option.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
-#include <utility>
 
 namespace cairn::storage {
 

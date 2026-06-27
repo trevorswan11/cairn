@@ -11,8 +11,8 @@
 #include "storage/disk_manager.hh"
 #include "storage/error.hh"
 #include "storage/page.hh"
-#include "testhelpers/common.hh"
 #include "testhelpers/tempfile.hh"
+#include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
 

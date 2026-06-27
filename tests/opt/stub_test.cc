@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/option.hh>
 
-#include "testhelpers/common.hh"
+#include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
 
