@@ -4,7 +4,7 @@
 
 #include "support/config.hh"
 #include "support/error.hh"
-#include "testhelpers/common.hh"
+#include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
 
