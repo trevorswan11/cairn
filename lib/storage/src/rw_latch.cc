@@ -36,7 +36,7 @@ auto rw_latch::lock_shared() -> void {
 }
 
 auto rw_latch::try_lock_shared() -> bool {
-    if (!mutex_.try_lock()) { return false; }
+    if (!mutex_.try_lock_shared()) { return false; }
     note_shared_acquired();
     return true;
 }
