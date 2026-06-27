@@ -8,17 +8,43 @@
 
 namespace cairn::storage {
 
-auto rw_latch::lock() -> void {}
+auto rw_latch::lock() -> void {
+    {
+        PROFILE_SCOPE("rw_latch::lock");
+        mutex_.lock();
+    }
+    note_exclusive_acquired();
+}
 
-auto rw_latch::try_lock() -> bool { return false; }
+auto rw_latch::try_lock() -> bool {
+    if (!mutex_.try_lock()) { return false; }
+    note_exclusive_acquired();
+    return true;
+}
 
-auto rw_latch::unlock() -> void {}
+auto rw_latch::unlock() -> void {
+    mutex_.unlock();
+    note_exclusive_released();
+}
 
-auto rw_latch::lock_shared() -> void {}
+auto rw_latch::lock_shared() -> void {
+    {
+        PROFILE_SCOPE("rw_latch::try_lock");
+        mutex_.lock_shared();
+    }
+    note_shared_acquired();
+}
 
-auto rw_latch::try_lock_shared() -> bool { return false; }
+auto rw_latch::try_lock_shared() -> bool {
+    if (!mutex_.try_lock()) { return false; }
+    note_shared_acquired();
+    return true;
+}
 
-auto rw_latch::unlock_shared() -> void {}
+auto rw_latch::unlock_shared() -> void {
+    mutex_.unlock_shared();
+    note_shared_released();
+}
 
 auto rw_latch::note_exclusive_acquired() noexcept -> void {
 #ifndef NDEBUG
