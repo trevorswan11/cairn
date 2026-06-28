@@ -36,8 +36,8 @@ class rw_latch {
   private:
     std::shared_mutex mutex_;
 #ifndef NDEBUG
-    std::atomic<i32>  readers_;
-    std::atomic<bool> writer_;
+    std::atomic<i32>  readers_{0};
+    std::atomic<bool> writer_{false};
 #endif
 };
 

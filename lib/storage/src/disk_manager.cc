@@ -80,8 +80,7 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
     return pid;
 }
 
-auto disk_manager::read_page(page_id_t pid, gsl::span<std::byte, DB_PAGE_SIZE> buf)
-    -> result<void> {
+auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
@@ -97,8 +96,7 @@ auto disk_manager::read_page(page_id_t pid, gsl::span<std::byte, DB_PAGE_SIZE> b
     return {};
 }
 
-auto disk_manager::write_page(page_id_t pid, gsl::span<const std::byte, DB_PAGE_SIZE> buf)
-    -> result<void> {
+auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }

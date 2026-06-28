@@ -12,6 +12,8 @@ enum class error_t : u8 {
 
     POOL_EXHAUSTED, // every frame is pinned and nothing is evictable
     PAGE_NOT_FOUND, // the requested page id is not resident in the pool
+
+    TREE_CORRUPT, // An invariant was violated in the storage engine's tree
 };
 
 template <typename T> using result = stdx::result<T, error_t>;
