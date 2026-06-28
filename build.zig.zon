@@ -5,8 +5,8 @@
     .fingerprint = 0x6b2fcd62bcf49471,
     .dependencies = .{
         .stdx = .{
-            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.5.0.tar.gz",
-            .hash = "stdx-1.5.0-dNitg2vRCAAU1q3aHAN1EoxQYCikPfZdjlnOZBQA-GGX",
+            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v1.5.1.tar.gz",
+            .hash = "stdx-1.5.1-dNitg7vRCABclFR7dJTIUip-wGjUAKup30LynkoN_qfa",
         },
     },
     .paths = .{

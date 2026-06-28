@@ -40,8 +40,8 @@ class page {
     }
 
     constexpr auto set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
-    constexpr auto pin() noexcept -> void { pin_count_ += 1; }
-    constexpr auto unpin() noexcept -> void { pin_count_ -= 1; }
+    constexpr auto pin() noexcept -> i32 { return ++pin_count_; }
+    constexpr auto unpin() noexcept -> i32 { return --pin_count_; }
 
   private:
     alignas(std::max_align_t) std::byte data_[DB_PAGE_SIZE]{};
