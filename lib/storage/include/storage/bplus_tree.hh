@@ -3,12 +3,15 @@
 #include <array>
 #include <functional>
 
+#include <stdx/assert.hh>
 #include <stdx/fixed/vector.hh>
 #include <stdx/option.hh>
+#include <stdx/result.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 
 #include "storage/buffer_pool.hh"
+#include "storage/error.hh"
 #include "storage/page.hh"
 
 namespace cairn::storage {
@@ -50,6 +53,30 @@ class bplus_tree {
     static_assert(INTERNAL_SLOTS >= 2, "key too large for an 8 KiB internal node");
 
   public:
+    bplus_tree(pool_t& pool, page_id_t meta_page) noexcept : pool_{pool}, meta_page_{meta_page} {}
+
+    // Creates a fresh, empty, index and allocates its meta page
+    [[nodiscard]] static auto create(pool_t& pool) -> result<bplus_tree> {
+        auto [id, guard]{TRY(pool.new_write())};
+        guard.template as<meta_node>()->root.reset();
+        guard.mark_dirty();
+        return bplus_tree{pool, id};
+    }
+
+    [[nodiscard]] auto meta_page() const noexcept -> page_id_t { return meta_page_; }
+    [[nodiscard]] auto empty() -> result<bool> {
+        read_guard_t guard{TRY(pool_->fetch_read(meta_page_))};
+        return !guard.template as<meta_node>()->root.has_value();
+    }
+
+    // Returns the value bound to the key via read-latch crabbing
+    [[nodiscard]] auto get(const Key& key) -> result<Value> {
+        read_guard_t guard{TRY(pool_->fetch_read(meta_page_))};
+        const auto   root{guard.template as<meta_node>()->root};
+        if (!root.has_value()) { return stdx::err{error_t::KEY_NOT_FOUND}; }
+        TODO(key);
+    }
+
   private:
     using path_stack = stdx::fixed::vector<write_guard_t, detail::TREE_HEIGHT_UPPER_BOUND>;
     using slot_stack = stdx::fixed::vector<i32, detail::TREE_HEIGHT_UPPER_BOUND>;
