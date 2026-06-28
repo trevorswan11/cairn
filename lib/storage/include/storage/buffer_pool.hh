@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <mutex>
 #include <utility>
 
@@ -140,6 +141,11 @@ template <usize PoolSize> class buffer_pool {
     ~buffer_pool() {}
 
     MAKE_PINNED(buffer_pool);
+
+    [[nodiscard]] static auto open(const std::filesystem::path& path)
+        -> result<stdx::box<buffer_pool>> {
+        TODO(path);
+    }
 
     [[nodiscard]] static constexpr auto size() noexcept -> usize { return PoolSize; }
 
