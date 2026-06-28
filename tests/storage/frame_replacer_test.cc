@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <stdx/result.hh>
 #include <stdx/types.hh>
 
 #include "storage/frame_replacer.hh"
