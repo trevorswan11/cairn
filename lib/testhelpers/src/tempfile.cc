@@ -3,6 +3,7 @@
 #include <atomic>
 #include <filesystem>
 #include <random>
+#include <system_error>
 #include <string_view>
 
 #include <fmt/format.h>
@@ -24,5 +25,10 @@ auto tempfile_path(std::string_view tag) -> std::filesystem::path {
 } // namespace
 
 tempfile::tempfile(std::string_view tag) : path{tempfile_path(tag)} {}
+
+tempfile::~tempfile() {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+}
 
 } // namespace cairn::tests::helpers
