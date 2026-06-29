@@ -29,13 +29,8 @@ TEST_CASE("bplus_tree inserts and looks up sequential keys") {
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
     constexpr i64 n{5'000};
-    for (i64 i{0}; i < n; ++i) {
-        REQUIRE(tree.emplace(i, static_cast<u64>(i * 10)));
-        // if (tree.empty()) {
-        //     FAIL("Insertions led to an empty tree at i = " << i);
-        // }
-    }
-    // CHECK_FALSE(tree.empty());
+    for (i64 i{0}; i < n; ++i) { REQUIRE(tree.emplace(i, static_cast<u64>(i * 10))); }
+    CHECK_FALSE(helpers::unwrap(tree.empty()));
     for (i64 i{0}; i < n; ++i) { CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i * 10)); }
 
     CHECK(helpers::unwrap_err(tree.emplace(123, 0)) == error_t::DUPLICATE_KEY);
