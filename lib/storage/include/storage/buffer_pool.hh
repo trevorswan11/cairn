@@ -56,7 +56,7 @@ class read_guard {
     [[nodiscard]] auto page_id() const noexcept -> page_id_t { return pg_->page_id(); }
 
     // Read-only view of the page's bytes
-    template <typename T> [[nodiscard]] auto as() const noexcept -> const T* {
+    template <typename T> [[nodiscard]] auto as() const noexcept -> gsl::not_null<const T*> {
         return stdx::object_at<T>(pg_->data());
     }
 
