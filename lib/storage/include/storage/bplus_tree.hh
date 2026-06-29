@@ -4,6 +4,8 @@
 #include <array>
 #include <functional>
 #include <iterator>
+#include <tuple>
+#include <utility>
 
 #include <gsl/pointers>
 #include <gsl/span>
@@ -26,6 +28,20 @@ static constexpr usize LEAF_NODE_PREFIX{16};    // kind+pad+size (8) + next (8)
 static constexpr usize INTERNAL_NODE_PREFIX{8}; // kind+pad+size
 static constexpr usize TREE_HEIGHT_UPPER_BOUND{64};
 
+template <typename Key, typename Compare> struct less {
+    const Compare& comp_;
+
+    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool { return comp_(a, b); }
+};
+
+template <typename Key, typename Compare> struct equal {
+    const Compare& comp_;
+
+    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
+        return !comp_(a, b) && !comp_(b, a);
+    }
+};
+
 } // namespace detail
 
 // A concurrent B+tree index over the buffer pool
@@ -44,7 +60,7 @@ class bplus_tree {
     using key_type   = Key;
     using value_type = Value;
 
-    enum class node_kind : u32 {
+    enum class node_kind : u8 {
         INTERNAL,
         LEAF,
     };
@@ -94,8 +110,8 @@ class bplus_tree {
         }
 
         const auto leaf{as_leaf(guard)};
-        const auto idx{static_cast<usize>(leaf_lower_bound(leaf, key))};
-        if (idx < leaf->size_bytes() && comp_.eq(leaf->keys[idx], key)) {
+        const auto idx{leaf_lower_bound<usize>(leaf, key)};
+        if (idx < leaf->size_bytes() && equal_t{comp_}(leaf->keys[idx], key)) {
             return leaf->values[idx];
         }
         return stdx::err{error_t::KEY_NOT_FOUND};
@@ -108,9 +124,77 @@ class bplus_tree {
         return stdx::err{found.error()};
     }
 
+    // Inserts a KV pair only if it does not already exist in the tree
+    [[nodiscard]] auto emplace(const Key& key, const Value& value) -> result<void> {
+        write_guard_t meta_guard{TRY(fetch_meta_write())};
+        auto          meta{meta_guard.template as<meta_node>()};
+
+        if (!meta->root.has_value()) {
+            auto [root_pid, leaf_guard]{TRY(pool_->new_write())};
+            auto leaf{leaf_guard.template as<leaf_node>()};
+
+            leaf->type = node_kind::LEAF;
+            leaf->size = 0;
+            leaf->next.reset();
+
+            leaf_emplace_at(leaf, 0, key, value);
+            leaf_guard.mark_dirty();
+            meta->root.emplace(root_pid);
+            meta_guard.mark_dirty();
+            return {};
+        }
+
+        // Descend with write crabbing a just hold on to potential splitters
+        path_stack                   path;
+        stdx::option<write_guard_t&> meta_guard_opt{meta_guard};
+        page_id_t                    cur{*meta->root};
+        {
+            write_guard_t root_guard{TRY(pool_->fetch_write(cur))};
+            if (can_emplace(&root_guard)) {
+                meta_guard_opt->drop();
+                meta_guard_opt.reset();
+            }
+            path.emplace_back(std::move(root_guard));
+        }
+
+        while (kind_of(path.back()) == node_kind::INTERNAL) {
+            const auto      node{as_internal(path.back())};
+            const page_id_t child{route(node, key)};
+            write_guard_t   child_guard{TRY(pool_->fetch_write(child))};
+
+            if (can_emplace(&child_guard)) {
+                // At this point no ancestors can split
+                path.clear();
+                if (meta_guard_opt) {
+                    meta_guard_opt->drop();
+                    meta_guard_opt.reset();
+                }
+            }
+            path.emplace_back(std::move(child_guard));
+        }
+
+        auto      leaf{as_leaf(path.back())};
+        const i32 idx{leaf_lower_bound(leaf, key)};
+        if (idx < leaf->size && equal_t{comp_}(leaf->keys[static_cast<usize>(idx)], key)) {
+            return stdx::err{error_t::DUPLICATE_KEY};
+        }
+
+        if (leaf->size < LEAF_CAP) {
+            leaf_emplace_at(leaf, idx, key, value);
+            path.back().mark_dirty();
+            return {};
+        }
+
+        // Otherwise the leaf myst be full and needs to be split
+        const auto [up_pid, up_key]{TRY(split_leaf(&path.back(), idx, key, value))};
+        return propagate_split(meta_guard_opt, path, up_key, up_pid);
+    }
+
   private:
     using path_stack = stdx::fixed::vector<write_guard_t, detail::TREE_HEIGHT_UPPER_BOUND>;
     using slot_stack = stdx::fixed::vector<i32, detail::TREE_HEIGHT_UPPER_BOUND>;
+    using less_t     = detail::less<Key, Compare>;
+    using equal_t    = detail::equal<Key, Compare>;
 
     struct meta_node {
         stdx::option<page_id_t> root;
@@ -120,6 +204,7 @@ class bplus_tree {
 
     struct leaf_node {
         node_kind                     type;
+        std::array<u8, 3>             pad_;
         i32                           size;
         stdx::option<page_id_t>       next;
         std::array<Key, LEAF_SLOTS>   keys;
@@ -132,6 +217,7 @@ class bplus_tree {
 
     struct internal_node {
         node_kind                                 type;
+        std::array<u8, 3>                         pad_;
         i32                                       size;
         std::array<Key, INTERNAL_SLOTS>           keys;
         std::array<page_id_t, INTERNAL_SLOTS + 1> children;
@@ -140,18 +226,6 @@ class bplus_tree {
     };
     static_assert(sizeof(internal_node) <= DB_PAGE_SIZE, "internal node overflows a page");
     static_assert(stdx::StandardLayout<internal_node> && stdx::TriviallyCopyable<internal_node>);
-
-    struct compare_t {
-        Compare compare_fn_{};
-
-        [[nodiscard]] auto less(const Key& a, const Key& b) const -> bool {
-            return compare_fn_(a, b);
-        }
-
-        [[nodiscard]] auto eq(const Key& a, const Key& b) const -> bool {
-            return !less(a, b) && !less(b, a);
-        }
-    };
 
   private:
     static constexpr i32 LEAF_CAP{static_cast<i32>(LEAF_SLOTS)};
@@ -165,50 +239,46 @@ class bplus_tree {
     }
 
     [[nodiscard]] static auto as_leaf(write_guard_t& g) -> gsl::not_null<leaf_node*> {
-        auto* n{g.template as<leaf_node>()};
+        auto n{g.template as<leaf_node>()};
         ASSERT(n->type == node_kind::LEAF, "expected a leaf page");
         return n;
     }
 
     [[nodiscard]] static auto as_leaf(const read_guard_t& g) -> gsl::not_null<const leaf_node*> {
-        auto* n{g.template as<leaf_node>()};
+        auto n{g.template as<leaf_node>()};
         ASSERT(n->type == node_kind::LEAF, "expected a leaf page");
         return n;
     }
 
     [[nodiscard]] static auto as_internal(write_guard_t& g) -> gsl::not_null<internal_node*> {
-        auto* n{g.template as<internal_node>()};
+        auto n{g.template as<internal_node>()};
         ASSERT(n->type == node_kind::INTERNAL, "expected an internal page");
         return n;
     }
 
     [[nodiscard]] static auto as_internal(const read_guard_t& g)
         -> gsl::not_null<const internal_node*> {
-        auto* n{g.template as<internal_node>()};
+        auto n{g.template as<internal_node>()};
         ASSERT(n->type == node_kind::INTERNAL, "expected an internal page");
         return n;
     }
 
     // First index in the leaf whose key is >= `key`
+    template <stdx::NumericIntegral I = i32>
     [[nodiscard]] auto leaf_lower_bound(gsl::not_null<const leaf_node*> node, const Key& key) const
-        -> i32 {
+        -> I {
         gsl::span active_keys{node->keys.data(), node->size_bytes()};
-        auto      it{
-            std::ranges::lower_bound(active_keys, key, [this](const Key& a, const Key& b) -> bool {
-                return comp_.less(a, b);
-            })};
-        return static_cast<i32>(std::distance(active_keys.begin(), it));
+        auto      it{std::ranges::lower_bound(active_keys, key, less_t{comp_})};
+        return static_cast<I>(std::distance(active_keys.begin(), it));
     }
 
     // First index whose separator is strictly greater than `key`
+    template <stdx::NumericIntegral I = i32>
     [[nodiscard]] auto internal_upper_bound(gsl::not_null<const internal_node*> node,
-                                            const Key&                          key) const -> i32 {
+                                            const Key&                          key) const -> I {
         gsl::span active_keys{node->keys.data(), node->size_bytes()};
-        auto      it{
-            std::ranges::upper_bound(active_keys, key, [this](const Key& a, const Key& b) -> bool {
-                return comp_.less(a, b);
-            })};
-        return static_cast<i32>(std::distance(active_keys.begin(), it));
+        auto      it{std::ranges::upper_bound(active_keys, key, less_t{comp_})};
+        return static_cast<I>(std::distance(active_keys.begin(), it));
     }
 
     [[nodiscard]] auto route(gsl::not_null<const internal_node*> node, const Key& key) const
@@ -216,12 +286,204 @@ class bplus_tree {
         return node->children[static_cast<usize>(internal_upper_bound(node, key))];
     }
 
+    [[nodiscard]] static auto can_emplace(gsl::not_null<const write_guard_t*> g) noexcept -> bool {
+        if (kind_of(*g) == node_kind::LEAF) { return g->template as<leaf_node>()->size < LEAF_CAP; }
+        return g->template as<internal_node>()->size < INTERNAL_CAP;
+    }
+
+    static auto
+    leaf_emplace_at(gsl::not_null<leaf_node*> node, i32 idx, const Key& key, const Value& value)
+        -> void {
+        ASSERT(idx >= 0, "cannot use negative value as a safe insert index");
+        const auto u_idx{static_cast<usize>(idx)};
+        const auto u_size{node->size_bytes()};
+
+        if (u_idx < u_size) {
+            std::copy_backward(&node->keys[u_idx], &node->keys[u_size], &node->keys[u_size + 1]);
+            std::copy_backward(
+                &node->values[u_idx], &node->values[u_size], &node->values[u_size + 1]);
+        }
+
+        node->keys[u_idx]   = key;
+        node->values[u_idx] = value;
+        node->size += 1;
+    }
+
+    static auto internal_emplace_at(gsl::not_null<internal_node*> node,
+                                    i32                           key_idx,
+                                    const Key&                    key,
+                                    page_id_t                     right_child) -> void {
+        ASSERT(key_idx >= 0, "cannot use negative value as a safe insert index");
+        const auto u_idx{static_cast<usize>(key_idx)};
+        const auto u_size{node->size_bytes()};
+
+        // The child pointers are always offset by 1
+        if (u_idx < u_size) {
+            std::copy_backward(&node->keys[u_idx], &node->keys[u_size], &node->keys[u_size + 1]);
+            std::copy_backward(&node->children[u_idx + 1],
+                               &node->children[u_size + 1],
+                               &node->children[u_size + 2]);
+        }
+
+        node->keys[u_idx]         = key;
+        node->children[u_idx + 1] = right_child;
+        node->size += 1;
+    }
+
+    // Splits a full leaf and inserts (key, value) at its logical position
+    [[nodiscard]] auto split_leaf(gsl::not_null<write_guard_t*> node_guard,
+                                  i32                           idx,
+                                  const Key&                    key,
+                                  const Value& value) -> result<std::pair<page_id_t, Key>> {
+        auto       left{node_guard->template as<leaf_node>()};
+        const auto u_idx{static_cast<usize>(idx)};
+        const auto u_size{left->size_bytes()};
+
+        // Materialize all leaf slots with new inserted
+        std::array<Key, LEAF_SLOTS + 1>   tmp_keys;
+        std::array<Value, LEAF_SLOTS + 1> tmp_vals;
+
+        std::copy(left->keys.data(), &left->keys[u_idx], tmp_keys.data());
+        std::copy(left->values.data(), &left->values[u_idx], tmp_vals.data());
+
+        tmp_keys[u_idx] = key;
+        tmp_vals[u_idx] = value;
+
+        if (u_idx < u_size) {
+            std::copy(&left->keys[u_idx], &left->keys[u_size], &tmp_keys[u_idx + 1]);
+            std::copy(&left->values[u_idx], &left->values[u_size], &tmp_vals[u_idx + 1]);
+        }
+
+        static constexpr i32 total{LEAF_CAP + 1};
+        static constexpr i32 left_count{(total + 1) / 2};
+
+        auto [right_pid, right_guard]{TRY(pool_->new_write())};
+        auto right{right_guard.template as<leaf_node>()};
+        right->type = node_kind::LEAF;
+        right->size = total - left_count;
+        right->next = left->next;
+
+        const auto u_left_count{left_count};
+        const auto u_right_size{right->size_bytes()};
+
+        // Copy the upper half to the new right sibling
+        std::copy(
+            &tmp_keys[u_left_count], &tmp_keys[u_left_count + u_right_size], right->keys.data());
+        std::copy(
+            &tmp_vals[u_left_count], &tmp_vals[u_left_count + u_right_size], right->values.data());
+
+        // Overwrite the left node with the lower half
+        std::copy(tmp_keys.data(), &tmp_keys[u_left_count], left->keys.data());
+        std::copy(tmp_vals.data(), &tmp_vals[u_left_count], left->values.data());
+        left->size = left_count;
+        left->next = right_pid;
+
+        node_guard->mark_dirty();
+        right_guard.mark_dirty();
+        return std::make_pair(right_pid, right->keys[0]);
+    }
+
+    // Inserts (sep_key, right_child) into a full internal node and splits it
+    [[nodiscard]] auto split_internal(gsl::not_null<write_guard_t*> node_guard,
+                                      const Key&                    sep_key,
+                                      page_id_t right_child) -> result<std::pair<page_id_t, Key>> {
+        auto left{node_guard->template as<internal_node>()};
+
+        std::array<Key, INTERNAL_SLOTS + 1>       tmp_keys;
+        std::array<page_id_t, INTERNAL_SLOTS + 2> tmp_children;
+
+        // Find the correct insert position before copying into temp buffers
+        const gsl::span active_keys{left->keys.data(), left->size_bytes()};
+        auto            it = std::ranges::lower_bound(active_keys, sep_key, less_t{comp_});
+        const auto      u_pos{static_cast<usize>(std::distance(active_keys.begin(), it))};
+        const auto      u_size{left->size_bytes()};
+
+        std::copy(left->keys.data(), &left->keys[u_pos], tmp_keys.data());
+        std::copy(left->children.data(), &left->children[u_pos + 1], tmp_children.data());
+
+        tmp_keys[u_pos]         = sep_key;
+        tmp_children[u_pos + 1] = right_child;
+
+        if (u_pos < u_size) {
+            std::copy(&left->keys[u_pos], &left->keys[u_size], &tmp_keys[u_pos + 1]);
+            std::copy(
+                &left->children[u_pos + 1], &left->children[u_size + 1], &tmp_children[u_pos + 2]);
+        }
+
+        static constexpr const i32 total_keys{INTERNAL_CAP + 1};
+        static constexpr const i32 mid{total_keys / 2}; // this key moves up, not into either half
+
+        auto [right_pid, right_guard]{TRY(pool_->new_write())};
+        auto right{right_guard.template as<internal_node>()};
+        right->type = node_kind::INTERNAL;
+        right->size = total_keys - mid - 1;
+
+        const auto u_mid{static_cast<usize>(mid)};
+        const auto u_right_size{right->size_bytes()};
+
+        // Copy the upper half to the right node
+        std::copy(&tmp_keys[u_mid + 1], &tmp_keys[u_mid + 1 + u_right_size], right->keys.data());
+        std::copy(&tmp_children[u_mid + 1],
+                  &tmp_children[u_mid + 1 + u_right_size + 1],
+                  right->children.data());
+
+        // Overwrite the left node with the lower half
+        std::copy(tmp_keys.data(), &tmp_keys[u_mid], left->keys.data());
+        std::copy(tmp_children.data(), &tmp_children[u_mid + 1], left->children.data());
+
+        left->size = mid;
+        node_guard->mark_dirty();
+        right_guard.mark_dirty();
+        return std::make_pair(right_pid, tmp_keys[u_mid]);
+    }
+
+    // Walks a split separator up the retained ancestor path
+    [[nodiscard]] auto propagate_split(stdx::option<write_guard_t&> meta_guard,
+                                       path_stack&                  path,
+                                       Key                          up_key,
+                                       page_id_t                    up_pid) -> result<void> {
+        // Loop with isize to prevent accidental underflow
+        for (isize i{static_cast<isize>(path.size()) - 2}; i >= 0; --i) {
+            const auto u_idx{static_cast<usize>(i)};
+            auto       parent{path[u_idx].template as<internal_node>()};
+            if (parent->size < INTERNAL_CAP) {
+                i32 key_idx{0};
+                while (key_idx < parent->size &&
+                       !less_t{comp_}(up_key, parent->keys[static_cast<usize>(key_idx)])) {
+                    key_idx += 1;
+                }
+
+                internal_emplace_at(parent, key_idx, up_key, up_pid);
+                path[u_idx].mark_dirty();
+                return {};
+            }
+
+            std::tie(up_pid, up_key) = TRY(split_internal(&path[u_idx], up_key, up_pid));
+        }
+
+        ASSERT(meta_guard, "root split without holding the meta page latch");
+        auto meta{meta_guard->template as<meta_node>()};
+        auto [new_root_pid, root_guard]{TRY(pool_->new_write())};
+
+        auto root{root_guard.template as<internal_node>()};
+        root->type        = node_kind::INTERNAL;
+        root->size        = 1;
+        root->keys[0]     = up_key;
+        root->children[0] = path.front().page_id();
+        root->children[1] = up_pid;
+
+        root_guard.mark_dirty();
+        meta->root = new_root_pid;
+        meta_guard->mark_dirty();
+        return {};
+    }
+
     [[nodiscard]] auto fetch_meta_write() { return pool_->fetch_write(meta_page_); }
 
   private:
-    stdx::option<pool_t&> pool_;
-    page_id_t             meta_page_;
-    compare_t             comp_;
+    stdx::option<pool_t&>         pool_;
+    page_id_t                     meta_page_;
+    [[no_unique_address]] Compare comp_;
 };
 
 } // namespace cairn::storage

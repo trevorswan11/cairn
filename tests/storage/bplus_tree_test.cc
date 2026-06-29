@@ -27,7 +27,19 @@ TEST_CASE("bplus_tree inserts and looks up sequential keys") {
     using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
-    DISCARD(tree);
+
+    constexpr i64 n{5'000};
+    for (i64 i{0}; i < n; ++i) {
+        REQUIRE(tree.emplace(i, static_cast<u64>(i * 10)));
+        // if (tree.empty()) {
+        //     FAIL("Insertions led to an empty tree at i = " << i);
+        // }
+    }
+    // CHECK_FALSE(tree.empty());
+    for (i64 i{0}; i < n; ++i) { CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i * 10)); }
+
+    CHECK(helpers::unwrap_err(tree.emplace(123, 0)) == error_t::DUPLICATE_KEY);
+    CHECK(helpers::unwrap_err(tree.get(n + 1)) == error_t::KEY_NOT_FOUND);
 }
 
 TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
