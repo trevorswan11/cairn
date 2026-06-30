@@ -75,8 +75,10 @@ pub fn build(b: *std.Build) !void {
             }
 
             var configs: stdx.ArrayList(stdx.steps.RunKcovConfig) = .init(b);
-            const test_suites: stdx.ArrayList(Test) = .fromSlice(b, tests.unit_suites);
-            for (test_suites.wrapped.items) |suite| {
+            var suites: stdx.ArrayList(Test) = .fromSlice(b, tests.unit_suites);
+            suites.appendSlice(tests.fuzz_suites);
+
+            for (suites.wrapped.items) |suite| {
                 configs.append(.{
                     .artifact = suite.artifact,
                     .include_patterns = include_patterns.wrapped.items,
@@ -205,6 +207,7 @@ const Library = struct {
 
 const Test = struct {
     const tests_root = "tests/";
+    const fuzz_root = "fuzz/";
 
     step: *std.Build.Step,
     artifact: *std.Build.Step.Compile,
@@ -254,39 +257,36 @@ const Test = struct {
             .artifact = test_artifact,
         };
     }
-};
-
-const FuzzTest = struct {
-    const fuzz_root = "fuzz/";
-
-    step: *std.Build.Step,
-    artifact: *std.Build.Step.Compile,
 
     /// The configured name should be the same as the test file minus the `.cc` extension
-    pub fn init(
+    pub fn initFuzz(
         b: *std.Build,
         config: ArtifactConfig,
-    ) FuzzTest {
+    ) Test {
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
         if (config.libtesthelpers) |lib| link_libraries.append(lib);
 
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
         include_paths.append(b.path(fuzz_root ++ "helpers"));
 
-        const step_name = b.fmt("fuzz-{s}", .{config.name});
-        const desc = b.fmt("Build/run {s} fuzz tests", .{config.name});
+        const basename = std.Io.Dir.path.basename(config.name);
+        const step_name = b.fmt("fuzz-{s}", .{basename});
+        const desc = b.fmt("Build/run {s} fuzz tests", .{basename});
+
+        var cxx_flags: stdx.ArrayList([]const u8) = .fromSlice(b, config.cxx_flags);
+        cxx_flags.append("-DCAIRN_FUZZING");
 
         const fuzz_artifact = stdx.builders.fuzzTest(b, .{
             .target = config.target,
             .optimize = config.optimize,
             .stdx = .{ .dep = config.stdx_dep },
             .cxx_files = &.{b.fmt(fuzz_root ++ "{s}.cc", .{config.name})},
-            .cxx_flags = config.cxx_flags,
+            .cxx_flags = cxx_flags.wrapped.items,
             .profile = config.profile,
             .include_paths = include_paths.wrapped.items,
             .link_libraries = link_libraries.wrapped.items,
             .executable_config = .{
-                .name = config.name,
+                .name = basename,
                 .behavior = .{
                     .installable = .{
                         .cmd_name = step_name,
@@ -309,7 +309,7 @@ const FuzzTest = struct {
 const Tests = struct {
     unit_suites: []const Test,
     integration: Test,
-    fuzz_suites: []const FuzzTest,
+    fuzz_suites: []const Test,
 
     pub fn configure(self: *const Tests, config: struct {
         test_install_dir: ?[]const u8,
@@ -530,10 +530,12 @@ fn addArtifacts(b: *std.Build, config: struct {
             .libtesthelpers = libtesthelpers.artifact,
         };
 
-        var fuzz_suites: stdx.ArrayList(FuzzTest) = .init(b);
+        var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
-            fuzz_suites.append(.init(b, base_fuzz_config.with("stub_one", .{})));
-            fuzz_suites.append(.init(b, base_fuzz_config.with("stub_two", .{})));
+            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
+                .link_libraries = &.{libstorage.artifact},
+            })));
+            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("stub_one", .{})));
         }
 
         tests = .{
