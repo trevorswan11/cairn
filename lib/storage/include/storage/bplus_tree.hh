@@ -257,8 +257,71 @@ class bplus_tree {
 
     // Removes 'key' and returns KEY_NOT_FOUND if absent
     [[nodiscard]] auto remove(const Key& key) -> result<void> {
-        DISCARD(key);
-        return {};
+        write_guard_t meta_guard{TRY(fetch_meta_write())};
+        auto          meta{meta_guard.template as<meta_node>()};
+        if (!meta->root.has_value()) { return stdx::err{error_t::KEY_NOT_FOUND}; }
+
+        path_stack path;
+        slot_stack slot; // index of path[i] inside of path[i-1]
+
+        stdx::option<write_guard_t&> meta_guard_opt{meta_guard};
+        page_id_t                    cur{*meta->root};
+        {
+            write_guard_t root_guard{TRY(pool_->fetch_write(cur))};
+            const bool    root_is_leaf{kind_of(root_guard) == node_kind::LEAF};
+            if (can_remove(&root_guard, true, root_is_leaf)) {
+                meta_guard_opt->drop();
+                meta_guard_opt.reset();
+            }
+            path.emplace_back(std::move(root_guard));
+            slot.emplace_back(0);
+        }
+
+        while (kind_of(path.back()) == node_kind::INTERNAL) {
+            const auto      node{as_internal(path.back())};
+            const i32       child_slot{internal_upper_bound(node, key)};
+            const page_id_t child{node->children[static_cast<usize>(child_slot)]};
+
+            write_guard_t child_guard{TRY(pool_->fetch_write(child))};
+            const bool    child_is_leaf{kind_of(child_guard) == node_kind::LEAF};
+            if (can_remove(&child_guard, false, child_is_leaf)) {
+                if (meta_guard_opt) {
+                    meta_guard_opt->drop();
+                    meta_guard_opt.reset();
+                }
+                path.clear();
+                slot.clear();
+            }
+
+            path.emplace_back(std::move(child_guard));
+            slot.emplace_back(child_slot);
+        }
+
+        // Remove from the leaf
+        auto      leaf{as_leaf(path.back())};
+        const i32 idx{leaf_lower_bound(leaf, key)};
+        if (idx >= leaf->size || !equal_t{comp_}(leaf->keys[static_cast<usize>(idx)], key)) {
+            return stdx::err{error_t::KEY_NOT_FOUND};
+        }
+        leaf_remove_at(leaf, idx);
+        path.back().mark_dirty();
+
+        // The root leaf may be emptied which would empty the whole tree
+        if (path.size() == 1 && meta_guard_opt) {
+            if (leaf->size == 0) {
+                const page_id_t root_pid{path.back().page_id()};
+                path.back().drop();
+                path.pop_back();
+
+                meta->root.reset();
+                meta_guard.mark_dirty();
+                TRY(pool_->delete_page(root_pid));
+            }
+            return {};
+        }
+
+        if (leaf->size >= LEAF_MIN) { return {}; }
+        return rebalance(meta_guard_opt, path, slot);
     }
 
   private:
@@ -364,6 +427,16 @@ class bplus_tree {
         return g->template as<internal_node>()->size < INTERNAL_CAP;
     }
 
+    [[nodiscard]] static auto
+    can_remove(gsl::not_null<const write_guard_t*> g, bool is_root, bool is_leaf) noexcept -> bool {
+        const i32 size{is_leaf ? g->template as<leaf_node>()->size
+                               : g->template as<internal_node>()->size};
+
+        // The root is never allowed to merge and instead just collapses
+        if (is_root) { return size > 1; }
+        return size > (is_leaf ? LEAF_MIN : INTERNAL_MIN);
+    }
+
     static auto
     leaf_emplace_at(gsl::not_null<leaf_node*> node, i32 idx, const Key& key, const Value& value)
         -> void {
@@ -380,6 +453,15 @@ class bplus_tree {
         node->keys[u_idx]   = key;
         node->values[u_idx] = value;
         node->size += 1;
+    }
+
+    static auto leaf_remove_at(gsl::not_null<leaf_node*> leaf, i32 idx) -> void {
+        std::move(
+            leaf->keys.data() + idx + 1, leaf->keys.data() + leaf->size, leaf->keys.data() + idx);
+        std::move(leaf->values.data() + idx + 1,
+                  leaf->values.data() + leaf->size,
+                  leaf->values.data() + idx);
+        leaf->size -= 1;
     }
 
     static auto internal_emplace_at(gsl::not_null<internal_node*> node,
@@ -546,9 +628,210 @@ class bplus_tree {
         root->children[1] = up_pid;
 
         root_guard.mark_dirty();
-        meta->root = new_root_pid;
+        meta->root.emplace(new_root_pid);
         meta_guard->mark_dirty();
         return {};
+    }
+
+    // Restores the min-occupancy invariant after a leaf underflow. Handles borrowing and merging
+    [[nodiscard]] auto rebalance(stdx::option<write_guard_t&> meta_guard,
+                                 path_stack&                  path,
+                                 slot_stack&                  slot) -> result<void> {
+        // Work from the underflowed leaf up toward the root.
+        for (isize level{static_cast<isize>(path.size()) - 1}; level >= 1; --level) {
+            const auto u_level{static_cast<usize>(level)};
+            const bool is_leaf{kind_of(path[u_level]) == node_kind::LEAF};
+            const i32  min_keep{is_leaf ? LEAF_MIN : INTERNAL_MIN};
+            const i32  occ{is_leaf ? path[u_level].template as<leaf_node>()->size
+                                   : path[u_level].template as<internal_node>()->size};
+            if (occ >= min_keep) { return {}; }
+
+            auto      parent{path[u_level - 1].template as<internal_node>()};
+            const i32 child_slot{slot[u_level]};
+
+            // Try borrowing from a sibling
+            const auto borrow_sibling = [&](auto child_offset, auto borrow_fn) -> result<bool> {
+                write_guard_t sib{
+                    TRY(pool_->fetch_write(parent->children[static_cast<usize>(child_offset)]))};
+                const i32 sib_size{is_leaf ? sib.template as<leaf_node>()->size
+                                           : sib.template as<internal_node>()->size};
+
+                if (sib_size > min_keep) {
+                    borrow_fn(&sib, &path[u_level], parent, child_slot, is_leaf);
+                    path[u_level - 1].mark_dirty();
+                    return true;
+                }
+                return false;
+            };
+
+            if (child_slot > 0) {
+                if (TRY(borrow_sibling(child_slot - 1, borrow_from_left))) { return {}; }
+            }
+            if (child_slot < parent->size) {
+                if (TRY(borrow_sibling(child_slot + 1, borrow_from_right))) { return {}; }
+            }
+
+            // Otherwise a merge is needed
+            const auto merge_sibling = [&](auto child_offset, auto merge_fn) -> result<void> {
+                write_guard_t sib{
+                    TRY(pool_->fetch_write(parent->children[static_cast<usize>(child_offset)]))};
+                const page_id_t freed{path[u_level].page_id()};
+                merge_fn(&sib, &path[u_level], parent, child_slot, is_leaf);
+                path[u_level].drop();
+                return pool_->delete_page(freed);
+            };
+
+            if (child_slot > 0) {
+                TRY(merge_sibling(child_slot - 1, merge_into_left));
+            } else {
+                TRY(merge_sibling(child_slot + 1, merge_into_right));
+            }
+
+            // The parent lost a key and occupancy needs to be checked on next iteration
+            path[u_level - 1].mark_dirty();
+        }
+
+        // The root has been reached and may need to collapse
+        if (!meta_guard) { return {}; }
+        return maybe_collapse_root(*meta_guard, path.front());
+    }
+
+    // Pulls the largest entry of the left sibling across the parent separator.
+    static auto borrow_from_left(gsl::not_null<write_guard_t*> left_sib,
+                                 gsl::not_null<write_guard_t*> node,
+                                 gsl::not_null<internal_node*> parent,
+                                 i32                           child_slot,
+                                 bool                          is_leaf) -> void {
+        const auto u_child_slot{static_cast<usize>(child_slot)};
+        if (is_leaf) {
+            auto l{left_sib->template as<leaf_node>()};
+            auto n{node->template as<leaf_node>()};
+
+            const auto l_size{l->size_bytes()};
+            leaf_emplace_at(n, 0, l->keys[l_size - 1], l->values[l_size - 1]);
+            l->size -= 1;
+            parent->keys[u_child_slot - 1] = n->keys[0];
+        } else {
+            auto l{left_sib->template as<internal_node>()};
+            auto n{node->template as<internal_node>()};
+
+            std::move_backward(
+                n->keys.data(), n->keys.data() + n->size, n->keys.data() + n->size + 1);
+            std::move_backward(n->children.data(),
+                               n->children.data() + n->size + 1,
+                               n->children.data() + n->size + 2);
+
+            {
+                const auto l_size{l->size_bytes()};
+                n->keys[0]     = parent->keys[u_child_slot - 1];
+                n->children[0] = l->children[l_size];
+                n->size += 1;
+                parent->keys[u_child_slot - 1] = l->keys[l_size - 1];
+            }
+            l->size -= 1;
+        }
+
+        left_sib->mark_dirty();
+        node->mark_dirty();
+    }
+
+    // Pulls the smallest entry of the right sibling across the parent separator.
+    static auto borrow_from_right(gsl::not_null<write_guard_t*> right_sib,
+                                  gsl::not_null<write_guard_t*> node,
+                                  gsl::not_null<internal_node*> parent,
+                                  i32                           child_slot,
+                                  bool                          is_leaf) -> void {
+        const auto u_child_slot{static_cast<usize>(child_slot)};
+        if (is_leaf) {
+            auto n{node->template as<leaf_node>()};
+            auto r{right_sib->template as<leaf_node>()};
+            leaf_emplace_at(n, n->size, r->keys[0], r->values[0]);
+            leaf_remove_at(r, 0);
+            parent->keys[u_child_slot] = r->keys[0];
+        } else {
+            auto n{node->template as<internal_node>()};
+            auto r{right_sib->template as<internal_node>()};
+
+            {
+                const auto n_size{n->size_bytes()};
+                n->keys[n_size]         = parent->keys[u_child_slot];
+                n->children[n_size + 1] = r->children[0];
+            }
+            n->size += 1;
+            parent->keys[u_child_slot] = r->keys[0];
+
+            std::move(r->keys.data() + 1, r->keys.data() + r->size, r->keys.data());
+            std::move(r->children.data() + 1, r->children.data() + r->size + 1, r->children.data());
+            r->size -= 1;
+        }
+
+        node->mark_dirty();
+        right_sib->mark_dirty();
+    }
+
+    // Folds the right node into the left node and drops the parent separator
+    static auto merge_into_left(gsl::not_null<write_guard_t*> left,
+                                gsl::not_null<write_guard_t*> right,
+                                gsl::not_null<internal_node*> parent,
+                                i32                           right_slot,
+                                bool                          is_leaf) -> void {
+        if (is_leaf) {
+            auto l{left->template as<leaf_node>()};
+            auto r{right->template as<leaf_node>()};
+            std::copy_n(r->keys.data(), r->size, l->keys.data() + l->size);
+            std::copy_n(r->values.data(), r->size, l->values.data() + l->size);
+            l->size += r->size;
+            l->next = r->next;
+        } else {
+            auto l{left->template as<internal_node>()};
+            auto r{right->template as<internal_node>()};
+
+            // Pull the separator down first
+            l->keys[l->size_bytes()] = parent->keys[static_cast<usize>(right_slot - 1)];
+            l->size += 1;
+            std::copy_n(r->keys.data(), r->size, l->keys.data() + l->size);
+            std::copy_n(r->children.data(), r->size + 1, l->children.data() + l->size);
+            l->size += r->size;
+        }
+
+        // Remove the parent separator and the right child pointer from the parent
+        if ((parent->size - 1) - (right_slot - 1) > 0) {
+            std::move(parent->keys.data() + right_slot,
+                      parent->keys.data() + parent->size,
+                      parent->keys.data() + (right_slot - 1));
+        }
+
+        if (parent->size - right_slot > 0) {
+            std::move(parent->children.data() + right_slot + 1,
+                      parent->children.data() + parent->size + 1,
+                      parent->children.data() + right_slot);
+        }
+
+        parent->size -= 1;
+        left->mark_dirty();
+    }
+
+    // Folds the left node into the right node and drops the parent separator
+    static auto merge_into_right(gsl::not_null<write_guard_t*> right,
+                                 gsl::not_null<write_guard_t*> left,
+                                 gsl::not_null<internal_node*> parent,
+                                 i32                           right_slot,
+                                 bool                          is_leaf) -> void {
+        merge_into_left(left, right, parent, right_slot + 1, is_leaf);
+    }
+
+    [[nodiscard]] auto maybe_collapse_root(write_guard_t& meta_guard, write_guard_t& root_guard)
+        -> result<void> {
+        if (kind_of(root_guard) == node_kind::LEAF) { return {}; }
+        auto root{root_guard.template as<internal_node>()};
+        if (root->size > 0) { return {}; }
+
+        const auto old_root{root_guard.page_id()};
+        const auto new_root{root->children[0]};
+        root_guard.drop();
+        meta_guard.template as<meta_node>()->root.emplace(new_root);
+        meta_guard.mark_dirty();
+        return pool_->delete_page(old_root);
     }
 
     [[nodiscard]] auto fetch_meta_write() { return pool_->fetch_write(meta_page_); }
