@@ -672,19 +672,20 @@ class bplus_tree {
             }
 
             // Otherwise a merge is needed
-            const auto merge_sibling = [&](auto child_offset, auto merge_fn) -> result<void> {
-                write_guard_t sib{
-                    TRY(pool_->fetch_write(parent->children[static_cast<usize>(child_offset)]))};
-                const page_id_t freed{path[u_level].page_id()};
-                merge_fn(&sib, &path[u_level], parent, child_slot, is_leaf);
-                path[u_level].drop();
-                return pool_->delete_page(freed);
-            };
-
             if (child_slot > 0) {
-                TRY(merge_sibling(child_slot - 1, merge_into_left));
+                write_guard_t left_sib{
+                    TRY(pool_->fetch_write(parent->children[static_cast<usize>(child_slot - 1)]))};
+                const page_id_t freed{path[u_level].page_id()}; // free current node
+                merge_into_left(&left_sib, &path[u_level], parent, child_slot, is_leaf);
+                path[u_level].drop();
+                if (auto r{pool_->delete_page(freed)}; !r) { return stdx::err{r.error()}; }
             } else {
-                TRY(merge_sibling(child_slot + 1, merge_into_right));
+                write_guard_t right_sib{
+                    TRY(pool_->fetch_write(parent->children[static_cast<usize>(child_slot + 1)]))};
+                const page_id_t freed{right_sib.page_id()}; // free right sibling
+                merge_into_left(&path[u_level], &right_sib, parent, child_slot + 1, is_leaf);
+                right_sib.drop();
+                if (auto r{pool_->delete_page(freed)}; !r) { return stdx::err{r.error()}; }
             }
 
             // The parent lost a key and occupancy needs to be checked on next iteration
@@ -809,15 +810,6 @@ class bplus_tree {
 
         parent->size -= 1;
         left->mark_dirty();
-    }
-
-    // Folds the left node into the right node and drops the parent separator
-    static auto merge_into_right(gsl::not_null<write_guard_t*> right,
-                                 gsl::not_null<write_guard_t*> left,
-                                 gsl::not_null<internal_node*> parent,
-                                 i32                           right_slot,
-                                 bool                          is_leaf) -> void {
-        merge_into_left(left, right, parent, right_slot + 1, is_leaf);
     }
 
     [[nodiscard]] auto maybe_collapse_root(write_guard_t& meta_guard, write_guard_t& root_guard)
