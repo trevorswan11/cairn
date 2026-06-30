@@ -136,6 +136,7 @@ template <usize PoolSize> class buffer_pool {
   public:
     using read_guard_t  = read_guard<PoolSize>;
     using write_guard_t = write_guard<PoolSize>;
+    static constexpr auto pool_size{PoolSize};
 
   public:
     explicit buffer_pool(stdx::box<disk_manager> dm) : disk_{std::move(dm)} {
@@ -152,8 +153,6 @@ template <usize PoolSize> class buffer_pool {
         auto dm{TRY(disk_manager::open(path))};
         return stdx::make_box<buffer_pool>(std::move(dm));
     }
-
-    [[nodiscard]] static constexpr auto size() noexcept -> usize { return PoolSize; }
 
     // Pins the provided pid and returns a stable pointer
     [[nodiscard]] auto fetch_page(page_id_t pid) -> result<gsl::not_null<page*>> {

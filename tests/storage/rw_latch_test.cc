@@ -7,8 +7,10 @@
 
 namespace cairn::tests {
 
+using namespace cairn::storage;
+
 TEST_CASE("rw_latch support manual lock cycles") {
-    storage::rw_latch latch;
+    rw_latch latch;
 
     SECTION("Exclusive cycle") {
         latch.lock();
@@ -29,7 +31,7 @@ TEST_CASE("rw_latch support manual lock cycles") {
 }
 
 TEST_CASE("rw_latch honors try_lock semantics") {
-    storage::rw_latch latch;
+    rw_latch latch;
 
     REQUIRE(latch.try_lock());
     latch.unlock();
@@ -39,7 +41,7 @@ TEST_CASE("rw_latch honors try_lock semantics") {
 }
 
 TEST_CASE("rw_latch supports use by std wrappers") {
-    storage::rw_latch latch;
+    rw_latch latch;
 
     {
         std::unique_lock exclusive{latch};
