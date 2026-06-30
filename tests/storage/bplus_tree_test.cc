@@ -54,6 +54,7 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
     std::mt19937_64                 rng{Catch::getSeed()};
     stdx::fixed::vector<i64, 4'000> keys;
     for (usize i{0}; i < keys.capacity(); ++i) { keys.emplace_back(i); }
+    const auto max{static_cast<i64>(keys.size() - 1)};
     std::ranges::shuffle(keys, rng);
 
     std::map<i64, u64> oracle;
@@ -67,9 +68,7 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
     SECTION("full ascending range scan equals the oracle order") {
         stdx::fixed::vector<std::pair<i64, u64>, keys.capacity()> got;
         const auto                                                count{tree.range_scan(
-            0, static_cast<i64>(keys.size() - 1), [&](const i64& k, const u64& v) -> void {
-                got.emplace_back(k, v);
-            })};
+            0, max, [&](const i64& k, const u64& v) -> void { got.emplace_back(k, v); })};
 
         CHECK(helpers::unwrap(count) == oracle.size());
         REQUIRE(got.size() == oracle.size());
@@ -107,18 +106,15 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
     SECTION("early-exit scan stops when the visitor returns false") {
         usize      visited{0};
         const auto count{tree.range_scan(
-            0, static_cast<i64>(keys.size() - 1), [&](const i64&, const u64&) -> bool {
-                return ++visited < 10;
-            })};
+            0, max, [&](const i64&, const u64&) -> bool { return ++visited < 10; })};
 
         CHECK(visited == 10);
         CHECK(helpers::unwrap(count) == visited);
     }
 
-    SECTION("non-bool visitor values are discarded") {
-        const auto count{tree.range_scan(0,
-                                         static_cast<i64>(keys.size() - 1),
-                                         [](const i64&, const u64&) -> double { return 0.0; })};
+    SECTION("non-bool visitor values are discarded safely") {
+        const auto count{tree.range_scan(
+            0, max, [] [[nodiscard]] (const i64&, const u64&) -> double { return 0.0; })};
         CHECK(helpers::unwrap(count) == oracle.size());
     }
 }
@@ -128,7 +124,28 @@ TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
     using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
-    DISCARD(tree);
+
+    std::mt19937_64                 rng{Catch::getSeed()};
+    stdx::fixed::vector<i64, 3'000> keys;
+    for (usize i{0}; i < keys.capacity(); ++i) {
+        keys.emplace_back(i);
+        REQUIRE(tree.emplace(static_cast<i64>(i), i));
+    }
+    std::ranges::shuffle(keys, rng);
+
+    std::map<i64, u64> oracle;
+    for (usize i{0}; i < keys.capacity(); ++i) { oracle.emplace(static_cast<i64>(i), i); }
+
+    const auto half{keys.size() / 2};
+    for (usize i{0}; i < half; ++i) {
+        REQUIRE(tree.remove(keys[i]));
+        oracle.erase(keys[i]);
+    }
+    CHECK(helpers::unwrap_err(tree.remove(0)) == error_t::KEY_NOT_FOUND);
+
+    for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
+    for (usize i{half}; i < keys.size(); ++i) { REQUIRE(tree.remove(keys[i])); }
+    CHECK(helpers::unwrap(tree.empty()));
 }
 
 TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {

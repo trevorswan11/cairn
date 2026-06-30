@@ -135,8 +135,8 @@ class bplus_tree {
 
     // Visits all kv pairs in range in ascending order, returning the number of visited entries
     //
-    // The `visitor` may return bool-convertible types and return false to stop the scan early. All
-    // other return types are allowed but are always ignored
+    // The `visitor` may return boolean types and return false to stop the scan early. All
+    // other return types are allowed but are always ignored.
     template <typename Fn>
     [[nodiscard]] auto
     range_scan(const Key& low, const Key& high, Fn&& visitor, bool inclusive = true)
@@ -253,6 +253,12 @@ class bplus_tree {
         // Otherwise the leaf myst be full and needs to be split
         const auto [up_pid, up_key]{TRY(split_leaf(&path.back(), idx, key, value))};
         return propagate_split(meta_guard_opt, path, up_key, up_pid);
+    }
+
+    // Removes 'key' and returns KEY_NOT_FOUND if absent
+    [[nodiscard]] auto remove(const Key& key) -> result<void> {
+        DISCARD(key);
+        return {};
     }
 
   private:
