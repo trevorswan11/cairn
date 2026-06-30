@@ -141,7 +141,7 @@ TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
         REQUIRE(tree.remove(keys[i]));
         oracle.erase(keys[i]);
     }
-    CHECK(helpers::unwrap_err(tree.remove(0)) == error_t::KEY_NOT_FOUND);
+    CHECK(helpers::unwrap_err(tree.remove(keys[0])) == error_t::KEY_NOT_FOUND);
 
     for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
     for (usize i{half}; i < keys.size(); ++i) { REQUIRE(tree.remove(keys[i])); }
