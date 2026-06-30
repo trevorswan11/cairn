@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <functional>
 #include <iterator>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include <gsl/pointers>
@@ -15,6 +17,7 @@
 #include <stdx/result.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
 #include "storage/buffer_pool.hh"
 #include "storage/error.hh"
@@ -34,11 +37,17 @@ template <typename Key, typename Compare> struct less {
     [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool { return comp_(a, b); }
 };
 
+template <typename Key, typename Compare> struct greater {
+    const Compare& comp_;
+
+    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool { return comp_(b, a); }
+};
+
 template <typename Key, typename Compare> struct equal {
     const Compare& comp_;
 
     [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
-        return !comp_(a, b) && !comp_(b, a);
+        return !less<Key, Compare>{comp_}(a, b) && !greater<Key, Compare>{comp_}(a, b);
     }
 };
 
@@ -56,6 +65,7 @@ class bplus_tree {
     using pool_t        = buffer_pool<PoolSize>;
     using write_guard_t = typename pool_t::write_guard_t;
     using read_guard_t  = typename pool_t::read_guard_t;
+    static constexpr auto pool_size{pool_t::pool_size};
 
     using key_type   = Key;
     using value_type = Value;
@@ -86,7 +96,6 @@ class bplus_tree {
         return bplus_tree{pool, id};
     }
 
-    [[nodiscard]] static constexpr auto size() noexcept -> usize { return PoolSize; }
     [[nodiscard]] auto meta_page() const noexcept -> page_id_t { return meta_page_; }
     [[nodiscard]] auto empty() -> result<bool> {
         read_guard_t guard{TRY(pool_->fetch_read(meta_page_))};
@@ -122,6 +131,62 @@ class bplus_tree {
         if (found) { return true; }
         if (found.error() == error_t::KEY_NOT_FOUND) { return false; }
         return stdx::err{found.error()};
+    }
+
+    // Visits all kv pairs in range in ascending order, returning the number of visited entries
+    //
+    // The `visitor` may return bool-convertible types and return false to stop the scan early. All
+    // other return types are allowed but are always ignored
+    template <typename Fn>
+    [[nodiscard]] auto
+    range_scan(const Key& low, const Key& high, Fn&& visitor, bool inclusive = true)
+        -> result<usize> {
+        read_guard_t meta_guard{TRY(pool_->fetch_read(meta_page_))};
+        const auto   root{meta_guard.template as<meta_node>()->root};
+        usize        count{0};
+        if (!root.has_value()) { return count; }
+
+        read_guard_t guard{TRY(pool_->fetch_read(*root))};
+        meta_guard.drop();
+
+        // Crab down to the leaf with the lower bound
+        while (kind_of(guard) == node_kind::INTERNAL) {
+            const auto   node{guard.template as<internal_node>()};
+            read_guard_t child_guard{TRY(pool_->fetch_read(route(node, low)))};
+            guard = std::move(child_guard);
+        }
+
+        auto idx{leaf_lower_bound<usize>(guard.template as<leaf_node>(), low)};
+        while (true) {
+            const auto leaf{guard.template as<leaf_node>()};
+            while (idx < leaf->size_bytes()) {
+                if (inclusive) {
+                    if (greater_t{comp_}(leaf->keys[idx], high)) { return count; }
+                } else {
+                    if (!less_t{comp_}(leaf->keys[idx], high)) { return count; }
+                }
+                count += 1;
+
+                // The caller has the option to use a void yielding lambda
+                using result_t = std::invoke_result_t<Fn, const Key&, const Value&>;
+                if constexpr (std::same_as<result_t, bool>) {
+                    if (!visitor(leaf->keys[idx], leaf->values[idx])) { return count; }
+                } else if constexpr (std::is_void_v<result_t>) {
+                    visitor(leaf->keys[idx], leaf->values[idx]);
+                } else {
+                    DISCARD(visitor(leaf->keys[idx], leaf->values[idx]));
+                }
+                idx += 1;
+            }
+
+            const auto next{leaf->next};
+            if (!next.has_value()) { return count; }
+
+            // Release the current leaf before latching sibling to prevent deadlock
+            guard.drop();
+            guard = TRY(pool_->fetch_read(*next));
+            idx   = 0;
+        }
     }
 
     // Inserts a KV pair only if it does not already exist in the tree
@@ -193,8 +258,10 @@ class bplus_tree {
   private:
     using path_stack = stdx::fixed::vector<write_guard_t, detail::TREE_HEIGHT_UPPER_BOUND>;
     using slot_stack = stdx::fixed::vector<i32, detail::TREE_HEIGHT_UPPER_BOUND>;
-    using less_t     = detail::less<Key, Compare>;
-    using equal_t    = detail::equal<Key, Compare>;
+
+    using less_t    = detail::less<Key, Compare>;
+    using equal_t   = detail::equal<Key, Compare>;
+    using greater_t = detail::greater<Key, Compare>;
 
     struct meta_node {
         stdx::option<page_id_t> root;

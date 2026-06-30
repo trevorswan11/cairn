@@ -8,6 +8,8 @@
 
 namespace cairn::tests {
 
+using namespace cairn::support;
+
 TEST_CASE("Well-formed config parsing") {
     auto logging = GENERATE(true, false);
 
@@ -23,7 +25,7 @@ TEST_CASE("Well-formed config parsing") {
           }}
         }})",
         logging ? "" : "//");
-    const auto config{helpers::unwrap(support::config::parse("development", input))};
+    const auto config{helpers::unwrap(config::parse("development", input))};
 
     CHECK(config.host == "127.0.0.1");
     CHECK(config.port == 5'432);
@@ -39,7 +41,7 @@ TEST_CASE("Well-formed config parsing") {
 }
 
 TEST_CASE("Config not nested inside of object") {
-    const auto err = helpers::unwrap_err(support::config::parse("development", R"("development": {
+    const auto err = helpers::unwrap_err(config::parse("development", R"("development": {
             "host": "127.0.0.1",
             "port": 5432,
             "database": "my_app_dev",
@@ -47,18 +49,18 @@ TEST_CASE("Config not nested inside of object") {
             "password": "secretpassword",
             "logfile": "log.log"
     })"));
-    CHECK(err == support::error_t::JSON_PARSE_ERROR);
+    CHECK(err == error_t::JSON_PARSE_ERROR);
 }
 
 TEST_CASE("Config with missing required fields") {
-    const auto err = helpers::unwrap_err(support::config::parse("development", R"({
+    const auto err = helpers::unwrap_err(config::parse("development", R"({
         "development": {}
     })"));
-    CHECK(err == support::error_t::JSON_MISSING_FIELD);
+    CHECK(err == error_t::JSON_MISSING_FIELD);
 }
 
 TEST_CASE("Config with mistyped field value") {
-    const auto err = helpers::unwrap_err(support::config::parse("development", R"({
+    const auto err = helpers::unwrap_err(config::parse("development", R"({
         "development": {
             "host": "127.0.0.1",
             "port": "5432",
@@ -68,7 +70,7 @@ TEST_CASE("Config with mistyped field value") {
             "logfile": "log.log"
           }
     })"));
-    CHECK(err == support::error_t::JSON_TYPE_ERROR);
+    CHECK(err == error_t::JSON_TYPE_ERROR);
 }
 
 } // namespace cairn::tests
