@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <map>
 #include <random>
 
@@ -6,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <stdx/fixed/vector.hh>
+#include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
@@ -18,6 +20,25 @@
 namespace cairn::tests {
 
 using namespace cairn::storage;
+
+namespace {
+
+// A deliberately fat key so each node holds only a handful of entries
+class fat_key {
+  public:
+    fat_key() = default;
+    template <stdx::NumericIntegral I> explicit fat_key(I v) noexcept : v_{static_cast<i64>(v)} {}
+
+    [[nodiscard]] auto operator<(const fat_key& other) const noexcept -> bool {
+        return v_ < other.v_;
+    }
+
+  private:
+    i64                                    v_;
+    [[maybe_unused]] std::array<u8, 1'024> _;
+};
+
+} // namespace
 
 TEST_CASE("bplus_tree handles an empty tree") {
     helpers::tempfile file{"bpt_empty"};
@@ -153,15 +174,63 @@ TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
     using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
-    DISCARD(tree);
+
+    constexpr i64 lo{0};
+    constexpr i64 hi{8'000};
+
+    std::mt19937_64                    rng{Catch::getSeed()};
+    std::uniform_int_distribution<i64> key_dist{lo, hi};
+    std::bernoulli_distribution        op_dist{0.5};
+    std::map<i64, u64>                 oracle;
+
+    for (i32 step{0}; step < 40'000; ++step) {
+        const i64 k{key_dist(rng)};
+        if (op_dist(rng)) {
+            const u64 v{rng()};
+            if (oracle.contains(k)) {
+                CHECK(helpers::unwrap_err(tree.emplace(k, v)) == error_t::DUPLICATE_KEY);
+            } else {
+                CHECK(tree.emplace(k, v));
+                oracle.emplace(k, v);
+            }
+        } else {
+            if (oracle.contains(k)) {
+                CHECK(tree.remove(k));
+                oracle.erase(k);
+            } else {
+                CHECK(helpers::unwrap_err(tree.remove(k)) == error_t::KEY_NOT_FOUND);
+            }
+        }
+    }
+
+    for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
+    CHECK(helpers::unwrap(tree.range_scan(lo, hi, [](const i64&, const u64&) {})) == oracle.size());
 }
 
 TEST_CASE("bplus_tree exercises split/merge/collapse with a small fan-out") {
+    using tree_t = bplus_tree<fat_key, u64, 128>;
+    STATIC_REQUIRE(tree_t::LEAF_SLOTS < 16);
+
     helpers::tempfile file{"bpt_wide"};
-    using tree_t = bplus_tree<i64, u64, 128>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
-    DISCARD(tree);
+    auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
+    auto              tree{helpers::unwrap(tree_t::create(*pool))};
+
+    std::mt19937_64               rng{Catch::getSeed()};
+    stdx::fixed::vector<i64, 800> keys;
+    for (usize i{0}; i < keys.capacity(); ++i) { keys.emplace_back(i); }
+    std::ranges::shuffle(keys, rng);
+
+    for (const i64 k : keys) { REQUIRE(tree.emplace(fat_key{k}, static_cast<u64>(k))); }
+    for (usize i{0}; i < keys.capacity(); ++i) {
+        CHECK(helpers::unwrap(tree.get(fat_key{i})) == static_cast<u64>(i));
+    }
+
+    std::ranges::shuffle(keys, rng);
+    for (const i64 k : keys) { REQUIRE(tree.remove(fat_key{k})); }
+    CHECK(helpers::unwrap(tree.empty()));
+
+    REQUIRE(tree.emplace(fat_key{7}, 7));
+    CHECK(helpers::unwrap(tree.get(fat_key{7})) == 7);
 }
 
 TEST_CASE("bplus_tree persists across a buffer-pool reopen") {
