@@ -23,8 +23,8 @@ auto rw_latch::try_lock() -> bool {
 }
 
 auto rw_latch::unlock() -> void {
-    mutex_.unlock();
     note_exclusive_released();
+    mutex_.unlock();
 }
 
 auto rw_latch::lock_shared() -> void {
@@ -42,8 +42,8 @@ auto rw_latch::try_lock_shared() -> bool {
 }
 
 auto rw_latch::unlock_shared() -> void {
-    mutex_.unlock_shared();
     note_shared_released();
+    mutex_.unlock_shared();
 }
 
 auto rw_latch::note_exclusive_acquired() noexcept -> void {
