@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <catch2/benchmark/catch_benchmark.hpp>
+#include <catch2/benchmark/catch_chronometer.hpp>
 #include <catch2/catch_get_random_seed.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/type_traits.hh>
@@ -19,7 +20,7 @@ using namespace cairn::storage;
 using tree_t = bplus_tree<i64, u64, 4'096>;
 
 TEST_CASE("bplus_tree throughput", "[.][bench]") {
-    helpers::tempfile file{"bpt_cc_insert"};
+    helpers::tempfile file{"bpt_bench"};
     auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto              tree{helpers::unwrap(tree_t::create(*pool))};
 
