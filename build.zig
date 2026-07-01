@@ -535,7 +535,6 @@ fn addArtifacts(b: *std.Build, config: struct {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
                 .link_libraries = &.{libstorage.artifact},
             })));
-            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("stub_one", .{})));
         }
 
         tests = .{
