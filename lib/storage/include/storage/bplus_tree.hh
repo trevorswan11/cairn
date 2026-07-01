@@ -25,34 +25,6 @@
 
 namespace cairn::storage {
 
-namespace detail {
-
-static constexpr usize LEAF_NODE_PREFIX{16};    // kind+pad+size (8) + next (8)
-static constexpr usize INTERNAL_NODE_PREFIX{8}; // kind+pad+size
-static constexpr usize TREE_HEIGHT_UPPER_BOUND{64};
-
-template <typename Key, typename Compare> struct less {
-    const Compare& comp_;
-
-    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool { return comp_(a, b); }
-};
-
-template <typename Key, typename Compare> struct greater {
-    const Compare& comp_;
-
-    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool { return comp_(b, a); }
-};
-
-template <typename Key, typename Compare> struct equal {
-    const Compare& comp_;
-
-    [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
-        return !less<Key, Compare>{comp_}(a, b) && !greater<Key, Compare>{comp_}(a, b);
-    }
-};
-
-} // namespace detail
-
 // A concurrent B+tree index over the buffer pool
 //
 // https://cs186berkeley.net/notes/note4/
@@ -60,7 +32,12 @@ template <stdx::TriviallyCopyable Key,
           stdx::TriviallyCopyable Value,
           usize                   PoolSize,
           typename Compare = std::less<Key>>
+    requires(stdx::DefaultConstructible<Key> && stdx::DefaultConstructible<Value>)
 class bplus_tree {
+    static constexpr usize LEAF_NODE_PREFIX{16};    // kind+pad+size (8) + next (8)
+    static constexpr usize INTERNAL_NODE_PREFIX{8}; // kind+pad+size
+    static constexpr usize TREE_HEIGHT_UPPER_BOUND{64};
+
   public:
     using pool_t        = buffer_pool<PoolSize>;
     using write_guard_t = typename pool_t::write_guard_t;
@@ -76,12 +53,12 @@ class bplus_tree {
     };
 
   public:
-    static constexpr usize LEAF_SLOTS{(DB_PAGE_SIZE - detail::LEAF_NODE_PREFIX) /
+    static constexpr usize LEAF_SLOTS{(DB_PAGE_SIZE - LEAF_NODE_PREFIX) /
                                       (sizeof(Key) + sizeof(Value))};
     static_assert(LEAF_SLOTS >= 2, "key/value too large for an 8 KiB leaf");
 
     static constexpr usize INTERNAL_SLOTS{
-        (DB_PAGE_SIZE - detail::INTERNAL_NODE_PREFIX - sizeof(page_id_t)) /
+        (DB_PAGE_SIZE - INTERNAL_NODE_PREFIX - sizeof(page_id_t)) /
         (sizeof(Key) + sizeof(page_id_t))};
     static_assert(INTERNAL_SLOTS >= 2, "key too large for an 8 KiB internal node");
 
@@ -325,12 +302,32 @@ class bplus_tree {
     }
 
   private:
-    using path_stack = stdx::fixed::vector<write_guard_t, detail::TREE_HEIGHT_UPPER_BOUND>;
-    using slot_stack = stdx::fixed::vector<i32, detail::TREE_HEIGHT_UPPER_BOUND>;
+    using path_stack = stdx::fixed::vector<write_guard_t, TREE_HEIGHT_UPPER_BOUND>;
+    using slot_stack = stdx::fixed::vector<i32, TREE_HEIGHT_UPPER_BOUND>;
 
-    using less_t    = detail::less<Key, Compare>;
-    using equal_t   = detail::equal<Key, Compare>;
-    using greater_t = detail::greater<Key, Compare>;
+    struct less_t {
+        const Compare& comp_;
+
+        [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
+            return comp_(a, b);
+        }
+    };
+
+    struct greater_t {
+        const Compare& comp_;
+
+        [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
+            return comp_(b, a);
+        }
+    };
+
+    struct equal_t {
+        const Compare& comp_;
+
+        [[nodiscard]] auto operator()(const Key& a, const Key& b) const -> bool {
+            return !less_t{comp_}(a, b) && !greater_t{comp_}(a, b);
+        }
+    };
 
     struct meta_node {
         stdx::option<page_id_t> root;
