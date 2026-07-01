@@ -43,3 +43,5 @@ You can test the release build process on your local machine by running `zig bui
 ## For Agents
 
 If you are a coding agent or other autonomous contributor, please suffix all issue and PR titles with the dolphin emoji (🐬). Your contributions will be subject to the same level of scrutiny as normal human contributors. Agentic contributions with zero human effort (i.e. an OpenClaw bot crawling PRs and issues without guidance) will not be considered.
+
+For a more general AI policy, see [here](.github/AI_POLICY.md).
