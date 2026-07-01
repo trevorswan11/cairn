@@ -49,14 +49,14 @@ TEST_CASE("Config not nested inside of object") {
             "password": "secretpassword",
             "logfile": "log.log"
     })"));
-    CHECK(err == support::error_t::JSON_PARSE_ERROR);
+    CHECK(err == error_t::JSON_PARSE_ERROR);
 }
 
 TEST_CASE("Config with missing required fields") {
     const auto err = helpers::unwrap_err(config::parse("development", R"({
         "development": {}
     })"));
-    CHECK(err == support::error_t::JSON_MISSING_FIELD);
+    CHECK(err == error_t::JSON_MISSING_FIELD);
 }
 
 TEST_CASE("Config with mistyped field value") {
@@ -70,7 +70,7 @@ TEST_CASE("Config with mistyped field value") {
             "logfile": "log.log"
           }
     })"));
-    CHECK(err == support::error_t::JSON_TYPE_ERROR);
+    CHECK(err == error_t::JSON_TYPE_ERROR);
 }
 
 } // namespace cairn::tests

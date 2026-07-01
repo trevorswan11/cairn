@@ -79,7 +79,7 @@ TEST_CASE("buffer pool reports exhaustion when every frame is pinned") {
     }
 
     // All frames full must error
-    REQUIRE(helpers::unwrap_err(bp->new_page()) == storage::error_t::POOL_EXHAUSTED);
+    REQUIRE(helpers::unwrap_err(bp->new_page()) == error_t::POOL_EXHAUSTED);
     REQUIRE(bp->unpin_page(ids.front(), false));
     CHECK(bp->new_page());
 }

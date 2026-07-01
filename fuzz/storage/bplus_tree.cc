@@ -11,8 +11,10 @@
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
+namespace cairn::tests::fuzz {
+
 using namespace cairn::storage;
-using namespace cairn::tests;
+using namespace fuzztest;
 
 struct InsertOp {
     u64 key;
@@ -93,8 +95,6 @@ void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
     }
 }
 
-using namespace fuzztest;
-
 FUZZ_TEST(BPlusTreeFuzz, FuzzBPlusTreeInvariants)
     .WithDomains(VectorOf(OneOf(Map([](u64 k, u64 v) -> TreeOp { return InsertOp{k, v}; },
                                     Arbitrary<u64>(),
@@ -102,3 +102,5 @@ FUZZ_TEST(BPlusTreeFuzz, FuzzBPlusTreeInvariants)
                                 Map([](u64 k) -> TreeOp { return RemoveOp{k}; }, Arbitrary<u64>()),
                                 Map([](u64 k) -> TreeOp { return GetOp{k}; }, Arbitrary<u64>())))
                      .WithMaxSize(1'000));
+
+} // namespace cairn::tests::fuzz
