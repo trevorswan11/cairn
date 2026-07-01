@@ -44,12 +44,13 @@ TEST_CASE("bplus_tree throughput", "[.][bench]") {
 
     BENCHMARK_ADVANCED("bulk insert 10k into a fresh tree")
     (Catch::Benchmark::Chronometer meter) {
-        meter.measure([] {
-            helpers::tempfile file{"bpt_bench_ins"};
-            auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-            auto              tree{helpers::unwrap(tree_t::create(*pool))};
-            for (i64 i{0}; i < 10'000; ++i) { DISCARD(tree.emplace(i, static_cast<u64>(i))); }
-            return tree.empty();
+        helpers::tempfile fresh_file{"bpt_bench_ins"};
+        auto              fresh_pool{helpers::unwrap(tree_t::pool_t::open(fresh_file.path))};
+
+        meter.measure([&] {
+            auto fresh_tree{helpers::unwrap(tree_t::create(*fresh_pool))};
+            for (i64 i{0}; i < 10'000; ++i) { DISCARD(fresh_tree.emplace(i, static_cast<u64>(i))); }
+            return fresh_tree.empty();
         });
     };
 }
