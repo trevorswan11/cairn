@@ -29,10 +29,9 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple) -> result<slot_id_t>
     slot_id_t  id{INVALID_SLOT_ID};
 
     // Reusing a tombstone is always more efficient
-    const auto slots{as_slots()};
     if (header->deleted_slot_count > 0) {
         for (i32 i{0}; i < header->slot_count; ++i) {
-            if (!slots[static_cast<usize>(i)].size) {
+            if (!as_slots()[static_cast<usize>(i)].size) {
                 id = slot_id_t{i};
                 break;
             }
@@ -54,6 +53,7 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple) -> result<slot_id_t>
     header->free_space_ptr -= i_tuple_size;
     std::copy_n(tuple.data(), tuple.size(), page_->data() + header->free_space_ptr);
 
+    const auto slots{as_slots()};
     const auto u_id{static_cast<usize>(id)};
     slots[u_id].size.emplace(static_cast<u16>(tuple.size()));
     slots[u_id].offset = static_cast<u16>(header->free_space_ptr);

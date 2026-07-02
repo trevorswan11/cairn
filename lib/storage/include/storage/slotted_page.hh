@@ -88,7 +88,7 @@ class slotted_page {
         }
 
         gsl::not_null slot{&self.as_slots()[static_cast<usize>(id)]};
-        if (!slot.size) { return stdx::err{error_t::TUPLE_DELETED}; }
+        if (!slot->size) { return stdx::err{error_t::TUPLE_DELETED}; }
         return std::make_pair(header, slot);
     }
 

@@ -19,6 +19,7 @@ constexpr page_id_t INVALID_PAGE_ID{-1};
 
 constexpr usize DB_PAGE_SIZE{stdx::sizes::kib(8UZ)};
 
+// The most primitive thread-safe abstraction over a chunk of memory
 class page {
   public:
     constexpr page() noexcept = default;
