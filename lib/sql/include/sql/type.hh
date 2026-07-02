@@ -32,4 +32,4 @@ enum class id_t : u8 {
     return 0;
 }
 
-} // namespace cairn::sql
+} // namespace cairn::sql::type
