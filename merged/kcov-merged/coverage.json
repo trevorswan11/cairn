@@ -1,0 +1,23 @@
+{
+  "files": [
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/rw_latch.hh", "percent_covered": "100.00", "covered_lines": "4", "total_lines": "4"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/bplus_tree.hh", "percent_covered": "99.78", "covered_lines": "458", "total_lines": "459"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/page.hh", "percent_covered": "100.00", "covered_lines": "24", "total_lines": "24"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/slotted_page.hh", "percent_covered": "100.00", "covered_lines": "17", "total_lines": "17"},
+    {"file": "/home/runner/work/cairn/cairn/lib/support/src/config.cc", "percent_covered": "100.00", "covered_lines": "23", "total_lines": "23"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/frame_replacer.hh", "percent_covered": "100.00", "covered_lines": "69", "total_lines": "69"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/src/disk_manager.cc", "percent_covered": "100.00", "covered_lines": "66", "total_lines": "66"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/src/rw_latch.cc", "percent_covered": "100.00", "covered_lines": "44", "total_lines": "44"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/disk_manager.hh", "percent_covered": "100.00", "covered_lines": "10", "total_lines": "10"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/src/slotted_page.cc", "percent_covered": "93.00", "covered_lines": "93", "total_lines": "100"},
+    {"file": "/home/runner/work/cairn/cairn/lib/storage/include/storage/buffer_pool.hh", "percent_covered": "96.20", "covered_lines": "177", "total_lines": "184"},
+    {"file": "/home/runner/work/cairn/cairn/lib/support/include/support/config.hh", "percent_covered": "100.00", "covered_lines": "1", "total_lines": "1"}
+  ],
+  "percent_covered": "98.50",
+  "covered_lines": 986,
+  "total_lines": 1001,
+  "percent_low": 25,
+  "percent_high": 75,
+  "command": "",
+  "date": "2026-07-02 02:41:58"
+}
