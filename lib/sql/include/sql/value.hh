@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+#include <string_view>
 
 #include <stdx/option.hh>
 #include <stdx/types.hh>
@@ -15,36 +15,50 @@ namespace cairn::sql {
 class value {
   public:
     using variant_t =
-        stdx::variant<stdx::monostate, bool, i8, i16, i32, i64, f32, f64, std::string>;
+        stdx::variant<stdx::monostate, bool, i8, i16, i32, i64, f32, f64, std::string_view>;
 
   public:
     value() noexcept = default;
+
+    // Explicit constructor tracking type independently
     explicit value(variant_t val, bool nullable = true) noexcept
-        : value_{std::move(val)}, nullable_{nullable} {}
+        : value_{std::move(val)}, type_{derive_type(val)}, nullable_{nullable} {}
+
+    // Factory to create strongly-typed NULL values
+    [[nodiscard]] static auto make_null(type::id_t t) noexcept -> value {
+        value v;
+        v.type_ = t;
+        v.value_.emplace<stdx::monostate>();
+        v.nullable_ = true;
+        return v;
+    }
 
     [[nodiscard]] auto nullable() const noexcept -> bool { return nullable_; }
     [[nodiscard]] auto is_null() const noexcept -> bool { return value_.is<stdx::monostate>(); }
     MAKE_DEDUCING_GETTER(value)
 
-    [[nodiscard]] auto type() const noexcept -> type::id_t {
-        return value_.visit([](stdx::monostate) { return type::id_t::INVALID; },
-                            [](bool) { return type::id_t::BOOLEAN; },
-                            [](i8) { return type::id_t::TINYINT; },
-                            [](i16) { return type::id_t::SMALLINT; },
-                            [](i32) { return type::id_t::INTEGER; },
-                            [](i64) { return type::id_t::BIGINT; },
-                            [](f32) { return type::id_t::FLOAT; },
-                            [](f64) { return type::id_t::DOUBLE; },
-                            [](const std::string&) { return type::id_t::VARCHAR; });
-    }
-
+    [[nodiscard]] auto type() const noexcept -> type::id_t { return type_; }
     [[nodiscard]] auto size() const noexcept -> stdx::option<u32> {
         return type::get_size_of(type());
     }
 
   private:
-    variant_t value_;
-    bool      nullable_;
+    static auto derive_type(const variant_t& val) noexcept -> type::id_t {
+        return val.visit([](stdx::monostate) { return type::id_t::INVALID; },
+                         [](bool) { return type::id_t::BOOLEAN; },
+                         [](i8) { return type::id_t::TINYINT; },
+                         [](i16) { return type::id_t::SMALLINT; },
+                         [](i32) { return type::id_t::INTEGER; },
+                         [](i64) { return type::id_t::BIGINT; },
+                         [](f32) { return type::id_t::FLOAT; },
+                         [](f64) { return type::id_t::DOUBLE; },
+                         [](std::string_view) { return type::id_t::VARCHAR; });
+    }
+
+  private:
+    variant_t  value_;
+    type::id_t type_{type::id_t::INVALID};
+    bool       nullable_{true};
 };
 
 } // namespace cairn::sql
