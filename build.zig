@@ -412,7 +412,9 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libexec: Library = .init(b, base_lib_config.with("exec", .{}));
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
     const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
-    const libsql: Library = .init(b, base_lib_config.with("sql", .{}));
+    const libsql: Library = .init(b, base_lib_config.with("sql", .{
+        .link_libraries = &.{libstorage.artifact},
+    }));
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{}));
     const libwal: Library = .init(b, base_lib_config.with("wal", .{}));
 
@@ -502,7 +504,7 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{libtxn.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
-            .link_libraries = &.{libsql.artifact},
+            .link_libraries = &.{ libsql.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
             .link_libraries = &.{libexec.artifact},
