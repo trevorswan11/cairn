@@ -16,6 +16,10 @@ enum class error_t : u8 {
     TREE_CORRUPT,  // An invariant was violated in the storage engine's tree
     KEY_NOT_FOUND, // erase/lookup against a key that is not present
     DUPLICATE_KEY, // insert hit an existing key
+
+    PAGE_FULL,     // insufficient free space to insert/update a tuple
+    INVALID_SLOT,  // out of bounds slot id
+    TUPLE_DELETED, // slot points to a tombstoned tuple
 };
 
 template <typename T> using result = stdx::result<T, error_t>;
