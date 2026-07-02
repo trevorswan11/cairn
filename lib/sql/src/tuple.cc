@@ -45,11 +45,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> resul
 
     // Write null bitmap
     for (usize i{0}; i < values.size(); ++i) {
-        if (values[i].is_null()) {
-            usize byte_idx = i / 8;
-            usize bit_idx  = i % 8;
-            data[byte_idx] |= static_cast<std::byte>(1 << bit_idx);
-        }
+        if (values[i].is_null()) { data[i / 8] |= static_cast<std::byte>(1 << (i % 8)); }
     }
 
     usize fixed_offset{null_bitmap_size};
