@@ -22,7 +22,7 @@ class value {
 
     // Explicit constructor tracking type independently
     explicit value(variant_t val, bool nullable = true) noexcept
-        : value_{std::move(val)}, type_{derive_type(val)}, nullable_{nullable} {}
+        : value_{std::move(val)}, type_{derive_type(value_)}, nullable_{nullable} {}
 
     // Factory to create strongly-typed NULL values
     [[nodiscard]] static auto make_null(type::id_t t) noexcept -> value {

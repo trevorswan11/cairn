@@ -4,10 +4,8 @@
 #include <cstring>
 #include <ranges>
 #include <stdx/variant.hh>
-#include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 #include <gsl/span>
 #include <stdx/assert.hh>
@@ -35,7 +33,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> resul
         if (!sch[i].size()) {
             varlen_count++;
             if (!values[i].is_null()) {
-                varlen_data_size += values[i].get_value().as<std::string>().size();
+                varlen_data_size += values[i].get_value().as<std::string_view>().size();
             }
         }
     }
@@ -75,7 +73,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> resul
             fixed_offset += fixed_col_size;
         } else {
             if (!val.is_null()) {
-                const auto& str{val_data.as<std::string>()};
+                const auto& str{val_data.as<std::string_view>()};
                 const u16   len{static_cast<u16>(str.size())};
                 const u16   offset{static_cast<u16>(varlen_data_offset)};
 
@@ -167,10 +165,12 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
     return value(str);
 }
 
-auto tuple::deserialize(const schema& sch) const -> result<std::vector<value>> {
-    std::vector<value> values(sch.column_count());
-    for (usize i{0}; i < sch.column_count(); ++i) { values.emplace_back(TRY(get_value(sch, i))); }
-    return values;
+auto tuple::deserialize(const schema& sch, gsl::span<value> buf) const -> result<void> {
+    if (buf.size() != sch.column_count()) {
+        return stdx::err{error_t::VALUE_SCHEMA_COUNT_MISMATCH};
+    }
+    for (usize i{0}; i < sch.column_count(); ++i) { buf[i] = TRY(get_value(sch, i)); }
+    return {};
 }
 
 } // namespace cairn::sql

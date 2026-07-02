@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <utility>
-#include <vector>
 
 #include <gsl/span>
 #include <stdx/fixed/vector.hh>
@@ -32,7 +31,7 @@ class tuple {
     static auto serialize(const schema& sch, gsl::span<const value> values) -> result<tuple>;
 
     // Deserializes the whole tuple into a list of values
-    [[nodiscard]] auto deserialize(const schema& sch) const -> result<std::vector<value>>;
+    [[nodiscard]] auto deserialize(const schema& sch, gsl::span<value> buf) const -> result<void>;
 
   private:
     byte_buffer data_;
