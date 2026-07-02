@@ -10,14 +10,14 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "storage/bplus_tree.hh"
+#include "storage/bplus/tree.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::storage;
-using tree_t = bplus_tree<i64, u64, 1'024>;
+using tree_t = bplus::tree_t<i64, u64, 1'024>;
 
 TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
     helpers::tempfile file{"bpt_cc_insert"};

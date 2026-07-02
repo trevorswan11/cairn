@@ -60,6 +60,9 @@ class read_guard {
         return stdx::object_at<T>(pg_->data());
     }
 
+    [[nodiscard]] auto get() const noexcept -> gsl::not_null<const page*> { return &*pg_; }
+    [[nodiscard]] auto operator->() const noexcept -> gsl::not_null<const page*> { return get(); }
+
     // Called automatically on destruction but safe to call manually
     auto drop() noexcept -> void {
         if (pool_) {
@@ -113,6 +116,9 @@ class write_guard {
     template <typename T> [[nodiscard]] auto as(this auto&& self) noexcept -> auto* {
         return stdx::object_at<T>(self.pg_->data());
     }
+
+    [[nodiscard]] auto get(this auto&& self) noexcept { return gsl::not_null{self.pg_.get()}; }
+    [[nodiscard]] auto operator->(this auto&& self) noexcept { return self.get(); }
 
     // Called automatically on destruction but safe to call manually
     auto drop() noexcept -> void {
