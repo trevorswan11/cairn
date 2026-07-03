@@ -6,7 +6,7 @@
 #include <stdx/types.hh>
 
 #include "error.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::wal {
 
@@ -24,8 +24,8 @@ class log_reader {
     auto seek_to_end() -> result<void>;
 
   private:
-    std::ifstream file_;
-    u64           file_size_;
+    std::ifstream        file_;
+    [[maybe_unused]] u64 file_size_;
 };
 
 } // namespace cairn::wal

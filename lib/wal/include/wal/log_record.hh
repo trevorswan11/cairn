@@ -66,12 +66,12 @@ struct log_record {
     txn_id_t            txn_id{INVALID_TXN_ID};
     log_record_type     type{log_record_type::BEGIN};
 
-    storage::page_id_t  page_id{storage::INVALID_PAGE_ID};
-    storage::slot_id_t  slot_id{storage::INVALID_SLOT_ID};
-    stdx::option<lsn_t> undo_next_lsn;
+    stdx::option<storage::page_id_t> page_id;
+    stdx::option<storage::slot_id_t> slot_id;
+    stdx::option<lsn_t>              undo_next_lsn;
 
-    std::vector<std::byte> redo_data;
-    std::vector<std::byte> undo_data;
+    gsl::span<const std::byte> redo_data;
+    gsl::span<const std::byte> undo_data;
 
     u32 checksum{0};
 
@@ -79,8 +79,10 @@ struct log_record {
         return static_cast<I>(size);
     }
 
-    [[nodiscard]] auto        serialize(std::vector<std::byte>& dest) const -> result<void>;
-    [[nodiscard]] static auto deserialize(gsl::span<const std::byte> src) -> result<log_record>;
+    auto serialize(std::vector<std::byte>& dest) const -> void;
+
+    // The provided span is advanced to the next record only on success
+    [[nodiscard]] static auto deserialize(gsl::span<const std::byte>& src) -> result<log_record>;
 };
 
 } // namespace cairn::wal

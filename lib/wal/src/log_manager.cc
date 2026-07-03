@@ -5,7 +5,7 @@
 #include <stdx/utility.hh>
 
 #include "error.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::wal {
 
