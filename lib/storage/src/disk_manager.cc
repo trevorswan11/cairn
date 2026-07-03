@@ -15,7 +15,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "storage/error.hh"
+#include "support/error.hh"
 #include "storage/page.hh"
 
 namespace cairn::storage {
@@ -47,16 +47,16 @@ auto disk_manager::open(const std::filesystem::path& path) -> result<stdx::box<d
         // A file not opening might mean creation is necessary
         {
             std::fstream create{path, std::ios::out | std::ios::binary};
-            if (!create.is_open()) { return stdx::err{error_t::IO_ERROR}; }
+            if (!create.is_open()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
         }
         file.open(path, open_mode);
-        if (!file.is_open()) { return stdx::err{error_t::IO_ERROR}; }
+        if (!file.is_open()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
     }
 
     file.seekg(0, std::ios::end);
-    if (file.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    if (file.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
     const auto end{file.tellg()};
-    if (end < 0) { return stdx::err{error_t::IO_ERROR}; }
+    if (end < 0) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
 
     // Ceiling division is needed to that partial pages are not dropped on open
     const auto     end_pos{static_cast<i64>(end)};
@@ -74,9 +74,9 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
     file_.clear();
     file_.seekp(page_offset(pid), std::ios::beg);
     file_.write(reinterpret_cast<const char*>(zeros.data()), zeros.size());
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    if (file_.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
     file_.flush();
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    if (file_.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
 
     num_pages_ += 1;
     return pid;
@@ -85,11 +85,11 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
 auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
-    if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
+    if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
     file_.clear();
     file_.seekg(page_offset(pid), std::ios::beg);
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    if (file_.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
 
     usize bytes_read{0};
     while (bytes_read < DB_PAGE_SIZE) {
@@ -99,13 +99,13 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
         bytes_read += count;
         if (bytes_read == DB_PAGE_SIZE) { break; }
 
-        if (file_.eof()) { return stdx::err{error_t::SHORT_READ}; }
+        if (file_.eof()) { return stdx::err{error_t::STORAGE_SHORT_READ}; }
         if (file_.fail()) {
             if (io_interrupted()) {
                 file_.clear();
                 continue;
             }
-            return stdx::err{error_t::SHORT_READ};
+            return stdx::err{error_t::STORAGE_SHORT_READ};
         }
     }
     return {};
@@ -114,13 +114,13 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
 auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
-    if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
+    if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
     usize bytes_written{0};
     while (bytes_written < DB_PAGE_SIZE) {
         file_.clear();
         file_.seekp(page_offset(pid), std::ios::beg);
-        if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+        if (file_.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
 
         file_.write(reinterpret_cast<const char*>(buf.data()), DB_PAGE_SIZE);
         if (!file_.fail()) {
@@ -128,12 +128,12 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
             break;
         }
         if (io_interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
+        return stdx::err{error_t::STORAGE_IO_ERROR};
     }
 
     file_.clear();
     file_.flush();
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    if (file_.fail()) { return stdx::err{error_t::STORAGE_IO_ERROR}; }
     return {};
 }
 

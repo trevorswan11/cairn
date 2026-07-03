@@ -408,15 +408,27 @@ fn addArtifacts(b: *std.Build, config: struct {
     };
 
     const libsupport: Library = .init(b, base_lib_config.with("support", .{}));
-    const libstorage: Library = .init(b, base_lib_config.with("storage", .{}));
-    const libexec: Library = .init(b, base_lib_config.with("exec", .{}));
-    const libnet: Library = .init(b, base_lib_config.with("net", .{}));
-    const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
-    const libsql: Library = .init(b, base_lib_config.with("sql", .{
-        .link_libraries = &.{libstorage.artifact},
+    const libstorage: Library = .init(b, base_lib_config.with("storage", .{
+        .link_libraries = &.{libsupport.artifact},
     }));
-    const libtxn: Library = .init(b, base_lib_config.with("txn", .{}));
-    const libwal: Library = .init(b, base_lib_config.with("wal", .{}));
+    const libexec: Library = .init(b, base_lib_config.with("exec", .{
+        .link_libraries = &.{libsupport.artifact},
+    }));
+    const libnet: Library = .init(b, base_lib_config.with("net", .{
+        .link_libraries = &.{libsupport.artifact},
+    }));
+    const libopt: Library = .init(b, base_lib_config.with("opt", .{
+        .link_libraries = &.{libsupport.artifact},
+    }));
+    const libsql: Library = .init(b, base_lib_config.with("sql", .{
+        .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+    }));
+    const libtxn: Library = .init(b, base_lib_config.with("txn", .{
+        .link_libraries = &.{libsupport.artifact},
+    }));
+    const libwal: Library = .init(b, base_lib_config.with("wal", .{
+        .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+    }));
 
     const link_libraries = [_]*std.Build.Step.Compile{
         libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,
@@ -495,25 +507,25 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{libsupport.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("storage", .{
-            .link_libraries = &.{libstorage.artifact},
+            .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("wal", .{
-            .link_libraries = &.{libwal.artifact},
+            .link_libraries = &.{ libsupport.artifact, libwal.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("txn", .{
-            .link_libraries = &.{libtxn.artifact},
+            .link_libraries = &.{ libsupport.artifact, libtxn.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
-            .link_libraries = &.{ libsql.artifact, libstorage.artifact },
+            .link_libraries = &.{ libsupport.artifact, libsql.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
-            .link_libraries = &.{libexec.artifact},
+            .link_libraries = &.{ libsupport.artifact, libexec.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("opt", .{
-            .link_libraries = &.{libopt.artifact},
+            .link_libraries = &.{ libsupport.artifact, libopt.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("net", .{
-            .link_libraries = &.{libnet.artifact},
+            .link_libraries = &.{ libsupport.artifact, libnet.artifact },
         })));
         const integration_link_libraries = [_]*std.Build.Step.Compile{
             libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
@@ -541,10 +553,10 @@ fn addArtifacts(b: *std.Build, config: struct {
         var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
-                .link_libraries = &.{libstorage.artifact},
+                .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
             })));
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
-                .link_libraries = &.{libstorage.artifact},
+                .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
             })));
         }
 

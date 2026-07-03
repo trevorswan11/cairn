@@ -12,7 +12,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "sql/error.hh"
+#include "support/error.hh"
 #include "sql/schema.hh"
 #include "sql/type.hh"
 #include "sql/value.hh"
@@ -21,7 +21,7 @@ namespace cairn::sql {
 
 auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> result<tuple> {
     if (values.size() != sch.column_count()) {
-        return stdx::err{error_t::VALUE_SCHEMA_COUNT_MISMATCH};
+        return stdx::err{error_t::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }
 
     const usize null_bitmap_size{(sch.column_count() + 7) / 8};
@@ -90,7 +90,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> resul
 }
 
 auto tuple::get_value(const schema& sch, usize column_index) const -> result<value> {
-    if (column_index >= sch.column_count()) { return stdx::err{error_t::INVALID_COLUMN_INDEX}; }
+    if (column_index >= sch.column_count()) { return stdx::err{error_t::SQL_INVALID_COLUMN_INDEX}; }
 
     const usize byte_idx{column_index / 8};
     const usize bit_idx{column_index % 8};
@@ -148,7 +148,7 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
             return value(out);
         }
-        default: return stdx::err{error_t::UNSUPPORTED_FIXED_TYPE};
+        default: return stdx::err{error_t::SQL_UNSUPPORTED_FIXED_TYPE};
         }
     }
 
@@ -163,7 +163,7 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
 
 auto tuple::deserialize(const schema& sch, gsl::span<value> buf) const -> result<void> {
     if (buf.size() != sch.column_count()) {
-        return stdx::err{error_t::VALUE_SCHEMA_COUNT_MISMATCH};
+        return stdx::err{error_t::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }
     for (usize i{0}; i < sch.column_count(); ++i) { buf[i] = TRY(get_value(sch, i)); }
     return {};
