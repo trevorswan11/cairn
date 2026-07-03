@@ -7,6 +7,7 @@
 #include <gsl/span>
 #include <stdx/hash.hh>
 #include <stdx/option.hh>
+#include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
@@ -40,6 +41,7 @@ template <typename T> auto read_arbitrary(gsl::span<const std::byte>& src) -> T 
 } // namespace
 
 auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
+    PROFILE_FUNCTION();
     const auto start{dest.size()};
     write_arbitrary(dest, size); // Will be overwritten
     write_arbitrary(dest, lsn);
@@ -83,6 +85,7 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
 }
 
 auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<log_record> {
+    PROFILE_FUNCTION();
     const auto original_span{src};
     if (src.size() < MINIMUM_SIZE<>) { return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL}; }
 

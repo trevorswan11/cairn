@@ -58,7 +58,7 @@ class log_manager {
     std::atomic<lsn_t> next_lsn_{lsn_t{1}};
     std::atomic<lsn_t> flushed_lsn_{lsn_t{0}};
 
-    std::thread       flush_thread_;
+    std::jthread      flush_thread_;
     std::atomic<bool> running_{true};
     std::atomic<bool> swap_requested_{false};
     lsn_t             highest_lsn_to_flush_{INVALID_LSN};

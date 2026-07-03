@@ -25,7 +25,7 @@ log_manager::log_manager(std::filesystem::path log_path, usize buffer_size) noex
     : log_path_{std::move(log_path)}, buffer_size_{buffer_size} {
     active_buffer_.reserve(buffer_size_);
     flush_buffer_.reserve(buffer_size_);
-    flush_thread_ = std::thread{&log_manager::flush_loop, this};
+    flush_thread_ = std::jthread{&log_manager::flush_loop, this};
 };
 
 log_manager::~log_manager() {
