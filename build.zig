@@ -112,7 +112,38 @@ const ArtifactConfig = struct {
     profile: bool = false,
     install_dir: ?[]const u8 = null,
     install_only: bool = false,
+    libsupport: ?*std.Build.Step.Compile = null,
     libtesthelpers: ?*std.Build.Step.Compile = null,
+
+    fn tryAddStrongLib(
+        compile: ?*std.Build.Step.Compile,
+        root: []const u8,
+        include_paths: *stdx.ArrayList(std.Build.LazyPath),
+        link_libraries: *stdx.ArrayList(*std.Build.Step.Compile),
+    ) void {
+        if (compile) |artifact| {
+            const b = artifact.step.owner;
+            link_libraries.append(artifact);
+            const path = b.pathJoin(&.{ Library.library_root, root, Library.include_root });
+            include_paths.append(b.path(path));
+        }
+    }
+
+    pub fn tryAddSupport(
+        self: *const ArtifactConfig,
+        include_paths: *stdx.ArrayList(std.Build.LazyPath),
+        link_libraries: *stdx.ArrayList(*std.Build.Step.Compile),
+    ) void {
+        tryAddStrongLib(self.libsupport, "support", include_paths, link_libraries);
+    }
+
+    pub fn tryAddTestHelpers(
+        self: *const ArtifactConfig,
+        include_paths: *stdx.ArrayList(std.Build.LazyPath),
+        link_libraries: *stdx.ArrayList(*std.Build.Step.Compile),
+    ) void {
+        tryAddStrongLib(self.libtesthelpers, "testhelpers", include_paths, link_libraries);
+    }
 
     /// Creates a new configuration with a new name, paths, and link libraries
     pub fn with(self: *const ArtifactConfig, name: []const u8, altered: struct {
@@ -135,6 +166,7 @@ const ArtifactConfig = struct {
             .profile = self.profile,
             .install_dir = self.install_dir,
             .install_only = self.install_only,
+            .libsupport = self.libsupport,
             .libtesthelpers = self.libtesthelpers,
         };
     }
@@ -169,6 +201,7 @@ const Library = struct {
 
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
         include_paths.appendSlice(&.{ b.path(include), b.path(src) });
+        config.tryAddSupport(&include_paths, &link_libraries);
 
         const lib = b.addLibrary(.{
             .name = config.name,
@@ -219,11 +252,8 @@ const Test = struct {
         include_paths.appendSlice(&.{ b.path(tests_dir), b.path(include_dir) });
 
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
-        if (config.libtesthelpers) |lib| {
-            const testhelpers_dir = b.pathJoin(&.{ Library.library_root, "testhelpers", Library.include_root });
-            include_paths.append(b.path(testhelpers_dir));
-            link_libraries.append(lib);
-        }
+        config.tryAddSupport(&include_paths, &link_libraries);
+        config.tryAddTestHelpers(&include_paths, &link_libraries);
 
         const step_name = b.fmt("test-{s}", .{config.name});
         const desc = b.fmt("Build/run {s} tests", .{config.name});
@@ -263,11 +293,14 @@ const Test = struct {
         b: *std.Build,
         config: ArtifactConfig,
     ) Test {
+        var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
+        include_paths.append(b.path(fuzz_root ++ "helpers"));
+
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
         if (config.libtesthelpers) |lib| link_libraries.append(lib);
 
-        var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
-        include_paths.append(b.path(fuzz_root ++ "helpers"));
+        config.tryAddSupport(&include_paths, &link_libraries);
+        config.tryAddTestHelpers(&include_paths, &link_libraries);
 
         const basename = std.Io.Dir.path.basename(config.name);
         const step_name = b.fmt("fuzz-{s}", .{basename});
@@ -395,7 +428,7 @@ fn addArtifacts(b: *std.Build, config: struct {
         .CAIRN_APPLE = target.result.os.tag == .macos,
     });
 
-    const base_lib_config: ArtifactConfig = .{
+    var base_lib_config: ArtifactConfig = .{
         .name = undefined,
         .target = target,
         .optimize = config.optimize,
@@ -406,28 +439,19 @@ fn addArtifacts(b: *std.Build, config: struct {
         .auto_install = config.auto_install,
         .profile = config.profile,
     };
-
     const libsupport: Library = .init(b, base_lib_config.with("support", .{}));
-    const libstorage: Library = .init(b, base_lib_config.with("storage", .{
-        .link_libraries = &.{libsupport.artifact},
-    }));
-    const libexec: Library = .init(b, base_lib_config.with("exec", .{
-        .link_libraries = &.{libsupport.artifact},
-    }));
-    const libnet: Library = .init(b, base_lib_config.with("net", .{
-        .link_libraries = &.{libsupport.artifact},
-    }));
-    const libopt: Library = .init(b, base_lib_config.with("opt", .{
-        .link_libraries = &.{libsupport.artifact},
-    }));
+    base_lib_config.libsupport = libsupport.artifact;
+
+    const libstorage: Library = .init(b, base_lib_config.with("storage", .{}));
+    const libexec: Library = .init(b, base_lib_config.with("exec", .{}));
+    const libnet: Library = .init(b, base_lib_config.with("net", .{}));
+    const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
-        .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+        .link_libraries = &.{libstorage.artifact},
     }));
-    const libtxn: Library = .init(b, base_lib_config.with("txn", .{
-        .link_libraries = &.{libsupport.artifact},
-    }));
+    const libtxn: Library = .init(b, base_lib_config.with("txn", .{}));
     const libwal: Library = .init(b, base_lib_config.with("wal", .{
-        .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+        .link_libraries = &.{libstorage.artifact},
     }));
 
     const link_libraries = [_]*std.Build.Step.Compile{
@@ -499,33 +523,32 @@ fn addArtifacts(b: *std.Build, config: struct {
             .profile = config.profile,
             .install_dir = test_install_dir,
             .install_only = config.install_tests_only,
+            .libsupport = libsupport.artifact,
             .libtesthelpers = libtesthelpers.artifact,
         };
 
         var unit_suites: stdx.ArrayList(Test) = .init(b);
-        unit_suites.append(.init(b, base_test_config.with("support", .{
-            .link_libraries = &.{libsupport.artifact},
-        })));
+        unit_suites.append(.init(b, base_test_config.with("support", .{})));
         unit_suites.append(.init(b, base_test_config.with("storage", .{
-            .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+            .link_libraries = &.{libstorage.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("wal", .{
-            .link_libraries = &.{ libsupport.artifact, libwal.artifact, libstorage.artifact },
+            .link_libraries = &.{ libwal.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("txn", .{
-            .link_libraries = &.{ libsupport.artifact, libtxn.artifact },
+            .link_libraries = &.{libtxn.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
-            .link_libraries = &.{ libsupport.artifact, libsql.artifact, libstorage.artifact },
+            .link_libraries = &.{ libsql.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
-            .link_libraries = &.{ libsupport.artifact, libexec.artifact },
+            .link_libraries = &.{libexec.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("opt", .{
-            .link_libraries = &.{ libsupport.artifact, libopt.artifact },
+            .link_libraries = &.{libopt.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("net", .{
-            .link_libraries = &.{ libsupport.artifact, libnet.artifact },
+            .link_libraries = &.{libnet.artifact},
         })));
         const integration_link_libraries = [_]*std.Build.Step.Compile{
             libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
@@ -547,16 +570,17 @@ fn addArtifacts(b: *std.Build, config: struct {
             .profile = config.profile,
             .install_dir = fuzz_install_dir,
             .install_only = config.install_tests_only,
+            .libsupport = libsupport.artifact,
             .libtesthelpers = libtesthelpers.artifact,
         };
 
         var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
-                .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+                .link_libraries = &.{libstorage.artifact},
             })));
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
-                .link_libraries = &.{ libsupport.artifact, libstorage.artifact },
+                .link_libraries = &.{libstorage.artifact},
             })));
         }
 
