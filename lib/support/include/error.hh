@@ -29,6 +29,10 @@ enum class error_t : u8 {
     SQL_VALUE_SCHEMA_COUNT_MISMATCH, // the value count did not match the schema count
     SQL_INVALID_COLUMN_INDEX,        // attempt to get value not in schema column range
     SQL_UNSUPPORTED_FIXED_TYPE,      // attempt to get a type unknown to the tuple deserializer
+
+    WAL_SOURCE_BUF_TOO_SMALL, // The reader buf did not have enough space
+    WAL_SIZE_CORRUPT,     // deserializing a log record resulted in a header/footer size mismatch
+    WAL_CHECKSUM_CORRUPT, // deserializing a log record resulted in a different checksum
 };
 
 template <typename T> using result = stdx::result<T, error_t>;
