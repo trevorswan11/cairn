@@ -71,4 +71,4 @@ concept BPlusInternalTrait = requires(
     { T::borrow_from_right(p, p, sep) } -> std::same_as<void>;
 };
 
-} // namespace cairn::storage::bplus
+} // namespace cairn::storage::detail
