@@ -110,8 +110,8 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) -> result<log_reco
 
     // Type specific fields
     if (record.type == log_record_type::UPDATE) {
-        record.page_id = read_arbitrary<storage::page_id_t>(record_span);
-        record.slot_id = read_arbitrary<storage::slot_id_t>(record_span);
+        record.page_id = read_arbitrary<stdx::option<storage::page_id_t>>(record_span);
+        record.slot_id = read_arbitrary<stdx::option<storage::slot_id_t>>(record_span);
         const auto redo_len{read_arbitrary<u32>(record_span)};
         const auto undo_len{read_arbitrary<u32>(record_span)};
 

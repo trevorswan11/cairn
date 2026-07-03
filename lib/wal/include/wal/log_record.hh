@@ -79,6 +79,7 @@ struct log_record {
         return static_cast<I>(size);
     }
 
+    // This is infallible for all intents and purposes assuming you have enough memory
     auto serialize(std::vector<std::byte>& dest) const -> void;
 
     // The provided span is advanced to the next record only on success
