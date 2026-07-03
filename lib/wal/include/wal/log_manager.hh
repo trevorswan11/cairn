@@ -6,7 +6,6 @@
 #include <filesystem>
 #include <mutex>
 #include <thread>
-#include <utility>
 #include <vector>
 
 #include <stdx/memory.hh>
@@ -22,8 +21,7 @@ namespace cairn::wal {
 class log_manager {
   public:
     explicit log_manager(std::filesystem::path log_path,
-                         usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept
-        : log_path_{std::move(log_path)}, buffer_size_{buffer_size} {};
+                         usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
     ~log_manager();
     MAKE_PINNED(log_manager)
 
@@ -37,12 +35,18 @@ class log_manager {
     }
 
   private:
-    auto flush_loop() -> void;
+    // The caller must hold the mutex
     auto trigger_buffer_swap() -> void;
+    auto flush_loop() -> void;
+
+    [[nodiscard]] auto next_lsn() noexcept -> lsn_t;
+    [[nodiscard]] auto running() const noexcept -> bool {
+        return running_.load(std::memory_order_relaxed);
+    }
 
   private:
-    const std::filesystem::path  log_path_;
-    [[maybe_unused]] const usize buffer_size_;
+    const std::filesystem::path log_path_;
+    const usize                 buffer_size_;
 
     std::mutex              mutex_;
     std::condition_variable append_cv_;
@@ -57,6 +61,7 @@ class log_manager {
     std::thread       flush_thread_;
     std::atomic<bool> running_{true};
     std::atomic<bool> swap_requested_{false};
+    lsn_t             highest_lsn_to_flush_{INVALID_LSN};
 };
 
 } // namespace cairn::wal
