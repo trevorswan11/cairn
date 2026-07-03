@@ -11,7 +11,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "storage/error.hh"
+#include "support/error.hh"
 #include "storage/page.hh"
 
 namespace cairn::storage {
@@ -41,7 +41,7 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple) -> result<slot_id_t>
     if (id == INVALID_SLOT_ID) { required_space += SLOT_SIZE<i32>; }
     if (free_space() < required_space) {
         compact();
-        if (free_space() < required_space) { return stdx::err{error_t::PAGE_FULL}; }
+        if (free_space() < required_space) { return stdx::err{error_t::STORAGE_PAGE_FULL}; }
     }
 
     if (id == INVALID_SLOT_ID) {
@@ -89,7 +89,7 @@ auto slotted_page::update(slot_id_t id, gsl::span<const std::byte> tuple) -> res
             slot->size.emplace(slot_size);
             slot->offset = old_offset;
             header->deleted_slot_count--;
-            return stdx::err{error_t::PAGE_FULL};
+            return stdx::err{error_t::STORAGE_PAGE_FULL};
         }
     }
 

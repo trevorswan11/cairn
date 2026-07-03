@@ -10,9 +10,9 @@
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
 
-#include "storage/error.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
+#include "support/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -60,7 +60,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
                         active_slots.push_back(slot_id);
                     }
                 } else {
-                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::PAGE_FULL);
+                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_PAGE_FULL);
                 }
             },
             [&](UpdateOp uop) {
@@ -73,7 +73,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
                 if (auto res{sp.update(slot_id, span)}) {
                     oracle[slot_val] = uop.data;
                 } else {
-                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::PAGE_FULL);
+                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_PAGE_FULL);
                 }
             },
             [&](RemoveOp rop) {

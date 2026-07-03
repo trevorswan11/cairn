@@ -16,7 +16,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/disk_manager.hh"
-#include "storage/error.hh"
+#include "support/error.hh"
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
 
@@ -219,11 +219,11 @@ template <usize PoolSize> class buffer_pool {
     [[nodiscard]] auto unpin_page(page_id_t pid, bool dirty) -> result<void> {
         std::scoped_lock lock{mutex_};
         auto             slot{page_table_.get_opt(pid)};
-        if (!slot) { return stdx::err{error_t::PAGE_NOT_FOUND}; }
+        if (!slot) { return stdx::err{error_t::STORAGE_PAGE_NOT_FOUND}; }
 
         const auto fid{*slot};
         auto&      f{frame_at(fid)};
-        if (f.pin_count() <= 0) { return stdx::err{error_t::PAGE_NOT_FOUND}; }
+        if (f.pin_count() <= 0) { return stdx::err{error_t::STORAGE_PAGE_NOT_FOUND}; }
         if (dirty) { f.set_dirty(true); }
         if (f.unpin() == 0) { replacer_.set_evictable(fid, true); }
         return {};
@@ -233,7 +233,7 @@ template <usize PoolSize> class buffer_pool {
     [[nodiscard]] auto flush(page_id_t pid) -> result<void> {
         std::scoped_lock lock{mutex_};
         auto             slot{page_table_.get_opt(pid)};
-        if (!slot) { return stdx::err{error_t::PAGE_NOT_FOUND}; }
+        if (!slot) { return stdx::err{error_t::STORAGE_PAGE_NOT_FOUND}; }
         return flush_locked(*slot);
     }
 
@@ -252,7 +252,7 @@ template <usize PoolSize> class buffer_pool {
 
         const auto fid{*slot};
         auto&      f{frame_at(fid)};
-        if (f.pin_count() > 0) { return stdx::err{error_t::TREE_CORRUPT}; }
+        if (f.pin_count() > 0) { return stdx::err{error_t::STORAGE_TREE_CORRUPT}; }
 
         page_table_.remove(pid);
         note_table_removal();
@@ -316,7 +316,7 @@ template <usize PoolSize> class buffer_pool {
         }
 
         auto victim{replacer_.evict()};
-        if (!victim) { return stdx::err{error_t::POOL_EXHAUSTED}; }
+        if (!victim) { return stdx::err{error_t::STORAGE_POOL_EXHAUSTED}; }
 
         const auto fid{*victim};
         auto&      f{frame_at(fid)};

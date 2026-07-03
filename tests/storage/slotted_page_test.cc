@@ -5,7 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
 
-#include "storage/error.hh"
+#include "support/error.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "testhelpers/conversion.hh"
@@ -20,9 +20,9 @@ TEST_CASE("slotted_page guards when empty") {
     slotted_page sp{p};
     sp.refresh_page();
 
-    CHECK(helpers::unwrap_err(sp.get(slot_id_t{0})) == error_t::INVALID_SLOT);
-    CHECK(helpers::unwrap_err(sp.remove(slot_id_t{0})) == error_t::INVALID_SLOT);
-    CHECK(helpers::unwrap_err(sp.update(slot_id_t{0}, {})) == error_t::INVALID_SLOT);
+    CHECK(helpers::unwrap_err(sp.get(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(helpers::unwrap_err(sp.remove(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(helpers::unwrap_err(sp.update(slot_id_t{0}, {})) == error_t::STORAGE_INVALID_SLOT);
 }
 
 TEST_CASE("slotted_page insert and get") {
@@ -50,7 +50,7 @@ TEST_CASE("slotted_page delete and update") {
     const auto             id2{helpers::unwrap(sp.insert(helpers::span_from_string(data2)))};
 
     REQUIRE(sp.remove(id1));
-    CHECK(helpers::unwrap_err(sp.get(id1)) == error_t::TUPLE_DELETED);
+    CHECK(helpers::unwrap_err(sp.get(id1)) == error_t::STORAGE_TUPLE_DELETED);
 
     // Should reuse tombstone
     const std::string_view data3{"reused tuple"};
