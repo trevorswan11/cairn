@@ -17,13 +17,13 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "storage/bplus/default_impl.hh"
-#include "storage/bplus/traits.hh"
+#include "storage/bplus_internal/default_impl.hh"
+#include "storage/bplus_internal/traits.hh"
 #include "storage/buffer_pool.hh"
 #include "storage/error.hh"
 #include "storage/page.hh"
 
-namespace cairn::storage::bplus {
+namespace cairn::storage::detail {
 
 // A concurrent B+tree index over the buffer pool
 //
@@ -34,7 +34,7 @@ template <BPlusNodePayload Key,
           typename Compare                               = std::less<Key>,
           BPlusLeafTrait<Key, Value>       LeafTrait     = default_leaf_trait<Key, Value>,
           BPlusInternalTrait<Key, Compare> InternalTrait = default_internal_trait<Key>>
-class tree_t {
+class bplus_base_t {
     static constexpr usize TREE_HEIGHT_UPPER_BOUND{64};
 
   public:
@@ -49,14 +49,14 @@ class tree_t {
     using value_type = Value;
 
   public:
-    tree_t(pool_t& pool, page_id_t meta_page) noexcept : pool_{pool}, meta_page_{meta_page} {}
+    bplus_base_t(pool_t& pool, page_id_t meta_page) noexcept : pool_{pool}, meta_page_{meta_page} {}
 
     // Creates a fresh, empty, index and allocates its meta page
-    [[nodiscard]] static auto create(pool_t& pool) -> result<tree_t> {
+    [[nodiscard]] static auto create(pool_t& pool) -> result<bplus_base_t> {
         auto [id, guard]{TRY(pool.new_write())};
         guard.template as<meta_node>()->root.reset();
         guard.mark_dirty();
-        return tree_t{pool, id};
+        return bplus_base_t{pool, id};
     }
 
     [[nodiscard]] auto meta_page() const noexcept -> page_id_t { return meta_page_; }
@@ -160,7 +160,7 @@ class tree_t {
             auto [root_pid, leaf_guard]{TRY(pool_->new_write())};
 
             LeafTrait::init(leaf_guard.get());
-            LeafTrait::insert_at(leaf_guard.get(), 0, key, value);
+            LeafTrait::emplace_at(leaf_guard.get(), 0, key, value);
             leaf_guard.mark_dirty();
 
             meta->root.emplace(root_pid);
@@ -174,7 +174,7 @@ class tree_t {
         page_id_t                    cur{*meta->root};
         {
             write_guard_t root_guard{TRY(pool_->fetch_write(cur))};
-            if (can_emplace(root_guard)) {
+            if (can_emplace(root_guard, key, value)) {
                 meta_guard_opt->drop();
                 meta_guard_opt.reset();
             }
@@ -185,7 +185,7 @@ class tree_t {
             const page_id_t child{route(path.back(), key)};
             write_guard_t   child_guard{TRY(pool_->fetch_write(child))};
 
-            if (can_emplace(child_guard)) {
+            if (can_emplace(child_guard, key, value)) {
                 // At this point no ancestors can split
                 path.clear();
                 if (meta_guard_opt) {
@@ -202,8 +202,8 @@ class tree_t {
             return stdx::err{error_t::DUPLICATE_KEY};
         }
 
-        if (LeafTrait::can_insert(path.back().get())) {
-            LeafTrait::insert_at(path.back().get(), idx, key, value);
+        if (LeafTrait::can_emplace(path.back().get(), key, value)) {
+            LeafTrait::emplace_at(path.back().get(), idx, key, value);
             path.back().mark_dirty();
             return {};
         }
@@ -359,9 +359,9 @@ class tree_t {
         return InternalTrait::get_child(g.get(), internal_upper_bound(g, key));
     }
 
-    [[nodiscard]] static auto can_emplace(const write_guard_t& g) noexcept -> bool {
-        if (kind_of(g) == node_kind::LEAF) { return LeafTrait::can_insert(g.get()); }
-        return InternalTrait::can_insert(g.get());
+    [[nodiscard]] static auto can_emplace(const write_guard_t& g, const Key& key, const Value& value) noexcept -> bool {
+        if (kind_of(g) == node_kind::LEAF) { return LeafTrait::can_emplace(g.get(), key, value); }
+        return InternalTrait::can_emplace(g.get(), key, page_id_t{0});
     }
 
     [[nodiscard]] static auto
@@ -379,14 +379,14 @@ class tree_t {
         // Loop with isize to prevent accidental underflow
         for (isize i{static_cast<isize>(path.size()) - 2}; i >= 0; --i) {
             const auto u_idx{static_cast<usize>(i)};
-            if (InternalTrait::can_insert(path[u_idx].get())) {
+            if (InternalTrait::can_emplace(path[u_idx].get(), up_key, up_pid)) {
                 i32 key_idx{0};
                 while (key_idx < InternalTrait::size(path[u_idx].get()) &&
                        !less_t{comp_}(up_key, InternalTrait::get_key(path[u_idx].get(), key_idx))) {
                     key_idx += 1;
                 }
 
-                InternalTrait::insert_at(path[u_idx].get(), key_idx, up_key, up_pid);
+                InternalTrait::emplace_at(path[u_idx].get(), key_idx, up_key, up_pid);
                 path[u_idx].mark_dirty();
                 return {};
             }

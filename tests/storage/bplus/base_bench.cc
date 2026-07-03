@@ -10,14 +10,14 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "storage/bplus/tree.hh"
+#include "storage/bplus.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::storage;
-using tree_t = bplus::tree_t<i64, u64, 4'096>;
+using tree_t = bplus_tree<i64, u64, 4'096>;
 
 TEST_CASE("bplus_tree throughput", "[.][bench]") {
     helpers::tempfile file{"bpt_bench"};
