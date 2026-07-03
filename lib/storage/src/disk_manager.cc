@@ -1,11 +1,13 @@
 #include "storage/disk_manager.hh"
 
 #include <array>
+#include <cerrno>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <ios>
 #include <mutex>
+#include <system_error>
 #include <utility>
 
 #include <gsl/span>
@@ -89,9 +91,22 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
     file_.seekg(page_offset(pid), std::ios::beg);
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
-    file_.read(reinterpret_cast<char*>(buf.data()), buf.size_bytes());
-    if (static_cast<usize>(file_.gcount()) != DB_PAGE_SIZE) {
-        return stdx::err{error_t::SHORT_READ};
+    usize bytes_read{0};
+    while (bytes_read < DB_PAGE_SIZE) {
+        file_.read(reinterpret_cast<char*>(buf.data()) + bytes_read,
+                   static_cast<std::streamsize>(DB_PAGE_SIZE - bytes_read));
+        const auto count{static_cast<usize>(file_.gcount())};
+        bytes_read += count;
+        if (bytes_read == DB_PAGE_SIZE) { break; }
+
+        if (file_.eof()) { return stdx::err{error_t::SHORT_READ}; }
+        if (file_.fail()) {
+            if (io_interrupted()) {
+                file_.clear();
+                continue;
+            }
+            return stdx::err{error_t::SHORT_READ};
+        }
     }
     return {};
 }
@@ -101,15 +116,29 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::INVALID_PAGE_ID}; }
 
-    file_.clear();
-    file_.seekp(page_offset(pid), std::ios::beg);
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    usize bytes_written{0};
+    while (bytes_written < DB_PAGE_SIZE) {
+        file_.clear();
+        file_.seekp(page_offset(pid), std::ios::beg);
+        if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
-    file_.write(reinterpret_cast<const char*>(buf.data()), buf.size_bytes());
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+        file_.write(reinterpret_cast<const char*>(buf.data()), DB_PAGE_SIZE);
+        if (!file_.fail()) {
+            bytes_written = DB_PAGE_SIZE;
+            break;
+        }
+        if (io_interrupted()) { continue; }
+        return stdx::err{error_t::IO_ERROR};
+    }
+
+    file_.clear();
     file_.flush();
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
     return {};
+}
+
+auto disk_manager::io_interrupted() noexcept -> bool {
+    return std::error_code{errno, std::generic_category()} == std::errc::interrupted;
 }
 
 } // namespace cairn::storage
