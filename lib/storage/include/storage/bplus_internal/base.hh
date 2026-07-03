@@ -359,7 +359,8 @@ class bplus_base_t {
         return InternalTrait::get_child(g.get(), internal_upper_bound(g, key));
     }
 
-    [[nodiscard]] static auto can_emplace(const write_guard_t& g, const Key& key, const Value& value) noexcept -> bool {
+    [[nodiscard]] static auto
+    can_emplace(const write_guard_t& g, const Key& key, const Value& value) noexcept -> bool {
         if (kind_of(g) == node_kind::LEAF) { return LeafTrait::can_emplace(g.get(), key, value); }
         return InternalTrait::can_emplace(g.get(), key, page_id_t{0});
     }
@@ -538,4 +539,4 @@ class bplus_base_t {
     [[no_unique_address]] Compare comp_;
 };
 
-} // namespace cairn::storage::bplus
+} // namespace cairn::storage::detail
