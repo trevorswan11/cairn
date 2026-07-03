@@ -10,10 +10,10 @@
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 
-#include "storage/bplus/traits.hh"
+#include "storage/bplus_internal/traits.hh"
 #include "storage/page.hh"
 
-namespace cairn::storage::bplus {
+namespace cairn::storage::detail {
 
 template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trait {
     static constexpr usize NODE_PREFIX{16}; // kind+pad+size (8) + next (8)
@@ -39,6 +39,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
     [[nodiscard]] static auto as_node(page_ptr_t p) noexcept {
         return gsl::not_null{reinterpret_cast<node_type*>(p->data())};
     }
+
     [[nodiscard]] static auto as_node(const_page_ptr_t p) noexcept {
         return gsl::not_null{reinterpret_cast<const node_type*>(p->data())};
     }
@@ -68,7 +69,8 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         return as_node(p)->next;
     }
 
-    [[nodiscard]] static auto can_insert(const_page_ptr_t p) noexcept -> bool {
+    [[nodiscard]] static auto
+    can_emplace(const_page_ptr_t p, const Key& /*key*/, const Value& /*value*/) noexcept -> bool {
         return size(p) < CAP;
     }
 
@@ -76,7 +78,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         return size(p) > MIN;
     }
 
-    static auto insert_at(page_ptr_t p, i32 idx, const Key& key, const Value& value) noexcept
+    static auto emplace_at(page_ptr_t p, i32 idx, const Key& key, const Value& value) noexcept
         -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
@@ -267,7 +269,8 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         return as_node(p)->children[static_cast<usize>(idx)];
     }
 
-    [[nodiscard]] static auto can_insert(const_page_ptr_t p) noexcept -> bool {
+    [[nodiscard]] static auto
+    can_emplace(const_page_ptr_t p, const Key& /*key*/, page_id_t /*pid*/) noexcept -> bool {
         return size(p) < CAP;
     }
 
@@ -275,7 +278,7 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         return size(p) > MIN;
     }
 
-    static auto insert_at(page_ptr_t p, i32 idx, const Key& key, page_id_t right_child) noexcept
+    static auto emplace_at(page_ptr_t p, i32 idx, const Key& key, page_id_t right_child) noexcept
         -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
@@ -414,4 +417,4 @@ template <BPlusNodePayload Key> struct default_internal_trait {
     }
 };
 
-} // namespace cairn::storage::bplus
+} // namespace cairn::storage::detail

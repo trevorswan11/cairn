@@ -9,7 +9,7 @@
 
 #include "storage/page.hh"
 
-namespace cairn::storage::bplus {
+namespace cairn::storage::detail {
 
 enum class node_kind : u8 {
     INTERNAL,
@@ -39,9 +39,9 @@ concept BPlusLeafTrait = requires(page_ptr_t       p,
     { T::get_value(const_p, idx) } -> std::same_as<Value>;
     { T::set_key(p, idx, key) } -> std::same_as<void>;
     { T::next(const_p) } -> std::same_as<stdx::option<page_id_t>>;
-    { T::can_insert(const_p) } -> std::same_as<bool>;
+    { T::can_emplace(const_p, key, value) } -> std::same_as<bool>;
     { T::can_remove(const_p) } -> std::same_as<bool>;
-    { T::insert_at(p, idx, key, value) } -> std::same_as<void>;
+    { T::emplace_at(p, idx, key, value) } -> std::same_as<void>;
     { T::remove_at(p, idx) } -> std::same_as<void>;
     { T::split(p, p, pid, idx, key, value) } -> std::same_as<Key>;
     { T::merge_into_left(p, p, sep) } -> std::same_as<void>;
@@ -61,9 +61,9 @@ concept BPlusInternalTrait = requires(
     { T::get_key(const_p, idx) } -> std::same_as<Key>;
     { T::set_key(p, idx, key) } -> std::same_as<void>;
     { T::get_child(const_p, idx) } -> std::same_as<page_id_t>;
-    { T::can_insert(const_p) } -> std::same_as<bool>;
+    { T::can_emplace(const_p, key, pid) } -> std::same_as<bool>;
     { T::can_remove(const_p) } -> std::same_as<bool>;
-    { T::insert_at(p, idx, key, pid) } -> std::same_as<void>;
+    { T::emplace_at(p, idx, key, pid) } -> std::same_as<void>;
     { T::remove_at(p, idx) } -> std::same_as<void>;
     { T::split(p, p, key, pid, comp) } -> std::same_as<Key>;
     { T::merge_into_left(p, p, sep) } -> std::same_as<void>;

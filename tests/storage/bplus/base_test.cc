@@ -11,7 +11,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "storage/bplus/tree.hh"
+#include "storage/bplus.hh"
 #include "storage/error.hh"
 #include "storage/page.hh"
 #include "testhelpers/tempfile.hh"
@@ -40,9 +40,9 @@ class fat_key {
 
 } // namespace
 
-TEST_CASE("bplus::tree_t handles an empty tree") {
+TEST_CASE("bplus_tree handles an empty tree") {
     helpers::tempfile file{"bpt_empty"};
-    using tree_t = bplus::tree_t<i64, u64, 64>;
+    using tree_t = bplus_tree<i64, u64, 64>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
@@ -51,9 +51,9 @@ TEST_CASE("bplus::tree_t handles an empty tree") {
     CHECK(helpers::unwrap_err(tree.get(42)) == error_t::KEY_NOT_FOUND);
 }
 
-TEST_CASE("bplus::tree_t inserts and looks up sequential keys") {
+TEST_CASE("bplus_tree inserts and looks up sequential keys") {
     helpers::tempfile file{"bpt_seq"};
-    using tree_t = bplus::tree_t<i64, u64, 256>;
+    using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
@@ -66,9 +66,9 @@ TEST_CASE("bplus::tree_t inserts and looks up sequential keys") {
     CHECK(helpers::unwrap_err(tree.get(n + 1)) == error_t::KEY_NOT_FOUND);
 }
 
-TEST_CASE("bplus::tree_t matches a std::map oracle under random inserts") {
+TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
     helpers::tempfile file{"bpt_rand"};
-    using tree_t = bplus::tree_t<i64, u64, 256>;
+    using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
@@ -140,9 +140,9 @@ TEST_CASE("bplus::tree_t matches a std::map oracle under random inserts") {
     }
 }
 
-TEST_CASE("bplus::tree_t deletes down to empty, matching the oracle") {
+TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
     helpers::tempfile file{"bpt_del"};
-    using tree_t = bplus::tree_t<i64, u64, 256>;
+    using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
@@ -169,9 +169,9 @@ TEST_CASE("bplus::tree_t deletes down to empty, matching the oracle") {
     CHECK(helpers::unwrap(tree.empty()));
 }
 
-TEST_CASE("bplus::tree_t survives a randomized insert/delete against an oracle") {
+TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
     helpers::tempfile file{"bpt_fuzz"};
-    using tree_t = bplus::tree_t<i64, u64, 256>;
+    using tree_t = bplus_tree<i64, u64, 256>;
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
@@ -207,8 +207,8 @@ TEST_CASE("bplus::tree_t survives a randomized insert/delete against an oracle")
     CHECK(helpers::unwrap(tree.range_scan(lo, hi, [](const i64&, const u64&) {})) == oracle.size());
 }
 
-TEST_CASE("bplus::tree_t exercises split/merge/collapse with a small fan-out") {
-    using tree_t = bplus::tree_t<fat_key, u64, 128>;
+TEST_CASE("bplus_tree exercises split/merge/collapse with a small fan-out") {
+    using tree_t = bplus_tree<fat_key, u64, 128>;
     STATIC_REQUIRE(tree_t::LEAF_SLOTS < 16);
 
     helpers::tempfile file{"bpt_wide"};
@@ -233,10 +233,10 @@ TEST_CASE("bplus::tree_t exercises split/merge/collapse with a small fan-out") {
     CHECK(helpers::unwrap(tree.get(fat_key{7})) == 7);
 }
 
-TEST_CASE("bplus::tree_t persists across a buffer-pool reopen") {
+TEST_CASE("bplus_tree persists across a buffer-pool reopen") {
     helpers::tempfile file{"bpt_persist"};
     constexpr i64     n{2'000};
-    using tree_t = bplus::tree_t<i64, u64, 128>;
+    using tree_t = bplus_tree<i64, u64, 128>;
     page_id_t meta{INVALID_PAGE_ID};
 
     {
