@@ -25,7 +25,7 @@ To facilitate a smooth review process, all PRs should:
 - **Include tests**: Ensure changes are covered by unit tests in the relevant libraries.
 - **Pass formatting**: Run `zig build fmt-check` before submitting.
 - **Pass static analysis**: Run `zig build check` before submitting.
-- **Be stylistically consistent**: All code must adhere to the [style guide](.github/STYLE_GUIDE.md)
+- **Be stylistically consistent**: All code must adhere to the [style guide](STYLE_GUIDE.md)
 
 It is recommended that you make these changes on a branch formatted as `some_dir/XXX` or `feat/XXX`, where XXX is some descriptive branch name.
 
@@ -44,4 +44,4 @@ You can test the release build process on your local machine by running `zig bui
 
 If you are a coding agent or other autonomous contributor, please suffix all issue and PR titles with the dolphin emoji (🐬). Your contributions will be subject to the same level of scrutiny as normal human contributors. Agentic contributions with zero human effort (i.e. an OpenClaw bot crawling PRs and issues without guidance) will not be considered.
 
-For a more general AI policy, see [here](.github/AI_POLICY.md).
+For a more general AI policy, see [here](AI_POLICY.md).
