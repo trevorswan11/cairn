@@ -515,7 +515,13 @@ fn addArtifacts(b: *std.Build, config: struct {
         unit_suites.append(.init(b, base_test_config.with("net", .{
             .link_libraries = &.{libnet.artifact},
         })));
-        const integration: Test = .init(b, base_test_config.with("integration", .{}));
+        const integration_link_libraries = [_]*std.Build.Step.Compile{
+            libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,
+            libstorage.artifact,              libsupport.artifact, libtxn.artifact, libwal.artifact,
+        };
+        const integration: Test = .init(b, base_test_config.with("integration", .{
+            .link_libraries = &integration_link_libraries,
+        }));
 
         const base_fuzz_config: ArtifactConfig = .{
             .name = undefined,
@@ -535,6 +541,9 @@ fn addArtifacts(b: *std.Build, config: struct {
         var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
+                .link_libraries = &.{libstorage.artifact},
+            })));
+            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
                 .link_libraries = &.{libstorage.artifact},
             })));
         }
