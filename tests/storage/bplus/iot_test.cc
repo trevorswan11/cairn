@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <string>
 #include <string_view>
 
 #include <catch2/catch_test_macros.hpp>
@@ -8,6 +9,7 @@
 #include <stdx/types.hh>
 
 #include "storage/bplus.hh"
+#include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -21,23 +23,18 @@ TEST_CASE("iot_tree stores and retrieves variable-length tuples") {
     auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto tree{helpers::unwrap(tree_t::create(*pool))};
 
-    const std::string_view val1 = "hello world";
-    const std::string_view val2 =
-        "this is a slightly longer tuple string that still fits within 128 bytes";
-    const std::string_view val3 = "short";
+    const std::string_view val1{"hello world"};
+    const std::string      val2(120, 'l');
+    const std::string_view val3{"short"};
 
-    auto span1 = gsl::span{reinterpret_cast<const std::byte*>(val1.data()), val1.size()};
-    auto span2 = gsl::span{reinterpret_cast<const std::byte*>(val2.data()), val2.size()};
-    auto span3 = gsl::span{reinterpret_cast<const std::byte*>(val3.data()), val3.size()};
-
-    helpers::unwrap(tree.emplace(1, span1));
-    helpers::unwrap(tree.emplace(2, span2));
-    helpers::unwrap(tree.emplace(3, span3));
+    helpers::unwrap(tree.emplace(1, helpers::span_from_string(val1)));
+    helpers::unwrap(tree.emplace(2, helpers::span_from_string(val2)));
+    helpers::unwrap(tree.emplace(3, helpers::span_from_string(val3)));
 
     // We use range_scan to read values safely while the page is pinned
     CHECK(helpers::unwrap(
               tree.range_scan(1, 3, [&](const i64& k, const gsl::span<const std::byte>& v) {
-                  std::string_view str_v{reinterpret_cast<const char*>(v.data()), v.size()};
+                  const auto str_v{helpers::string_from_span(v)};
                   if (k == 1) {
                       CHECK(str_v == val1);
                   } else if (k == 2) {
@@ -56,11 +53,11 @@ TEST_CASE("iot_tree handles compaction and removal") {
 
     std::array<std::byte, 100> big_val;
     std::fill(big_val.begin(), big_val.end(), std::byte{'A'});
-    auto span = gsl::span<const std::byte>{big_val};
+    gsl::span span{big_val};
 
     // Insert many elements to trigger splits and compaction
-    for (i64 i = 0; i < 100; ++i) { helpers::unwrap(tree.emplace(i, span)); }
-    for (i64 i = 0; i < 50; ++i) { helpers::unwrap(tree.remove(i)); }
+    for (i64 i{0}; i < 100; ++i) { helpers::unwrap(tree.emplace(i, span)); }
+    for (i64 i{0}; i < 50; ++i) { helpers::unwrap(tree.remove(i)); }
 
     // Verify the remaining elements are intact
     CHECK(helpers::unwrap(
