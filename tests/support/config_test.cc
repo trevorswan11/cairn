@@ -2,8 +2,8 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <fmt/format.h>
 
+#include "error.hh"
 #include "support/config.hh"
-#include "support/error.hh"
 #include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {

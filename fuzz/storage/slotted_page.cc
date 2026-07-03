@@ -10,9 +10,9 @@
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
 
+#include "error.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/unwrap.hh"
 

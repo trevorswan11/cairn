@@ -12,7 +12,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "error.hh"
 #include "sql/schema.hh"
 #include "sql/type.hh"
 #include "sql/value.hh"
