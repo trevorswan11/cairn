@@ -28,7 +28,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         std::array<Key, SLOTS>   keys;
         std::array<Value, SLOTS> values;
 
-        [[nodiscard]] auto size_bytes() const noexcept -> usize { return static_cast<usize>(size); }
+        [[nodiscard]] auto get_size() const noexcept -> usize { return static_cast<usize>(size); }
     };
     static_assert(sizeof(node_type) <= DB_PAGE_SIZE, "leaf node overflows a page");
     static_assert(stdx::StandardLayout<node_type> && stdx::TriviallyCopyable<node_type>);
@@ -82,7 +82,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
-        const auto u_size{n->size_bytes()};
+        const auto u_size{n->get_size()};
 
         if (u_idx < u_size) {
             std::copy_backward(
@@ -98,7 +98,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
     static auto remove_at(page_ptr_t p, i32 idx) noexcept -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
-        const auto u_size{n->size_bytes()};
+        const auto u_size{n->get_size()};
         std::move(n->keys.data() + u_idx + 1, n->keys.data() + u_size, n->keys.data() + u_idx);
         std::move(
             n->values.data() + u_idx + 1, n->values.data() + u_size, n->values.data() + u_idx);
@@ -115,7 +115,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         auto right{as_node(right_p)};
 
         const auto u_idx{static_cast<usize>(idx)};
-        const auto u_size{left->size_bytes()};
+        const auto u_size{left->get_size()};
 
         std::array<Key, SLOTS + 1>   tmp_keys;
         std::array<Value, SLOTS + 1> tmp_vals;
@@ -142,7 +142,7 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         right->next = left->next;
 
         const auto u_left_count{static_cast<usize>(left_count)};
-        const auto u_right_size{right->size_bytes()};
+        const auto u_right_size{right->get_size()};
 
         std::copy(tmp_keys.data() + u_left_count,
                   tmp_keys.data() + u_left_count + u_right_size,
@@ -163,8 +163,8 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         auto l{as_node(left_p)};
         auto r{as_node(right_p)};
 
-        const auto l_size{l->size_bytes()};
-        const auto r_size{r->size_bytes()};
+        const auto l_size{l->get_size()};
+        const auto r_size{r->get_size()};
 
         std::copy_n(r->keys.data(), r_size, l->keys.data() + l_size);
         std::copy_n(r->values.data(), r_size, l->values.data() + l_size);
@@ -177,8 +177,8 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         auto l{as_node(left_p)};
         auto n{as_node(node_p)};
 
-        const auto l_size{l->size_bytes()};
-        const auto u_size{n->size_bytes()};
+        const auto l_size{l->get_size()};
+        const auto u_size{n->get_size()};
 
         std::copy_backward(n->keys.data(), n->keys.data() + u_size, n->keys.data() + u_size + 1);
         std::copy_backward(
@@ -197,8 +197,8 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         auto n{as_node(node_p)};
         auto r{as_node(right_p)};
 
-        const auto u_size{n->size_bytes()};
-        const auto r_size{r->size_bytes()};
+        const auto u_size{n->get_size()};
+        const auto r_size{r->get_size()};
 
         n->keys[u_size]   = r->keys[0];
         n->values[u_size] = r->values[0];
@@ -225,7 +225,7 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         std::array<Key, SLOTS>           keys;
         std::array<page_id_t, SLOTS + 1> children;
 
-        [[nodiscard]] auto size_bytes() const noexcept -> usize { return static_cast<usize>(size); }
+        [[nodiscard]] auto get_size() const noexcept -> usize { return static_cast<usize>(size); }
     };
     static_assert(sizeof(node_type) <= DB_PAGE_SIZE, "internal node overflows a page");
     static_assert(stdx::StandardLayout<node_type> && stdx::TriviallyCopyable<node_type>);
@@ -282,7 +282,7 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
-        const auto u_size{n->size_bytes()};
+        const auto u_size{n->get_size()};
 
         if (u_idx < u_size) {
             std::copy_backward(
@@ -299,7 +299,7 @@ template <BPlusNodePayload Key> struct default_internal_trait {
     static auto remove_at(page_ptr_t p, i32 idx) noexcept -> void {
         auto       n{as_node(p)};
         const auto u_idx{static_cast<usize>(idx)};
-        const auto u_size{n->size_bytes()};
+        const auto u_size{n->get_size()};
 
         if (u_size > u_idx + 1) {
             std::move(n->keys.data() + u_idx + 1, n->keys.data() + u_size, n->keys.data() + u_idx);
@@ -320,10 +320,10 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         std::array<Key, SLOTS + 1>       tmp_keys;
         std::array<page_id_t, SLOTS + 2> tmp_children;
 
-        const gsl::span active_keys{left->keys.data(), left->size_bytes()};
+        const gsl::span active_keys{left->keys.data(), left->get_size()};
         auto            it{std::ranges::lower_bound(active_keys, sep_key, comp)};
         const auto      u_pos{static_cast<usize>(std::distance(active_keys.begin(), it))};
-        const auto      u_size{left->size_bytes()};
+        const auto      u_size{left->get_size()};
 
         std::copy(left->keys.data(), left->keys.data() + u_pos, tmp_keys.data());
         std::copy(left->children.data(), left->children.data() + u_pos + 1, tmp_children.data());
@@ -346,7 +346,7 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         right->size = total_keys - mid - 1;
 
         const auto u_mid{static_cast<usize>(mid)};
-        const auto u_right_size{right->size_bytes()};
+        const auto u_right_size{right->get_size()};
 
         std::copy(tmp_keys.data() + u_mid + 1,
                   tmp_keys.data() + u_mid + 1 + u_right_size,
@@ -367,8 +367,8 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         auto l{as_node(left_p)};
         auto r{as_node(right_p)};
 
-        const auto l_size{l->size_bytes()};
-        const auto r_size{r->size_bytes()};
+        const auto l_size{l->get_size()};
+        const auto r_size{r->get_size()};
 
         l->keys[l_size] = parent_sep;
         l->size += 1;
@@ -383,13 +383,13 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         auto l{as_node(left_p)};
         auto n{as_node(node_p)};
 
-        const auto u_size{n->size_bytes()};
+        const auto u_size{n->get_size()};
 
         std::copy_backward(n->keys.data(), n->keys.data() + u_size, n->keys.data() + u_size + 1);
         std::copy_backward(
             n->children.data(), n->children.data() + u_size + 1, n->children.data() + u_size + 2);
 
-        const auto l_size{l->size_bytes()};
+        const auto l_size{l->get_size()};
         n->keys[0]     = parent_sep;
         n->children[0] = l->children[l_size];
         n->size += 1;
@@ -403,14 +403,14 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         auto n{as_node(node_p)};
         auto r{as_node(right_p)};
 
-        const auto n_size{n->size_bytes()};
+        const auto n_size{n->get_size()};
         n->keys[n_size]         = parent_sep;
         n->children[n_size + 1] = r->children[0];
         n->size += 1;
 
         parent_sep = r->keys[0];
 
-        const auto r_size{r->size_bytes()};
+        const auto r_size{r->get_size()};
         std::move(r->keys.data() + 1, r->keys.data() + r_size, r->keys.data());
         std::move(r->children.data() + 1, r->children.data() + r_size + 1, r->children.data());
         r->size -= 1;
