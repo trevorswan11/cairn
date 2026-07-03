@@ -27,7 +27,7 @@ TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
     constexpr i64    per_thread{2'000};
     std::atomic<i32> insert_failures{0};
 
-    stdx::fixed::vector<std::thread, 8> workers;
+    stdx::fixed::vector<std::jthread, 8> workers;
     for (usize t{0}; t < workers.capacity(); ++t) {
         workers.emplace_back([&, t] {
             for (i64 i{0}; i < per_thread; ++i) {
@@ -64,10 +64,10 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
         REQUIRE(tree.emplace(k, static_cast<u64>(k)));
     }
 
-    const auto               seed{Catch::getSeed()};
-    std::atomic<i32>         failures{0};
-    std::atomic<bool>        go{false};
-    std::vector<std::thread> workers;
+    const auto                seed{Catch::getSeed()};
+    std::atomic<i32>          failures{0};
+    std::atomic<bool>         go{false};
+    std::vector<std::jthread> workers;
 
     // Deleters
     for (i32 t{0}; t < writers; ++t) {

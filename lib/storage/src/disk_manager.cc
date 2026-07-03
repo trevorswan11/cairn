@@ -10,6 +10,7 @@
 
 #include <gsl/span>
 #include <stdx/memory.hh>
+#include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
@@ -38,6 +39,7 @@ disk_manager::~disk_manager() {
 }
 
 auto disk_manager::open(const std::filesystem::path& path) -> result<stdx::box<disk_manager>> {
+    PROFILE_FUNCTION();
     constexpr auto open_mode{std::ios::in | std::ios::out | std::ios::binary};
 
     std::fstream file;
@@ -65,6 +67,7 @@ auto disk_manager::open(const std::filesystem::path& path) -> result<stdx::box<d
 }
 
 auto disk_manager::allocate_page() -> result<page_id_t> {
+    PROFILE_FUNCTION();
     std::scoped_lock lock{latch_};
     const page_id_t  pid{num_pages_};
 
@@ -81,6 +84,7 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
 }
 
 auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
+    PROFILE_FUNCTION();
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
@@ -111,6 +115,7 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
 }
 
 auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
+    PROFILE_FUNCTION();
     std::scoped_lock lock{latch_};
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }

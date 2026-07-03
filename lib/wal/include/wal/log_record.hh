@@ -5,7 +5,6 @@
 #include <stdx/option.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
-#include <utility>
 #include <vector>
 
 #include "storage/page.hh"
@@ -16,10 +15,6 @@ namespace cairn::wal {
 
 enum class lsn_t : i64 {};
 constexpr lsn_t INVALID_LSN{-1};
-
-[[nodiscard]] constexpr auto operator+(lsn_t lhs, lsn_t rhs) -> lsn_t {
-    return lsn_t{std::to_underlying(lhs) + std::to_underlying(rhs)};
-}
 
 enum class txn_id_t : i64 {};
 constexpr txn_id_t INVALID_TXN_ID{-1};

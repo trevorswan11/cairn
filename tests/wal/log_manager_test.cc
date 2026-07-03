@@ -101,7 +101,7 @@ TEST_CASE("log_manager double buffering boundary") {
     }
 }
 
-TEST_CASE("WAL Log Manager Concurrent Appends") {
+TEST_CASE("log_manager concurrent appends") {
     helpers::tempfile file{"log_manager_concurrent"};
     std::filesystem::remove(file.path);
 
@@ -111,11 +111,11 @@ TEST_CASE("WAL Log Manager Concurrent Appends") {
     {
         log_manager manager{file.path, 4'096};
 
-        std::vector<std::thread> threads;
-        std::atomic<bool>        go{false};
+        std::vector<std::jthread> workers;
+        std::atomic<bool>         go{false};
 
         for (i32 t = 0; t < num_threads; ++t) {
-            threads.emplace_back([&manager, t, &go]() {
+            workers.emplace_back([&manager, t, &go]() {
                 while (!go.load()) { std::this_thread::yield(); }
 
                 for (i32 i = 0; i < appends_per_thread; ++i) {
@@ -126,16 +126,13 @@ TEST_CASE("WAL Log Manager Concurrent Appends") {
                     rec.slot_id   = storage::slot_id_t{0};
                     rec.redo_data = helpers::redo_bytes;
 
-                    auto lsn = helpers::unwrap(manager.append_record(rec));
-                    helpers::unwrap(manager.flush(lsn));
+                    helpers::unwrap(manager.flush(helpers::unwrap(manager.append_record(rec))));
                 }
             });
         }
 
         go.store(true);
-        for (auto& th : threads) {
-            if (th.joinable()) { th.join(); }
-        }
+        for (auto& w : workers) { w.join(); }
     }
 
     // Read back and verify count and content consistency

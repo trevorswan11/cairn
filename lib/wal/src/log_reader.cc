@@ -9,6 +9,7 @@
 #include <ios>
 
 #include <gsl/span>
+#include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
@@ -20,6 +21,7 @@
 namespace cairn::wal {
 
 auto log_reader::open(std::filesystem::path log_path) -> result<log_reader> {
+    PROFILE_FUNCTION();
     std::ifstream file{log_path, std::ios::in | std::ios::binary};
     if (!file.is_open()) { return stdx::err{error_t::WAL_LOG_FILE_NOT_FOUND}; }
 
@@ -32,6 +34,7 @@ auto log_reader::open(std::filesystem::path log_path) -> result<log_reader> {
 }
 
 auto log_reader::next() -> result<log_record> {
+    PROFILE_FUNCTION();
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
     if (pos == file_size_) { return stdx::err{error_t::WAL_EOF}; }
@@ -60,6 +63,7 @@ auto log_reader::next() -> result<log_record> {
 }
 
 auto log_reader::prev() -> result<log_record> {
+    PROFILE_FUNCTION();
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
     if (pos == 0) { return stdx::err{error_t::WAL_EOF}; }
@@ -95,6 +99,7 @@ auto log_reader::prev() -> result<log_record> {
 }
 
 auto log_reader::deserialize_record() noexcept -> result<log_record> {
+    PROFILE_FUNCTION();
     gsl::span<const std::byte> buf{record_buffer_};
     const auto                 record{TRY(log_record::deserialize(buf))};
     if (!buf.empty()) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
