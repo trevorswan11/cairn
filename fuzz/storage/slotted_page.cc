@@ -100,20 +100,16 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
     }
 }
 
-auto NonEmptyString() {
-    return Filter([](const std::string& s) { return !s.empty() && s.size() <= 4'000; },
-                  Arbitrary<std::string>());
-}
-
 FUZZ_TEST(SlottedPageFuzz, FuzzSlottedPage)
-    .WithDomains(
-        VectorOf(
-            OneOf(Map([](std::string d) -> SlottedPageOp { return InsertOp{d}; }, NonEmptyString()),
-                  Map([](u32 idx, std::string d) -> SlottedPageOp { return UpdateOp{idx, d}; },
-                      Arbitrary<u32>(),
-                      NonEmptyString()),
-                  Map([](u32 idx) -> SlottedPageOp { return RemoveOp{idx}; }, Arbitrary<u32>()),
-                  Just(SlottedPageOp{CompactOp{}})))
-            .WithMaxSize(500));
+    .WithDomains(VectorOf(OneOf(Map([](std::string d) -> SlottedPageOp { return InsertOp{d}; },
+                                    Arbitrary<std::string>()),
+                                Map([](u32         idx,
+                                       std::string d) -> SlottedPageOp { return UpdateOp{idx, d}; },
+                                    Arbitrary<u32>(),
+                                    Arbitrary<std::string>()),
+                                Map([](u32 idx) -> SlottedPageOp { return RemoveOp{idx}; },
+                                    Arbitrary<u32>()),
+                                Just(SlottedPageOp{CompactOp{}})))
+                     .WithMaxSize(500));
 
 } // namespace cairn::tests::fuzz

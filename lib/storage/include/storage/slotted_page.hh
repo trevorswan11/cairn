@@ -20,23 +20,8 @@ enum class slot_id_t : i32 {};
 
 constexpr slot_id_t INVALID_SLOT_ID{-1};
 
+// Uses the default specialization of stdx::option (compact) since u16 exceeds PAGE_SIZE
 enum class slot_size_t : u16 {};
-
-} // namespace cairn::storage
-
-namespace stdx {
-
-template <> struct nullable<cairn::storage::slot_size_t> {
-    using ss_t = cairn::storage::slot_size_t;
-    [[nodiscard]] static constexpr auto invalid() noexcept -> ss_t { return ss_t{0}; }
-    [[nodiscard]] static constexpr auto is_valid(const ss_t& id) noexcept -> bool {
-        return id != invalid();
-    }
-};
-
-} // namespace stdx
-
-namespace cairn::storage {
 
 class slotted_page {
   public:
