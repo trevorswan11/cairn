@@ -6,7 +6,7 @@
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
 
-#include "storage/bplus_tree.hh"
+#include "storage/bplus.hh"
 #include "storage/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
