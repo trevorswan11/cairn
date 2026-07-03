@@ -8,8 +8,8 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
+#include "error.hh"
 #include "storage/disk_manager.hh"
-#include "support/error.hh"
 #include "storage/page.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -57,8 +57,10 @@ TEST_CASE("Disk manager rejects invalid page IDs") {
     REQUIRE(dm->allocate_page());
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{5}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{-1}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
+    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{5}, buf)) ==
+          error_t::STORAGE_INVALID_PAGE_ID);
+    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{-1}, buf)) ==
+          error_t::STORAGE_INVALID_PAGE_ID);
 }
 
 TEST_CASE("Disk manager persists across reopens") {

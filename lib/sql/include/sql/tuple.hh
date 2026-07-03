@@ -7,7 +7,7 @@
 #include <stdx/fixed/vector.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "error.hh"
 #include "sql/schema.hh"
 #include "sql/value.hh"
 #include "storage/page.hh"

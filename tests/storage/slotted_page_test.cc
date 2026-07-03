@@ -5,7 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
 
-#include "support/error.hh"
+#include "error.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "testhelpers/conversion.hh"
