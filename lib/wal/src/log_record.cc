@@ -37,11 +37,6 @@ template <typename T> auto read_arbitrary(gsl::span<const std::byte>& src) -> T 
     return out;
 }
 
-constexpr auto MINIMUM_RECORD_SIZE{sizeof(log_record::size) + sizeof(log_record::lsn) +
-                                   sizeof(log_record::prev_lsn) + sizeof(log_record::txn_id) +
-                                   sizeof(log_record::type) + sizeof(log_record::checksum) +
-                                   sizeof(log_record::size)};
-
 } // namespace
 
 auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
@@ -87,9 +82,9 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
     write_arbitrary_at(dest, stdx::crc::crc32(checksum_bytes), checksum_pos);
 }
 
-auto log_record::deserialize(gsl::span<const std::byte>& src) -> result<log_record> {
+auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<log_record> {
     const auto original_span{src};
-    if (src.size() < MINIMUM_RECORD_SIZE) { return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL}; }
+    if (src.size() < MINIMUM_SIZE<>) { return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL}; }
 
     const auto record_size{read_arbitrary<i32>(src)};
     if (original_span.size() < static_cast<usize>(record_size)) {

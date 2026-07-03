@@ -56,9 +56,6 @@ class disk_manager {
     disk_manager(std::fstream file, i64 num_pages)
         : file_{std::move(file)}, num_pages_{num_pages} {}
 
-    // This might be true when running heavily instrumented coverage builds
-    [[nodiscard]] static auto io_interrupted() noexcept -> bool;
-
   private:
     mutable std::mutex latch_;
     std::fstream       file_;

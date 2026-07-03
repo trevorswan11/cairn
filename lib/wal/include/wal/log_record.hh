@@ -75,6 +75,12 @@ struct log_record {
 
     u32 checksum{0};
 
+    template <stdx::NumericIntegral I = usize>
+    static constexpr auto MINIMUM_SIZE{static_cast<I>(
+        sizeof(log_record::size) + sizeof(log_record::lsn) + sizeof(log_record::prev_lsn) +
+        sizeof(log_record::txn_id) + sizeof(log_record::type) + sizeof(log_record::checksum) +
+        sizeof(log_record::size))};
+
     template <stdx::NumericIntegral I = usize> [[nodiscard]] auto get_size() const noexcept -> I {
         return static_cast<I>(size);
     }
@@ -83,7 +89,8 @@ struct log_record {
     auto serialize(std::vector<std::byte>& dest) const -> void;
 
     // The provided span is advanced to the next record only on success
-    [[nodiscard]] static auto deserialize(gsl::span<const std::byte>& src) -> result<log_record>;
+    [[nodiscard]] static auto deserialize(gsl::span<const std::byte>& src) noexcept
+        -> result<log_record>;
 };
 
 } // namespace cairn::wal
