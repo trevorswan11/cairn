@@ -516,8 +516,8 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{libnet.artifact},
         })));
         const integration_link_libraries = [_]*std.Build.Step.Compile{
-            libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,
-            libstorage.artifact,              libsupport.artifact, libtxn.artifact, libwal.artifact,
+            libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
+            libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
         };
         const integration: Test = .init(b, base_test_config.with("integration", .{
             .link_libraries = &integration_link_libraries,
