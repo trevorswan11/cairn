@@ -12,10 +12,10 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "error.hh"
 #include "sql/schema.hh"
 #include "sql/type.hh"
 #include "sql/value.hh"
+#include "support/error.hh"
 
 namespace cairn::sql {
 

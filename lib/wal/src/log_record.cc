@@ -11,9 +11,9 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "error.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
+#include "support/error.hh"
 
 namespace cairn::wal {
 

@@ -13,7 +13,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "error.hh"
+#include "support/error.hh"
 #include "support/io_utils.hh"
 #include "wal/log_record.hh"
 

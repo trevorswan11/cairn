@@ -15,10 +15,10 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "error.hh"
 #include "storage/disk_manager.hh"
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
+#include "support/error.hh"
 
 namespace cairn::storage {
 

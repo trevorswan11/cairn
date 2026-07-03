@@ -7,8 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
 
-#include "error.hh"
 #include "helpers/mock_records.hh"
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "wal/log_reader.hh"

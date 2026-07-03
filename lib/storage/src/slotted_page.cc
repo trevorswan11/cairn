@@ -11,8 +11,8 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "error.hh"
 #include "storage/page.hh"
+#include "support/error.hh"
 
 namespace cairn::storage {
 

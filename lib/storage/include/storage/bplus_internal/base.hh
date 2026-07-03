@@ -17,11 +17,11 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "error.hh"
 #include "storage/bplus_internal/default_impl.hh"
 #include "storage/bplus_internal/traits.hh"
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
+#include "support/error.hh"
 
 namespace cairn::storage::detail {
 
