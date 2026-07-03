@@ -6,8 +6,8 @@
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
 
-#include "error.hh"
 #include "storage/bplus.hh"
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 

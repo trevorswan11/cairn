@@ -11,9 +11,9 @@
 #include <stdx/fixed/vector.hh>
 #include <stdx/types.hh>
 
-#include "error.hh"
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 

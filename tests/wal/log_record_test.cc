@@ -6,10 +6,10 @@
 #include <gsl/span>
 #include <stdx/option.hh>
 
-#include "error.hh"
 #include "helpers/mock_records.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
+#include "support/error.hh"
 #include "testhelpers/unwrap.hh"
 #include "wal/log_record.hh"
 

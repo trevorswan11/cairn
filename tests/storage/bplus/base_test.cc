@@ -11,9 +11,9 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "error.hh"
 #include "storage/bplus.hh"
 #include "storage/page.hh"
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
