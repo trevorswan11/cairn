@@ -27,8 +27,8 @@ TEST_CASE("WAL page flush forces WAL flush") {
     helpers::tempfile db_file{"wal_int_db"};
     helpers::tempfile log_file{"wal_int_log"};
 
-    auto         bp{helpers::unwrap(storage::buffer_pool<8>::open(db_file.path))};
     wal::manager log{log_file.path, 1_KiB};
+    auto         bp{helpers::unwrap(storage::buffer_pool<8>::open(db_file.path))};
     bp->set_log_manager(log);
 
     storage::page_id_t pid;
@@ -75,8 +75,8 @@ TEST_CASE("WAL eviction forces WAL flush") {
     helpers::tempfile db_file{"wal_evict_db"};
     helpers::tempfile log_file{"wal_evict_log"};
 
-    auto         bp{helpers::unwrap(storage::buffer_pool<1>::open(db_file.path))};
     wal::manager log{log_file.path, 1_KiB};
+    auto         bp{helpers::unwrap(storage::buffer_pool<1>::open(db_file.path))};
     bp->set_log_manager(log);
 
     wal::lsn_t expected_lsn;
