@@ -33,7 +33,7 @@ constexpr auto MAX_SLOT_SIZE{std::numeric_limits<std::underlying_type_t<slot_siz
 
 struct log_update_params_t {
     txn::id_t                   txn_id{txn::INVALID_TXN_ID};
-    stdx::option<wal::lsn_t>        prev_lsn;
+    stdx::option<wal::lsn_t>    prev_lsn;
     stdx::option<wal::manager&> log;
 };
 

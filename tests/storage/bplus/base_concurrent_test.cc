@@ -36,7 +36,7 @@ TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
             }
         });
     }
-    for (auto& w : workers) { w.join(); }
+    workers.clear();
 
     CHECK(insert_failures.load() == 0);
     const i64 total{static_cast<i64>(workers.capacity()) * per_thread};
@@ -108,7 +108,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
     }
 
     go.store(true);
-    for (auto& w : workers) { w.join(); }
+    workers.clear();
     CHECK(failures.load() == 0);
 
     // Deleted blocks are gone

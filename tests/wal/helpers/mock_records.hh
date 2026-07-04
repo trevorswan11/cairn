@@ -19,8 +19,7 @@ constexpr std::array undo_bytes{std::byte{0x9}, std::byte{0x8}};
 [[nodiscard]] auto write_clear_log(std::vector<std::byte>& buffer) -> wal::record;
 
 // Reads a log from the buffer and checks it against the original before returning
-auto read_check_log(const wal::record& original, gsl::span<const std::byte>& src)
-    -> wal::record;
+auto read_check_log(const wal::record& original, gsl::span<const std::byte>& src) -> wal::record;
 auto records_eq(const wal::record& a, const wal::record& b) noexcept -> void;
 
 } // namespace cairn::tests::helpers

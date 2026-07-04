@@ -48,7 +48,7 @@ class disk_manager {
 
     // The number of pages the underlying file currently spans
     [[nodiscard]] auto num_pages() const noexcept -> i64 {
-        const std::scoped_lock lock{latch_};
+        const std::scoped_lock lock{mutex_};
         return num_pages_;
     }
 
@@ -57,7 +57,7 @@ class disk_manager {
         : file_{std::move(file)}, num_pages_{num_pages} {}
 
   private:
-    mutable std::mutex latch_;
+    mutable std::mutex mutex_;
     std::fstream       file_;
     i64                num_pages_{0};
 };

@@ -63,8 +63,7 @@ auto write_clear_log(std::vector<std::byte>& buffer) -> wal::record {
     return rec;
 }
 
-auto read_check_log(const wal::record& original, gsl::span<const std::byte>& src)
-    -> wal::record {
+auto read_check_log(const wal::record& original, gsl::span<const std::byte>& src) -> wal::record {
     const auto decoded{helpers::unwrap(wal::record::deserialize(src))};
     records_eq(original, decoded);
     return decoded;

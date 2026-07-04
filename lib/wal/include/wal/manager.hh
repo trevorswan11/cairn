@@ -21,7 +21,7 @@ namespace cairn::wal {
 class manager {
   public:
     explicit manager(std::filesystem::path log_path,
-                         usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
+                     usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
     ~manager();
     MAKE_PINNED(manager)
 

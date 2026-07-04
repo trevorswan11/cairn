@@ -463,6 +463,7 @@ fn addArtifacts(b: *std.Build, config: struct {
     }));
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{
         .include_paths = &.{ArtifactConfig.libraryInclude(b, "wal").@"1"},
+        .link_libraries = &.{libstorage.artifact},
     }));
 
     const link_libraries = [_]*std.Build.Step.Compile{

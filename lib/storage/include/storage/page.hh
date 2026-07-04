@@ -42,12 +42,20 @@ class page {
         pin_count_ = 0;
         is_dirty_  = false;
         page_lsn_.reset();
+        rec_lsn_.reset();
     }
 
-    constexpr auto set_page_lsn(stdx::option<wal::lsn_t> lsn) noexcept -> void { page_lsn_ = lsn; }
-    constexpr auto set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
-    constexpr auto pin() noexcept -> i32 { return ++pin_count_; }
-    constexpr auto unpin() noexcept -> i32 { return --pin_count_; }
+    constexpr auto set_page_lsn(stdx::option<wal::lsn_t> lsn) noexcept -> void {
+        page_lsn_ = lsn;
+        if (lsn && !rec_lsn_) { rec_lsn_ = lsn; }
+    }
+    constexpr auto               set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
+    constexpr auto               pin() noexcept -> i32 { return ++pin_count_; }
+    constexpr auto               unpin() noexcept -> i32 { return --pin_count_; }
+    [[nodiscard]] constexpr auto rec_lsn() const noexcept -> stdx::option<wal::lsn_t> {
+        return rec_lsn_;
+    }
+    constexpr auto clear_rec_lsn() noexcept -> void { rec_lsn_.reset(); }
 
   private:
     alignas(std::max_align_t) std::byte data_[DB_PAGE_SIZE]{};
@@ -56,7 +64,8 @@ class page {
     page_id_t                page_id_{INVALID_PAGE_ID};
     i32                      pin_count_{0};
     bool                     is_dirty_{false};
-    stdx::option<wal::lsn_t> page_lsn_{wal::INVALID_LSN};
+    stdx::option<wal::lsn_t> page_lsn_{stdx::none};
+    stdx::option<wal::lsn_t> rec_lsn_{stdx::none};
 };
 
 } // namespace cairn::storage

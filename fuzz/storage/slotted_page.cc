@@ -57,7 +57,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
                         oracle[slot_val] = iop.data;
                     } else {
                         oracle.emplace(slot_val, iop.data);
-                        active_slots.push_back(slot_id);
+                        active_slots.emplace_back(slot_id);
                     }
                 } else {
                     EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_PAGE_FULL);
