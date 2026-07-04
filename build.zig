@@ -115,6 +115,11 @@ const ArtifactConfig = struct {
     libsupport: ?*std.Build.Step.Compile = null,
     libtesthelpers: ?*std.Build.Step.Compile = null,
 
+    pub fn libraryInclude(b: *std.Build, name: []const u8) struct { []const u8, std.Build.LazyPath } {
+        const path = b.pathJoin(&.{ Library.library_root, name, Library.include_root });
+        return .{ path, b.path(path) };
+    }
+
     fn tryAddStrongLib(
         compile: ?*std.Build.Step.Compile,
         root: []const u8,
@@ -122,10 +127,8 @@ const ArtifactConfig = struct {
         link_libraries: *stdx.ArrayList(*std.Build.Step.Compile),
     ) void {
         if (compile) |artifact| {
-            const b = artifact.step.owner;
             link_libraries.append(artifact);
-            const path = b.pathJoin(&.{ Library.library_root, root, Library.include_root });
-            include_paths.append(b.path(path));
+            include_paths.append(libraryInclude(artifact.step.owner, root).@"1");
         }
     }
 
@@ -180,15 +183,15 @@ const Library = struct {
     b: *std.Build,
     config_h: *std.Build.Step.ConfigHeader,
 
-    include: []const u8,
-    src: []const u8,
+    include: std.Build.LazyPath,
+    src: std.Build.LazyPath,
     files: []const []const u8,
 
     step: *std.Build.Step,
     artifact: *std.Build.Step.Compile,
 
     pub fn init(b: *std.Build, config: ArtifactConfig) Library {
-        const include = b.pathJoin(&.{ library_root, config.name, include_root });
+        const include, const include_path = ArtifactConfig.libraryInclude(b, config.name);
         const src = b.pathJoin(&.{ library_root, config.name, src_root });
         const src_paths = stdx.utils.collectFiles(
             b,
@@ -200,7 +203,7 @@ const Library = struct {
         link_libraries.append(config.stdx_dep.artifact("stdx"));
 
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
-        include_paths.appendSlice(&.{ b.path(include), b.path(src) });
+        include_paths.appendSlice(&.{ include_path, b.path(src) });
         config.tryAddSupport(&include_paths, &link_libraries);
 
         const lib = b.addLibrary(.{
@@ -218,15 +221,15 @@ const Library = struct {
                 .link_libraries = link_libraries.wrapped.items,
             }),
         });
-        lib.installHeadersDirectory(b.path(include), "", .{ .include_extensions = &.{".hh"} });
+        lib.installHeadersDirectory(include_path, "", .{ .include_extensions = &.{".hh"} });
         if (config.cdb_steps) |cdb_steps| cdb_steps.append(&lib.step);
         if (config.auto_install) b.installArtifact(lib);
 
         return .{
             .b = b,
             .config_h = config.config_h,
-            .include = include,
-            .src = src,
+            .include = include_path,
+            .src = b.path(src),
             .files = stdx.utils.collectFiles(
                 b,
                 include,
@@ -246,10 +249,10 @@ const Test = struct {
     artifact: *std.Build.Step.Compile,
 
     pub fn init(b: *std.Build, config: ArtifactConfig) Test {
-        const include_dir = b.pathJoin(&.{ Library.library_root, config.name, Library.include_root });
+        _, const include_path = ArtifactConfig.libraryInclude(b, config.name);
         const tests_dir = b.pathJoin(&.{ tests_root, config.name });
         var include_paths: stdx.ArrayList(std.Build.LazyPath) = .fromSlice(b, config.include_paths);
-        include_paths.appendSlice(&.{ b.path(tests_dir), b.path(include_dir) });
+        include_paths.appendSlice(&.{ b.path(tests_dir), include_path });
 
         var link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, config.link_libraries);
         config.tryAddSupport(&include_paths, &link_libraries);
@@ -442,17 +445,23 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libsupport: Library = .init(b, base_lib_config.with("support", .{}));
     base_lib_config.libsupport = libsupport.artifact;
 
-    const libstorage: Library = .init(b, base_lib_config.with("storage", .{}));
+    const libstorage: Library = .init(b, base_lib_config.with("storage", .{
+        .include_paths = &.{
+            ArtifactConfig.libraryInclude(b, "wal").@"1",
+            ArtifactConfig.libraryInclude(b, "txn").@"1",
+        },
+    }));
+    const libwal: Library = .init(b, base_lib_config.with("wal", .{
+        .include_paths = &.{ArtifactConfig.libraryInclude(b, "txn").@"1"},
+        .link_libraries = &.{libstorage.artifact},
+    }));
     const libexec: Library = .init(b, base_lib_config.with("exec", .{}));
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
     const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
-        .link_libraries = &.{libstorage.artifact},
+        .link_libraries = &.{ libstorage.artifact, libwal.artifact },
     }));
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{}));
-    const libwal: Library = .init(b, base_lib_config.with("wal", .{
-        .link_libraries = &.{libstorage.artifact},
-    }));
 
     const link_libraries = [_]*std.Build.Step.Compile{
         libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,
@@ -530,16 +539,16 @@ fn addArtifacts(b: *std.Build, config: struct {
         var unit_suites: stdx.ArrayList(Test) = .init(b);
         unit_suites.append(.init(b, base_test_config.with("support", .{})));
         unit_suites.append(.init(b, base_test_config.with("storage", .{
-            .link_libraries = &.{libstorage.artifact},
+            .link_libraries = &.{ libstorage.artifact, libwal.artifact, libtxn.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("wal", .{
-            .link_libraries = &.{ libwal.artifact, libstorage.artifact },
+            .link_libraries = &.{ libwal.artifact, libstorage.artifact, libtxn.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("txn", .{
             .link_libraries = &.{libtxn.artifact},
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
-            .link_libraries = &.{ libsql.artifact, libstorage.artifact },
+            .link_libraries = &.{ libsql.artifact, libstorage.artifact, libwal.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
             .link_libraries = &.{libexec.artifact},
@@ -550,12 +559,11 @@ fn addArtifacts(b: *std.Build, config: struct {
         unit_suites.append(.init(b, base_test_config.with("net", .{
             .link_libraries = &.{libnet.artifact},
         })));
-        const integration_link_libraries = [_]*std.Build.Step.Compile{
-            libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
-            libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
-        };
         const integration: Test = .init(b, base_test_config.with("integration", .{
-            .link_libraries = &integration_link_libraries,
+            .link_libraries = &.{
+                libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
+                libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
+            },
         }));
 
         const base_fuzz_config: ArtifactConfig = .{
