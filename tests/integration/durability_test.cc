@@ -14,12 +14,10 @@
 
 namespace cairn::tests {
 
-using namespace cairn::storage;
-
 TEST_CASE("Index-organized table durability smoke test") {
     helpers::tempfile file{"iot_durability_smoke"};
-    using tree_t = iot_tree<i64, 128, 64>;
-    page_id_t meta{INVALID_PAGE_ID};
+    using tree_t = storage::iot_tree<i64, 128, 64>;
+    storage::page_id_t meta;
 
     const std::string_view val1{"persistence test data one"};
     const std::string      val2(120, 'd');

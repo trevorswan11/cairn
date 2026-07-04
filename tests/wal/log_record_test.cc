@@ -18,7 +18,7 @@ using namespace cairn::wal;
 
 TEST_CASE("log_record begin") {
     std::vector<std::byte>     buffer;
-    auto                       rec{helpers::write_begin_log(buffer)};
+    const auto                 rec{helpers::write_begin_log(buffer)};
     gsl::span<const std::byte> src{buffer};
     helpers::read_check_log(rec, src);
     CHECK(src.empty());
@@ -26,7 +26,7 @@ TEST_CASE("log_record begin") {
 
 TEST_CASE("log_record update") {
     std::vector<std::byte>     buffer;
-    auto                       rec{helpers::write_update_log(buffer)};
+    const auto                 rec{helpers::write_update_log(buffer)};
     gsl::span<const std::byte> src{buffer};
     helpers::read_check_log(rec, src);
     CHECK(src.empty());
@@ -42,9 +42,9 @@ TEST_CASE("log_record clear") {
 
 TEST_CASE("log_record multiple read/write") {
     std::vector<std::byte> buffer;
-    auto                   begin_rec{helpers::write_begin_log(buffer)};
-    auto                   update_rec{helpers::write_update_log(buffer)};
-    auto                   clear_rec{helpers::write_clear_log(buffer)};
+    const auto             begin_rec{helpers::write_begin_log(buffer)};
+    const auto             update_rec{helpers::write_update_log(buffer)};
+    const auto             clear_rec{helpers::write_clear_log(buffer)};
 
     gsl::span<const std::byte> src{buffer};
     helpers::read_check_log(begin_rec, src);
