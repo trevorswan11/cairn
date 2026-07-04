@@ -19,7 +19,7 @@
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
 #include "support/error.hh"
-#include "wal/log_manager.hh"
+#include "wal/manager.hh"
 
 namespace cairn::storage {
 
@@ -159,7 +159,7 @@ template <usize PoolSize> class buffer_pool {
         return stdx::make_box<buffer_pool>(std::move(dm));
     }
 
-    auto set_log_manager(stdx::option<wal::log_manager&> log) noexcept -> void { log_ = log; }
+    auto set_log_manager(stdx::option<wal::manager&> log) noexcept -> void { log_ = log; }
 
     // Pins the provided pid and returns a stable pointer
     [[nodiscard]] auto fetch_page(page_id_t pid) -> result<gsl::not_null<page*>> {
@@ -371,7 +371,7 @@ template <usize PoolSize> class buffer_pool {
     usize                                                        page_table_churn_{0};
     stdx::fixed::hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
 
-    stdx::option<wal::log_manager&> log_;
+    stdx::option<wal::manager&> log_;
 };
 
 } // namespace cairn::storage

@@ -461,7 +461,9 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
         .link_libraries = &.{ libstorage.artifact, libwal.artifact },
     }));
-    const libtxn: Library = .init(b, base_lib_config.with("txn", .{}));
+    const libtxn: Library = .init(b, base_lib_config.with("txn", .{
+        .include_paths = &.{ArtifactConfig.libraryInclude(b, "wal").@"1"},
+    }));
 
     const link_libraries = [_]*std.Build.Step.Compile{
         libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,

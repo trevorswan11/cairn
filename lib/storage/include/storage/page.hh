@@ -9,7 +9,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/rw_latch.hh"
-#include "wal/log_sequence_number.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn::storage {
 

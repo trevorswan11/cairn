@@ -15,12 +15,12 @@
 
 #include "storage/page.hh"
 #include "support/error.hh"
-#include "txn/txn_id.hh"
-#include "wal/log_sequence_number.hh"
+#include "txn/id.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn {
 
-namespace wal { class log_manager; } // namespace wal
+namespace wal { class manager; } // namespace wal
 
 namespace storage {
 
@@ -32,9 +32,9 @@ enum class slot_size_t : u16 {};
 constexpr auto MAX_SLOT_SIZE{std::numeric_limits<std::underlying_type_t<slot_size_t>>::max()};
 
 struct log_update_params_t {
-    txn::txn_id_t                   txn_id{txn::INVALID_TXN_ID};
+    txn::id_t                   txn_id{txn::INVALID_TXN_ID};
     stdx::option<wal::lsn_t>        prev_lsn;
-    stdx::option<wal::log_manager&> log;
+    stdx::option<wal::manager&> log;
 };
 
 class slotted_page {

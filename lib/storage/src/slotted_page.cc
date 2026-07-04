@@ -13,8 +13,8 @@
 
 #include "storage/page.hh"
 #include "support/error.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_record.hh"
+#include "wal/manager.hh"
+#include "wal/record.hh"
 
 namespace cairn::storage {
 
@@ -63,9 +63,9 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple, log_update_params_t 
 
     page_->set_dirty(true);
     if (log_params.log) {
-        wal::log_record rec;
+        wal::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;
@@ -129,9 +129,9 @@ auto slotted_page::update(slot_id_t                  id,
 
     page_->set_dirty(true);
     if (log_params.log) {
-        wal::log_record rec;
+        wal::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;
@@ -161,9 +161,9 @@ auto slotted_page::remove(slot_id_t id, log_update_params_t log_params) -> resul
 
     page_->set_dirty(true);
     if (log_params.log) {
-        wal::log_record rec;
+        wal::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;

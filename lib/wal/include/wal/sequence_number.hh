@@ -5,6 +5,7 @@
 
 namespace cairn::wal {
 
+// Log sequence number
 enum class lsn_t : i64 {};
 constexpr lsn_t INVALID_LSN{-1};
 

@@ -12,11 +12,11 @@
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
-#include "txn/txn_id.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_reader.hh"
-#include "wal/log_record.hh"
-#include "wal/log_sequence_number.hh"
+#include "txn/id.hh"
+#include "wal/manager.hh"
+#include "wal/reader.hh"
+#include "wal/record.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn::tests {
 
@@ -25,7 +25,7 @@ TEST_CASE("WAL page flush forces WAL flush") {
     helpers::tempfile log_file{"wal_int_log"};
 
     auto             bp{helpers::unwrap(storage::buffer_pool<8>::open(db_file.path))};
-    wal::log_manager log{log_file.path, 1'024};
+    wal::manager log{log_file.path, 1'024};
     bp->set_log_manager(log);
 
     storage::page_id_t pid;
@@ -39,7 +39,7 @@ TEST_CASE("WAL page flush forces WAL flush") {
         const std::string_view data{"hello wal integration"};
         const auto             slot_id = helpers::unwrap(sp.insert(helpers::span_from_string(data),
                                                                    {
-                                                                       .txn_id   = txn::txn_id_t{1},
+                                                                       .txn_id   = txn::id_t{1},
                                                                        .prev_lsn = stdx::none,
                                                                        .log      = log,
                                                        }));
@@ -57,11 +57,11 @@ TEST_CASE("WAL page flush forces WAL flush") {
     CHECK(log.flushed_lsn() >= expected_lsn);
 
     {
-        auto reader{helpers::unwrap(wal::log_reader::open(log_file.path))};
+        auto reader{helpers::unwrap(wal::reader::open(log_file.path))};
         auto r{helpers::unwrap(reader.next())};
         CHECK(r.lsn == expected_lsn);
-        CHECK(r.txn_id == txn::txn_id_t{1});
-        CHECK(r.type == wal::log_record_type::UPDATE);
+        CHECK(r.txn_id == txn::id_t{1});
+        CHECK(r.type == wal::record_type::UPDATE);
         CHECK(r.page_id == pid);
         CHECK(r.slot_id == storage::slot_id_t{0});
         CHECK(helpers::string_from_span(r.redo_data) == "hello wal integration");
@@ -73,7 +73,7 @@ TEST_CASE("WAL eviction forces WAL flush") {
     helpers::tempfile log_file{"wal_evict_log"};
 
     auto             bp{helpers::unwrap(storage::buffer_pool<1>::open(db_file.path))};
-    wal::log_manager log{log_file.path, 1'024};
+    wal::manager log{log_file.path, 1'024};
     bp->set_log_manager(log);
 
     wal::lsn_t expected_lsn;
@@ -85,7 +85,7 @@ TEST_CASE("WAL eviction forces WAL flush") {
         const std::string_view data{"eviction test record"};
         CHECK(sp.insert(helpers::span_from_string(data),
                         {
-                            .txn_id   = txn::txn_id_t{42},
+                            .txn_id   = txn::id_t{42},
                             .prev_lsn = stdx::none,
                             .log      = log,
                         }));

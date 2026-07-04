@@ -5,15 +5,15 @@
 
 namespace cairn::txn {
 
-enum class txn_id_t : i64 {};
-constexpr txn_id_t INVALID_TXN_ID{-1};
+enum class id_t : i64 {};
+constexpr id_t INVALID_TXN_ID{-1};
 
 } // namespace cairn::txn
 
 namespace stdx {
 
-template <> struct nullable<cairn::txn::txn_id_t> {
-    using tid_t = cairn::txn::txn_id_t;
+template <> struct nullable<cairn::txn::id_t> {
+    using tid_t = cairn::txn::id_t;
     [[nodiscard]] static constexpr auto invalid() noexcept -> tid_t {
         return cairn::txn::INVALID_TXN_ID;
     }

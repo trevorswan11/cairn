@@ -10,12 +10,12 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
-#include "txn/txn_id.hh"
-#include "wal/log_sequence_number.hh"
+#include "txn/id.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn::wal {
 
-enum class log_record_type : u8 {
+enum class record_type : u8 {
     BEGIN,
     COMMIT,
     ABORT,
@@ -25,12 +25,12 @@ enum class log_record_type : u8 {
     CHECKPOINT_END,
 };
 
-struct log_record {
+struct record {
     i32                 size{0};
     lsn_t               lsn{INVALID_LSN};
     stdx::option<lsn_t> prev_lsn;
-    txn::txn_id_t       txn_id{txn::INVALID_TXN_ID};
-    log_record_type     type{log_record_type::BEGIN};
+    txn::id_t       txn_id{txn::INVALID_TXN_ID};
+    record_type     type{record_type::BEGIN};
 
     stdx::option<storage::page_id_t> page_id;
     stdx::option<storage::slot_id_t> slot_id;
@@ -43,9 +43,9 @@ struct log_record {
 
     template <stdx::NumericIntegral I = usize>
     static constexpr auto MINIMUM_SIZE{static_cast<I>(
-        sizeof(log_record::size) + sizeof(log_record::lsn) + sizeof(log_record::prev_lsn) +
-        sizeof(log_record::txn_id) + sizeof(log_record::type) + sizeof(log_record::checksum) +
-        sizeof(log_record::size))};
+        sizeof(record::size) + sizeof(record::lsn) + sizeof(record::prev_lsn) +
+        sizeof(record::txn_id) + sizeof(record::type) + sizeof(record::checksum) +
+        sizeof(record::size))};
 
     template <stdx::NumericIntegral I = usize> [[nodiscard]] auto get_size() const noexcept -> I {
         return static_cast<I>(size);
@@ -56,7 +56,7 @@ struct log_record {
 
     // The provided span is advanced to the next record only on success
     [[nodiscard]] static auto deserialize(gsl::span<const std::byte>& src) noexcept
-        -> result<log_record>;
+        -> result<record>;
 };
 
 } // namespace cairn::wal
