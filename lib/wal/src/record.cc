@@ -69,17 +69,20 @@ auto record::serialize(std::vector<std::byte>& dest) const -> void {
 
         dest.insert_range(dest.cend(), redo_data);
     } else if (type == record_type::CHECKPOINT_END) {
+        while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
         write_arbitrary(dest, static_cast<u32>(dpt.size()));
-        for (const auto& entry : dpt) {
-            write_arbitrary(dest, entry.page_id);
-            write_arbitrary(dest, entry.rec_lsn);
+        while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
+        if (!dpt.empty()) {
+            const auto* bytes{reinterpret_cast<const std::byte*>(dpt.data())};
+            dest.insert(dest.end(), bytes, bytes + dpt.size_bytes());
         }
 
+        while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
         write_arbitrary(dest, static_cast<u32>(att.size()));
-        for (const auto& entry : att) {
-            write_arbitrary(dest, entry.txn_id);
-            write_arbitrary(dest, entry.state);
-            write_arbitrary(dest, entry.last_lsn);
+        while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
+        if (!att.empty()) {
+            const auto* bytes{reinterpret_cast<const std::byte*>(att.data())};
+            dest.insert(dest.end(), bytes, bytes + att.size_bytes());
         }
     }
 
@@ -142,15 +145,28 @@ auto record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<rec
         record.redo_data = record_span.subspan(0, redo_len);
         record_span      = record_span.subspan(redo_len);
     } else if (record.type == record_type::CHECKPOINT_END) {
+        // This is needed due to some zero padding introduced in serialization
+        auto align_span = [&](gsl::span<const std::byte>& span) {
+            const auto offset{static_cast<usize>(span.data() - original_span.data())};
+            const auto rem{offset % 8};
+            if (rem != 0) { span = span.subspan(8 - rem); }
+        };
+
+        align_span(record_span);
         const auto dpt_len{read_arbitrary<u32>(record_span)};
-        const auto dpt_bytes_len = dpt_len * sizeof(checkpoint_dpt_entry);
-        record.dpt               = gsl::span<const checkpoint_dpt_entry>{
+
+        align_span(record_span);
+        const auto dpt_bytes_len{dpt_len * sizeof(checkpoint_dpt_entry)};
+        record.dpt = gsl::span<const checkpoint_dpt_entry>{
             reinterpret_cast<const checkpoint_dpt_entry*>(record_span.data()), dpt_len};
         record_span = record_span.subspan(dpt_bytes_len);
 
+        align_span(record_span);
         const auto att_len{read_arbitrary<u32>(record_span)};
-        const auto att_bytes_len = att_len * sizeof(checkpoint_att_entry);
-        record.att               = gsl::span<const checkpoint_att_entry>{
+
+        align_span(record_span);
+        const auto att_bytes_len{att_len * sizeof(checkpoint_att_entry)};
+        record.att = gsl::span<const checkpoint_att_entry>{
             reinterpret_cast<const checkpoint_att_entry*>(record_span.data()), att_len};
         record_span = record_span.subspan(att_bytes_len);
     }
