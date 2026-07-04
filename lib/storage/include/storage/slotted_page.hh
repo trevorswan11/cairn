@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
+#include <type_traits>
 #include <utility>
 
 #include <gsl/pointers>
@@ -13,15 +15,27 @@
 
 #include "storage/page.hh"
 #include "support/error.hh"
+#include "txn/txn_id.hh"
+#include "wal/log_sequence_number.hh"
 
-namespace cairn::storage {
+namespace cairn {
+
+namespace wal { class log_manager; } // namespace wal
+
+namespace storage {
 
 enum class slot_id_t : i32 {};
-
 constexpr slot_id_t INVALID_SLOT_ID{-1};
 
 // Uses the default specialization of stdx::option (compact) since u16 exceeds PAGE_SIZE
 enum class slot_size_t : u16 {};
+constexpr auto MAX_SLOT_SIZE{std::numeric_limits<std::underlying_type_t<slot_size_t>>::max()};
+
+struct log_update_params_t {
+    txn::txn_id_t                   txn_id{txn::INVALID_TXN_ID};
+    stdx::option<wal::lsn_t>        prev_lsn;
+    stdx::option<wal::log_manager&> log;
+};
 
 class slotted_page {
   public:
@@ -30,10 +44,13 @@ class slotted_page {
     // Zeroes out the page's internal header
     auto refresh_page() noexcept -> void;
 
-    [[nodiscard]] auto insert(gsl::span<const std::byte> tuple) -> result<slot_id_t>;
+    [[nodiscard]] auto insert(gsl::span<const std::byte> tuple, log_update_params_t log_params = {})
+        -> result<slot_id_t>;
     [[nodiscard]] auto get(slot_id_t id) const -> result<gsl::span<const std::byte>>;
-    [[nodiscard]] auto update(slot_id_t id, gsl::span<const std::byte> tuple) -> result<void>;
-    [[nodiscard]] auto remove(slot_id_t id) -> result<void>;
+    [[nodiscard]] auto update(slot_id_t                  id,
+                              gsl::span<const std::byte> tuple,
+                              log_update_params_t        log_params = {}) -> result<void>;
+    [[nodiscard]] auto remove(slot_id_t id, log_update_params_t log_params = {}) -> result<void>;
     auto               compact() noexcept -> void;
 
     [[nodiscard]] auto slot_count() const noexcept -> i32;
@@ -92,4 +109,6 @@ class slotted_page {
     stdx::option<page&> page_;
 };
 
-} // namespace cairn::storage
+} // namespace storage
+
+} // namespace cairn

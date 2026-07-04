@@ -19,6 +19,7 @@
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
 #include "support/error.hh"
+#include "wal/log_manager.hh"
 
 namespace cairn::storage {
 
@@ -157,6 +158,8 @@ template <usize PoolSize> class buffer_pool {
         auto dm{TRY(disk_manager::open(path))};
         return stdx::make_box<buffer_pool>(std::move(dm));
     }
+
+    auto set_log_manager(stdx::option<wal::log_manager&> log) noexcept -> void { log_ = log; }
 
     // Pins the provided pid and returns a stable pointer
     [[nodiscard]] auto fetch_page(page_id_t pid) -> result<gsl::not_null<page*>> {
@@ -321,6 +324,13 @@ template <usize PoolSize> class buffer_pool {
         const auto fid{*victim};
         auto&      f{frame_at(fid)};
         if (f.is_dirty()) {
+            if (auto lsn{f.page_lsn()}; log_ && lsn) {
+                if (auto r{log_->flush(*lsn)}; !r) {
+                    replacer_.access(fid);
+                    replacer_.set_evictable(fid, true);
+                    return stdx::err{r.error()};
+                }
+            }
             // If the frame cannot persist then it must stay resident
             if (auto r{disk_->write_page(f.page_id(), f.data())}; !r) {
                 replacer_.access(fid);
@@ -345,6 +355,7 @@ template <usize PoolSize> class buffer_pool {
     [[nodiscard]] auto flush_locked(frame_id_t fid) -> result<void> {
         auto& f{frame_at(fid)};
         if (!f.is_dirty()) { return {}; }
+        if (auto lsn{f.page_lsn()}; log_ && lsn) { TRY(log_->flush(*lsn)); }
         TRY(disk_->write_page(f.page_id(), f.data()));
         f.set_dirty(false);
         return {};
@@ -359,6 +370,8 @@ template <usize PoolSize> class buffer_pool {
     std::vector<page_id_t>                                       free_pages_;
     usize                                                        page_table_churn_{0};
     stdx::fixed::hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
+
+    stdx::option<wal::log_manager&> log_;
 };
 
 } // namespace cairn::storage

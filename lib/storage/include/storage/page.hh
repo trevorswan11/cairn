@@ -9,6 +9,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/rw_latch.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::storage {
 
@@ -30,26 +31,32 @@ class page {
     [[nodiscard]] constexpr auto pin_count() const noexcept -> i32 { return pin_count_; }
     [[nodiscard]] constexpr auto is_dirty() const noexcept -> bool { return is_dirty_; }
     [[nodiscard]] auto           latch() noexcept -> rw_latch& { return latch_; }
+    [[nodiscard]] constexpr auto page_lsn() const noexcept -> stdx::option<wal::lsn_t> {
+        return page_lsn_;
+    }
 
     // Rebinds the page to a fresh id and clears its state
-    auto reset(page_id_t pid) noexcept -> void {
+    constexpr auto reset(page_id_t pid) noexcept -> void {
+        std::fill_n(data_, DB_PAGE_SIZE, std::byte{0});
         page_id_   = pid;
         pin_count_ = 0;
         is_dirty_  = false;
-        std::fill_n(data_, DB_PAGE_SIZE, std::byte{0});
+        page_lsn_.reset();
     }
 
+    constexpr auto set_page_lsn(stdx::option<wal::lsn_t> lsn) noexcept -> void { page_lsn_ = lsn; }
     constexpr auto set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
     constexpr auto pin() noexcept -> i32 { return ++pin_count_; }
     constexpr auto unpin() noexcept -> i32 { return --pin_count_; }
 
   private:
     alignas(std::max_align_t) std::byte data_[DB_PAGE_SIZE]{};
+    rw_latch latch_;
 
-    page_id_t page_id_{INVALID_PAGE_ID};
-    i32       pin_count_{0};
-    bool      is_dirty_{false};
-    rw_latch  latch_;
+    page_id_t                page_id_{INVALID_PAGE_ID};
+    i32                      pin_count_{0};
+    bool                     is_dirty_{false};
+    stdx::option<wal::lsn_t> page_lsn_{wal::INVALID_LSN};
 };
 
 } // namespace cairn::storage
