@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
+#include <stdx/memory.hh>
 #include <stdx/types.hh>
 
 #include "helpers/mock_records.hh"
@@ -23,12 +24,13 @@
 namespace cairn::tests {
 
 using namespace cairn::wal;
+using namespace stdx::size_literals;
 
 TEST_CASE("log_manager append and flush") {
     helpers::tempfile file{"log_manager_basic"};
 
     {
-        manager manager{file.path, 1'024};
+        manager manager{file.path, 1_KiB};
 
         record rec1;
         rec1.txn_id = txn::id_t{1};
@@ -75,7 +77,7 @@ TEST_CASE("log_manager double buffering boundary") {
 
         // Append multiple records to force multiple buffer swaps
         std::vector<lsn_t> lsns;
-        for (i64 i = 0; i < 10; ++i) {
+        for (i64 i{0}; i < 10; ++i) {
             record rec;
             rec.txn_id    = txn::id_t{i};
             rec.type      = record_type::UPDATE;
@@ -95,7 +97,7 @@ TEST_CASE("log_manager double buffering boundary") {
     {
         auto reader{helpers::unwrap(reader::open(file.path))};
         for (i64 i{0}; i < 10; ++i) {
-            auto r = helpers::unwrap(reader.next());
+            auto r{helpers::unwrap(reader.next())};
             CHECK(r.lsn == lsn_t{i + 1});
             CHECK(r.txn_id == txn::id_t{i});
             CHECK(r.page_id == storage::page_id_t{i});
@@ -111,16 +113,16 @@ TEST_CASE("log_manager concurrent appends") {
     const i32 appends_per_thread{50};
 
     {
-        manager manager{file.path, 4'096};
+        manager manager{file.path, 4_KiB};
 
         std::vector<std::jthread> workers;
         std::atomic<bool>         go{false};
 
-        for (i32 t = 0; t < num_threads; ++t) {
+        for (i32 t{0}; t < num_threads; ++t) {
             workers.emplace_back([&manager, t, &go]() {
                 while (!go.load()) { std::this_thread::yield(); }
 
-                for (i32 i = 0; i < appends_per_thread; ++i) {
+                for (i32 i{0}; i < appends_per_thread; ++i) {
                     record rec;
                     rec.txn_id    = txn::id_t{t};
                     rec.type      = record_type::UPDATE;
