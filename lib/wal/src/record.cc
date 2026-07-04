@@ -16,6 +16,8 @@
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "wal/checkpoints.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn::wal {
 
@@ -66,6 +68,19 @@ auto record::serialize(std::vector<std::byte>& dest) const -> void {
         write_arbitrary(dest, undo_next_lsn);
 
         dest.insert_range(dest.cend(), redo_data);
+    } else if (type == record_type::CHECKPOINT_END) {
+        write_arbitrary(dest, static_cast<u32>(dpt.size()));
+        for (const auto& entry : dpt) {
+            write_arbitrary(dest, entry.page_id);
+            write_arbitrary(dest, entry.rec_lsn);
+        }
+
+        write_arbitrary(dest, static_cast<u32>(att.size()));
+        for (const auto& entry : att) {
+            write_arbitrary(dest, entry.txn_id);
+            write_arbitrary(dest, entry.state);
+            write_arbitrary(dest, entry.last_lsn);
+        }
     }
 
     const auto checksum_pos{dest.size()};
@@ -126,6 +141,18 @@ auto record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<rec
 
         record.redo_data = record_span.subspan(0, redo_len);
         record_span      = record_span.subspan(redo_len);
+    } else if (record.type == record_type::CHECKPOINT_END) {
+        const auto dpt_len{read_arbitrary<u32>(record_span)};
+        const auto dpt_bytes_len = dpt_len * sizeof(checkpoint_dpt_entry);
+        record.dpt               = gsl::span<const checkpoint_dpt_entry>{
+            reinterpret_cast<const checkpoint_dpt_entry*>(record_span.data()), dpt_len};
+        record_span = record_span.subspan(dpt_bytes_len);
+
+        const auto att_len{read_arbitrary<u32>(record_span)};
+        const auto att_bytes_len = att_len * sizeof(checkpoint_att_entry);
+        record.att               = gsl::span<const checkpoint_att_entry>{
+            reinterpret_cast<const checkpoint_att_entry*>(record_span.data()), att_len};
+        record_span = record_span.subspan(att_bytes_len);
     }
 
     // Decode footer

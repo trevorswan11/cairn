@@ -36,6 +36,9 @@ enum class error_t : u8 {
     WAL_CHECKSUM_CORRUPT,   // deserializing a log record resulted in a different checksum
     WAL_LOG_FILE_NOT_FOUND, // the provided filepath did not resolve to a file on disk
     WAL_EOF, // a prev or next read could not succeed as the file is at the start or end
+    WAL_CONTROL_PATH_NOT_FOUND, // the provided checkpoint control path does not exist
+
+    TXN_NOT_FOUND, // the requested transaction id is not active
 };
 
 template <typename T> using result = stdx::result<T, error_t>;

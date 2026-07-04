@@ -18,6 +18,7 @@
 #include "wal/manager.hh"
 #include "wal/reader.hh"
 #include "wal/record.hh"
+#include "wal/sequence_number.hh"
 
 namespace cairn::tests {
 
@@ -83,7 +84,7 @@ TEST_CASE("log_manager double buffering boundary") {
             rec.redo_data = helpers::redo_bytes;
             rec.undo_data = helpers::undo_bytes;
 
-            lsns.push_back(helpers::unwrap(manager.append_record(rec)));
+            lsns.emplace_back(helpers::unwrap(manager.append_record(rec)));
         }
 
         // Flush all
@@ -133,7 +134,6 @@ TEST_CASE("log_manager concurrent appends") {
         }
 
         go.store(true);
-        for (auto& w : workers) { w.join(); }
     }
 
     // Read back and verify count and content consistency

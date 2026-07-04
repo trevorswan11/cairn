@@ -19,6 +19,7 @@
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
 #include "support/error.hh"
+#include "wal/checkpoints.hh"
 #include "wal/manager.hh"
 
 namespace cairn::storage {
@@ -160,6 +161,16 @@ template <usize PoolSize> class buffer_pool {
     }
 
     auto set_log_manager(stdx::option<wal::manager&> log) noexcept -> void { log_ = log; }
+
+    auto snapshot_dpt() noexcept -> std::vector<wal::checkpoint_dpt_entry> {
+        std::scoped_lock                       lock{mutex_};
+        std::vector<wal::checkpoint_dpt_entry> buf;
+        for (usize i{0}; i < PoolSize; ++i) {
+            auto& f{frame_at(static_cast<frame_id_t>(i))};
+            if (f.is_dirty() && f.rec_lsn()) { buf.emplace_back(f.page_id(), *f.rec_lsn()); }
+        }
+        return buf;
+    }
 
     // Pins the provided pid and returns a stable pointer
     [[nodiscard]] auto fetch_page(page_id_t pid) -> result<gsl::not_null<page*>> {
@@ -338,6 +349,8 @@ template <usize PoolSize> class buffer_pool {
                 return stdx::err{r.error()};
             }
             f.set_dirty(false);
+            f.set_page_lsn(stdx::none);
+            f.clear_rec_lsn();
         }
         page_table_.remove(f.page_id());
         note_table_removal();
@@ -358,6 +371,8 @@ template <usize PoolSize> class buffer_pool {
         if (auto lsn{f.page_lsn()}; log_ && lsn) { TRY(log_->flush(*lsn)); }
         TRY(disk_->write_page(f.page_id(), f.data()));
         f.set_dirty(false);
+        f.set_page_lsn(stdx::none);
+        f.clear_rec_lsn();
         return {};
     }
 
