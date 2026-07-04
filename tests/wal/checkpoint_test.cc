@@ -41,8 +41,8 @@ TEST_CASE("checkpoint basic accuracy") {
     helpers::tempfile control_file{"checkpoint_basic_control"};
 
     using pool_t = buffer_pool<8>;
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     wal::manager log{log_file.path, 4_KiB};
+    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager          tm;
@@ -115,8 +115,8 @@ TEST_CASE("checkpoint concurrent with page writes") {
     helpers::tempfile control_file{"checkpoint_concurrent_control"};
 
     using pool_t = buffer_pool<8>;
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     wal::manager log{log_file.path, 16_KiB};
+    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager          tm;
