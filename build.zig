@@ -559,11 +559,13 @@ fn addArtifacts(b: *std.Build, config: struct {
         unit_suites.append(.init(b, base_test_config.with("net", .{
             .link_libraries = &.{libnet.artifact},
         })));
+
+        const integration_libraries = [_]*std.Build.Step.Compile{
+            libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
+            libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
+        };
         const integration: Test = .init(b, base_test_config.with("integration", .{
-            .link_libraries = &.{
-                libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
-                libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
-            },
+            .link_libraries = &integration_libraries,
         }));
 
         const base_fuzz_config: ArtifactConfig = .{
@@ -578,17 +580,16 @@ fn addArtifacts(b: *std.Build, config: struct {
             .profile = config.profile,
             .install_dir = fuzz_install_dir,
             .install_only = config.install_tests_only,
-            .libsupport = libsupport.artifact,
             .libtesthelpers = libtesthelpers.artifact,
         };
 
         var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
-                .link_libraries = &.{libstorage.artifact},
+                .link_libraries = &integration_libraries,
             })));
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
-                .link_libraries = &.{libstorage.artifact},
+                .link_libraries = &integration_libraries,
             })));
         }
 
