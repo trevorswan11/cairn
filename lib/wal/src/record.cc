@@ -1,4 +1,4 @@
-#include "wal/log_record.hh"
+#include "wal/record.hh"
 
 #include <cstddef>
 #include <cstring>
@@ -15,7 +15,7 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
-#include "txn/txn_id.hh"
+#include "txn/id.hh"
 
 namespace cairn::wal {
 
@@ -41,7 +41,7 @@ template <typename T> auto read_arbitrary(gsl::span<const std::byte>& src) -> T 
 
 } // namespace
 
-auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
+auto record::serialize(std::vector<std::byte>& dest) const -> void {
     PROFILE_FUNCTION();
     const auto start{dest.size()};
     write_arbitrary(dest, size); // Will be overwritten
@@ -51,7 +51,7 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
     write_arbitrary(dest, type);
 
     // Type specific fields
-    if (type == log_record_type::UPDATE) {
+    if (type == record_type::UPDATE) {
         write_arbitrary(dest, page_id);
         write_arbitrary(dest, slot_id);
         write_arbitrary(dest, static_cast<u32>(redo_data.size()));
@@ -59,7 +59,7 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
 
         dest.insert_range(dest.cend(), redo_data);
         dest.insert_range(dest.cend(), undo_data);
-    } else if (type == log_record_type::CLEAR) {
+    } else if (type == record_type::CLEAR) {
         write_arbitrary(dest, page_id);
         write_arbitrary(dest, slot_id);
         write_arbitrary(dest, static_cast<u32>(redo_data.size()));
@@ -85,7 +85,7 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
     write_arbitrary_at(dest, stdx::crc::crc32(checksum_bytes), checksum_pos);
 }
 
-auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<log_record> {
+auto record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<record> {
     PROFILE_FUNCTION();
     const auto original_span{src};
     if (src.size() < MINIMUM_SIZE<>) { return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL}; }
@@ -100,15 +100,15 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
                                            static_cast<usize>(record_size) - sizeof(record_size))};
     src = original_span.subspan(static_cast<usize>(record_size));
 
-    log_record record;
+    record record;
     record.size     = record_size;
     record.lsn      = read_arbitrary<lsn_t>(record_span);
     record.prev_lsn = read_arbitrary<stdx::option<lsn_t>>(record_span);
-    record.txn_id   = read_arbitrary<txn::txn_id_t>(record_span);
-    record.type     = read_arbitrary<log_record_type>(record_span);
+    record.txn_id   = read_arbitrary<txn::id_t>(record_span);
+    record.type     = read_arbitrary<record_type>(record_span);
 
     // Type specific fields
-    if (record.type == log_record_type::UPDATE) {
+    if (record.type == record_type::UPDATE) {
         record.page_id = read_arbitrary<stdx::option<storage::page_id_t>>(record_span);
         record.slot_id = read_arbitrary<stdx::option<storage::slot_id_t>>(record_span);
         const auto redo_len{read_arbitrary<u32>(record_span)};
@@ -118,7 +118,7 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
         record_span      = record_span.subspan(redo_len);
         record.undo_data = record_span.subspan(0, undo_len);
         record_span      = record_span.subspan(undo_len);
-    } else if (record.type == log_record_type::CLEAR) {
+    } else if (record.type == record_type::CLEAR) {
         record.page_id = read_arbitrary<stdx::option<storage::page_id_t>>(record_span);
         record.slot_id = read_arbitrary<stdx::option<storage::slot_id_t>>(record_span);
         const auto redo_len{read_arbitrary<u32>(record_span)};

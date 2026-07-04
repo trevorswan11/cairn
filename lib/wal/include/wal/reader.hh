@@ -10,28 +10,28 @@
 
 #include "support/error.hh"
 #include "support/io_utils.hh"
-#include "wal/log_record.hh"
+#include "wal/record.hh"
 
 namespace cairn::wal {
 
 // An bidirectional iterator over a log file of records
-class log_reader {
+class reader {
   public:
-    [[nodiscard]] static auto open(std::filesystem::path log_path) -> result<log_reader>;
+    [[nodiscard]] static auto open(std::filesystem::path log_path) -> result<reader>;
 
     // The returned record's data is only valid until the next `next` or `prev` call
-    [[nodiscard]] auto next() -> result<log_record>;
+    [[nodiscard]] auto next() -> result<record>;
 
     // The returned record's data is only valid until the next `next` or `prev` call
-    [[nodiscard]] auto prev() -> result<log_record>;
+    [[nodiscard]] auto prev() -> result<record>;
 
     auto seek_to_start() -> result<void> { return io_utils::seek_to_beg(file_); }
     auto seek_to_end() -> result<void> { return io_utils::seek_to_end(file_); }
 
   private:
-    log_reader(std::ifstream file, i64 file_size) : file_{std::move(file)}, file_size_{file_size} {}
+    reader(std::ifstream file, i64 file_size) : file_{std::move(file)}, file_size_{file_size} {}
 
-    [[nodiscard]] auto deserialize_record() noexcept -> result<log_record>;
+    [[nodiscard]] auto deserialize_record() noexcept -> result<record>;
 
   private:
     std::ifstream          file_;

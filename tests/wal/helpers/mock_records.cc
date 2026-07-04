@@ -11,31 +11,31 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "testhelpers/unwrap.hh"
-#include "txn/txn_id.hh"
-#include "wal/log_record.hh"
+#include "txn/id.hh"
+#include "wal/record.hh"
 
 namespace cairn::tests::helpers {
 
-auto write_begin_log(std::vector<std::byte>& buffer) -> wal::log_record {
-    wal::log_record rec;
+auto write_begin_log(std::vector<std::byte>& buffer) -> wal::record {
+    wal::record rec;
     rec.size     = 37;
     rec.lsn      = wal::lsn_t{42};
     rec.prev_lsn = wal::lsn_t{10};
-    rec.txn_id   = txn::txn_id_t{3};
-    rec.type     = wal::log_record_type::BEGIN;
+    rec.txn_id   = txn::id_t{3};
+    rec.type     = wal::record_type::BEGIN;
     rec.checksum = 297'829'837;
 
     rec.serialize(buffer);
     return rec;
 }
 
-auto write_update_log(std::vector<std::byte>& buffer) -> wal::log_record {
-    wal::log_record rec;
+auto write_update_log(std::vector<std::byte>& buffer) -> wal::record {
+    wal::record rec;
     rec.size      = 62;
     rec.lsn       = wal::lsn_t{43};
     rec.prev_lsn  = wal::lsn_t{42};
-    rec.txn_id    = txn::txn_id_t{3};
-    rec.type      = wal::log_record_type::UPDATE;
+    rec.txn_id    = txn::id_t{3};
+    rec.type      = wal::record_type::UPDATE;
     rec.page_id   = storage::page_id_t{101};
     rec.slot_id   = storage::slot_id_t{5};
     rec.redo_data = redo_bytes;
@@ -46,13 +46,13 @@ auto write_update_log(std::vector<std::byte>& buffer) -> wal::log_record {
     return rec;
 }
 
-auto write_clear_log(std::vector<std::byte>& buffer) -> wal::log_record {
-    wal::log_record rec;
+auto write_clear_log(std::vector<std::byte>& buffer) -> wal::record {
+    wal::record rec;
     rec.size          = 64;
     rec.lsn           = wal::lsn_t{44};
     rec.prev_lsn      = stdx::none;
-    rec.txn_id        = txn::txn_id_t{3};
-    rec.type          = wal::log_record_type::CLEAR;
+    rec.txn_id        = txn::id_t{3};
+    rec.type          = wal::record_type::CLEAR;
     rec.page_id       = storage::page_id_t{102};
     rec.slot_id       = stdx::none;
     rec.undo_next_lsn = wal::lsn_t{10};
@@ -63,14 +63,14 @@ auto write_clear_log(std::vector<std::byte>& buffer) -> wal::log_record {
     return rec;
 }
 
-auto read_check_log(const wal::log_record& original, gsl::span<const std::byte>& src)
-    -> wal::log_record {
-    const auto decoded{helpers::unwrap(wal::log_record::deserialize(src))};
+auto read_check_log(const wal::record& original, gsl::span<const std::byte>& src)
+    -> wal::record {
+    const auto decoded{helpers::unwrap(wal::record::deserialize(src))};
     records_eq(original, decoded);
     return decoded;
 }
 
-auto records_eq(const wal::log_record& a, const wal::log_record& b) noexcept -> void {
+auto records_eq(const wal::record& a, const wal::record& b) noexcept -> void {
     CHECK(a.size == b.size);
     CHECK(a.lsn == b.lsn);
     CHECK(a.prev_lsn == b.prev_lsn);

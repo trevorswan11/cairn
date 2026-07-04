@@ -1,4 +1,4 @@
-#include "txn/txn_id.hh"
+#include "txn/id.hh"
 
 #include <stdx/types.hh>
 
