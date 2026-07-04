@@ -13,6 +13,8 @@
 
 #include "storage/page.hh"
 #include "support/error.hh"
+#include "wal/log_manager.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::storage {
 
@@ -21,7 +23,8 @@ auto slotted_page::refresh_page() noexcept -> void {
     *header = header_t{};
 }
 
-auto slotted_page::insert(gsl::span<const std::byte> tuple) -> result<slot_id_t> {
+auto slotted_page::insert(gsl::span<const std::byte> tuple, log_update_params_t log_params)
+    -> result<slot_id_t> {
     PROFILE_FUNCTION();
     auto       header{as_header()};
     const auto i_tuple_size{static_cast<i32>(tuple.size())};
@@ -57,56 +60,117 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple) -> result<slot_id_t>
     const auto u_id{static_cast<usize>(id)};
     slots[u_id].size.emplace(static_cast<u16>(tuple.size()));
     slots[u_id].offset = static_cast<u16>(header->free_space_ptr);
+
+    page_->set_dirty(true);
+    if (log_params.log) {
+        wal::log_record rec;
+        rec.txn_id    = log_params.txn_id;
+        rec.type      = wal::log_record_type::UPDATE;
+        rec.page_id   = page_->page_id();
+        rec.slot_id   = id;
+        rec.prev_lsn  = log_params.prev_lsn;
+        rec.redo_data = tuple;
+        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+    }
+
     return id;
 }
 
 auto slotted_page::get(slot_id_t id) const -> result<gsl::span<const std::byte>> {
-    const auto [_, slot] = TRY(get_raw(id));
+    const auto [_, slot]{TRY(get_raw(id))};
     return gsl::span{page_->data() + slot->offset, std::to_underlying(*slot->size)};
 }
 
-auto slotted_page::update(slot_id_t id, gsl::span<const std::byte> tuple) -> result<void> {
+auto slotted_page::update(slot_id_t                  id,
+                          gsl::span<const std::byte> tuple,
+                          log_update_params_t        log_params) -> result<void> {
     PROFILE_FUNCTION();
-    const auto [header, slot] = TRY(get_raw(id));
+
+    thread_local stdx::fixed::vector<std::byte, MAX_SLOT_SIZE> old_tuple_data;
+    old_tuple_data.clear();
+    if (log_params.log) {
+        const auto [_, slot]{TRY(get_raw(id))};
+        const auto size{std::to_underlying(*slot->size)};
+        old_tuple_data.resize(size);
+        std::copy_n(page_->data() + slot->offset, size, old_tuple_data.data());
+    }
+
+    const auto [header, slot]{TRY(get_raw(id))};
     const auto slot_size{std::to_underlying(*slot->size)};
     if (tuple.size() < slot_size) {
         std::copy_n(tuple.data(), tuple.size(), page_->data() + slot->offset);
         slot->size.emplace(static_cast<u16>(tuple.size()));
-        return {};
-    }
+    } else {
+        // We need more space
+        const auto old_offset{slot->offset};
+        slot->size.reset();
+        header->deleted_slot_count++;
 
-    // We need more space
-    const auto old_offset{slot->offset};
-    slot->size.reset();
-    header->deleted_slot_count++;
-
-    // Compacting might open up enough space for the tuple to pack in
-    if (static_cast<usize>(free_space()) < tuple.size()) {
-        compact();
-
-        // Still cannot fit the tuple :(
+        // Compacting might open up enough space for the tuple to pack in
         if (static_cast<usize>(free_space()) < tuple.size()) {
-            slot->size.emplace(slot_size);
-            slot->offset = old_offset;
-            header->deleted_slot_count--;
-            return stdx::err{error_t::STORAGE_PAGE_FULL};
+            compact();
+
+            // Still cannot fit the tuple :(
+            if (static_cast<usize>(free_space()) < tuple.size()) {
+                slot->size.emplace(slot_size);
+                slot->offset = old_offset;
+                header->deleted_slot_count--;
+                return stdx::err{error_t::STORAGE_PAGE_FULL};
+            }
         }
+
+        header->deleted_slot_count--;
+        header->free_space_ptr -= static_cast<i32>(tuple.size());
+        std::copy_n(tuple.data(), tuple.size(), page_->data() + header->free_space_ptr);
+
+        slot->offset = static_cast<u16>(header->free_space_ptr);
+        slot->size.emplace(static_cast<u16>(tuple.size()));
     }
 
-    header->deleted_slot_count--;
-    header->free_space_ptr -= static_cast<i32>(tuple.size());
-    std::copy_n(tuple.data(), tuple.size(), page_->data() + header->free_space_ptr);
+    page_->set_dirty(true);
+    if (log_params.log) {
+        wal::log_record rec;
+        rec.txn_id    = log_params.txn_id;
+        rec.type      = wal::log_record_type::UPDATE;
+        rec.page_id   = page_->page_id();
+        rec.slot_id   = id;
+        rec.prev_lsn  = log_params.prev_lsn;
+        rec.redo_data = tuple;
+        rec.undo_data = old_tuple_data;
+        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+    }
 
-    slot->offset = static_cast<u16>(header->free_space_ptr);
-    slot->size.emplace(static_cast<u16>(tuple.size()));
     return {};
 }
 
-auto slotted_page::remove(slot_id_t id) -> result<void> {
+auto slotted_page::remove(slot_id_t id, log_update_params_t log_params) -> result<void> {
     PROFILE_FUNCTION();
-    const auto [header, slot] = TRY(get_raw(id));
+
+    thread_local stdx::fixed::vector<std::byte, MAX_SLOT_SIZE> old_tuple_data;
+    old_tuple_data.clear();
+    if (log_params.log) {
+        const auto [_, slot]{TRY(get_raw(id))};
+        const auto size{std::to_underlying(*slot->size)};
+        old_tuple_data.resize(size);
+        std::copy_n(page_->data() + slot->offset, size, old_tuple_data.data());
+    }
+
+    const auto [header, slot]{TRY(get_raw(id))};
     slot->size.reset();
     header->deleted_slot_count++;
+
+    page_->set_dirty(true);
+    if (log_params.log) {
+        wal::log_record rec;
+        rec.txn_id    = log_params.txn_id;
+        rec.type      = wal::log_record_type::UPDATE;
+        rec.page_id   = page_->page_id();
+        rec.slot_id   = id;
+        rec.prev_lsn  = log_params.prev_lsn;
+        rec.undo_data = old_tuple_data;
+        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+    }
+
     return {};
 }
 

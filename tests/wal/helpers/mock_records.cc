@@ -11,6 +11,7 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "testhelpers/unwrap.hh"
+#include "txn/txn_id.hh"
 #include "wal/log_record.hh"
 
 namespace cairn::tests::helpers {
@@ -20,7 +21,7 @@ auto write_begin_log(std::vector<std::byte>& buffer) -> wal::log_record {
     rec.size     = 37;
     rec.lsn      = wal::lsn_t{42};
     rec.prev_lsn = wal::lsn_t{10};
-    rec.txn_id   = wal::txn_id_t{3};
+    rec.txn_id   = txn::txn_id_t{3};
     rec.type     = wal::log_record_type::BEGIN;
     rec.checksum = 297'829'837;
 
@@ -33,7 +34,7 @@ auto write_update_log(std::vector<std::byte>& buffer) -> wal::log_record {
     rec.size      = 62;
     rec.lsn       = wal::lsn_t{43};
     rec.prev_lsn  = wal::lsn_t{42};
-    rec.txn_id    = wal::txn_id_t{3};
+    rec.txn_id    = txn::txn_id_t{3};
     rec.type      = wal::log_record_type::UPDATE;
     rec.page_id   = storage::page_id_t{101};
     rec.slot_id   = storage::slot_id_t{5};
@@ -50,7 +51,7 @@ auto write_clear_log(std::vector<std::byte>& buffer) -> wal::log_record {
     rec.size          = 64;
     rec.lsn           = wal::lsn_t{44};
     rec.prev_lsn      = stdx::none;
-    rec.txn_id        = wal::txn_id_t{3};
+    rec.txn_id        = txn::txn_id_t{3};
     rec.type          = wal::log_record_type::CLEAR;
     rec.page_id       = storage::page_id_t{102};
     rec.slot_id       = stdx::none;

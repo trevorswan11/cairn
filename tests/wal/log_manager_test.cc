@@ -14,6 +14,7 @@
 #include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
+#include "txn/txn_id.hh"
 #include "wal/log_manager.hh"
 #include "wal/log_reader.hh"
 #include "wal/log_record.hh"
@@ -29,12 +30,12 @@ TEST_CASE("log_manager append and flush") {
         log_manager manager{file.path, 1'024};
 
         log_record rec1;
-        rec1.txn_id = txn_id_t{1};
+        rec1.txn_id = txn::txn_id_t{1};
         rec1.type   = log_record_type::BEGIN;
         auto lsn1   = helpers::unwrap(manager.append_record(rec1));
 
         log_record rec2;
-        rec2.txn_id    = txn_id_t{1};
+        rec2.txn_id    = txn::txn_id_t{1};
         rec2.type      = log_record_type::UPDATE;
         rec2.page_id   = storage::page_id_t{4};
         rec2.slot_id   = storage::slot_id_t{2};
@@ -75,7 +76,7 @@ TEST_CASE("log_manager double buffering boundary") {
         std::vector<lsn_t> lsns;
         for (i64 i = 0; i < 10; ++i) {
             log_record rec;
-            rec.txn_id    = txn_id_t{i};
+            rec.txn_id    = txn::txn_id_t{i};
             rec.type      = log_record_type::UPDATE;
             rec.page_id   = storage::page_id_t{i};
             rec.slot_id   = storage::slot_id_t{0};
@@ -95,7 +96,7 @@ TEST_CASE("log_manager double buffering boundary") {
         for (i64 i{0}; i < 10; ++i) {
             auto r = helpers::unwrap(reader.next());
             CHECK(r.lsn == lsn_t{i + 1});
-            CHECK(r.txn_id == txn_id_t{i});
+            CHECK(r.txn_id == txn::txn_id_t{i});
             CHECK(r.page_id == storage::page_id_t{i});
         }
     }
@@ -120,7 +121,7 @@ TEST_CASE("log_manager concurrent appends") {
 
                 for (i32 i = 0; i < appends_per_thread; ++i) {
                     log_record rec;
-                    rec.txn_id    = txn_id_t{t};
+                    rec.txn_id    = txn::txn_id_t{t};
                     rec.type      = log_record_type::UPDATE;
                     rec.page_id   = storage::page_id_t{i};
                     rec.slot_id   = storage::slot_id_t{0};

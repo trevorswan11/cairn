@@ -10,42 +10,8 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
-
-namespace cairn::wal {
-
-enum class lsn_t : i64 {};
-constexpr lsn_t INVALID_LSN{-1};
-
-enum class txn_id_t : i64 {};
-constexpr txn_id_t INVALID_TXN_ID{-1};
-
-} // namespace cairn::wal
-
-namespace stdx {
-
-template <> struct nullable<cairn::wal::lsn_t> {
-    using lsn_t = cairn::wal::lsn_t;
-    [[nodiscard]] static constexpr auto invalid() noexcept -> lsn_t {
-        return cairn::wal::INVALID_LSN;
-    }
-
-    [[nodiscard]] static constexpr auto is_valid(const lsn_t& id) noexcept -> bool {
-        return id != invalid();
-    }
-};
-
-template <> struct nullable<cairn::wal::txn_id_t> {
-    using tid_t = cairn::wal::txn_id_t;
-    [[nodiscard]] static constexpr auto invalid() noexcept -> tid_t {
-        return cairn::wal::INVALID_TXN_ID;
-    }
-
-    [[nodiscard]] static constexpr auto is_valid(const tid_t& id) noexcept -> bool {
-        return id != invalid();
-    }
-};
-
-} // namespace stdx
+#include "txn/txn_id.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::wal {
 
@@ -63,7 +29,7 @@ struct log_record {
     i32                 size{0};
     lsn_t               lsn{INVALID_LSN};
     stdx::option<lsn_t> prev_lsn;
-    txn_id_t            txn_id{INVALID_TXN_ID};
+    txn::txn_id_t       txn_id{txn::INVALID_TXN_ID};
     log_record_type     type{log_record_type::BEGIN};
 
     stdx::option<storage::page_id_t> page_id;

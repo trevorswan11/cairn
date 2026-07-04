@@ -15,6 +15,7 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
+#include "txn/txn_id.hh"
 
 namespace cairn::wal {
 
@@ -103,7 +104,7 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
     record.size     = record_size;
     record.lsn      = read_arbitrary<lsn_t>(record_span);
     record.prev_lsn = read_arbitrary<stdx::option<lsn_t>>(record_span);
-    record.txn_id   = read_arbitrary<txn_id_t>(record_span);
+    record.txn_id   = read_arbitrary<txn::txn_id_t>(record_span);
     record.type     = read_arbitrary<log_record_type>(record_span);
 
     // Type specific fields
