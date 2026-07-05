@@ -16,6 +16,7 @@
 #include <stdx/types.hh>
 
 #include "storage/page.hh"
+#include "support/crash/injection.hh"
 #include "support/error.hh"
 #include "support/io_utils.hh"
 
@@ -73,6 +74,7 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
     const page_id_t  pid{num_pages_};
 
     static constexpr std::array<std::byte, DB_PAGE_SIZE> zeros{};
+    crash::test_boundary(crash::boundary_t::DISK_WRITE_BEFORE);
     while (true) {
         file_.clear();
         errno = 0;
@@ -88,8 +90,10 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
         if (io_utils::interrupted()) { continue; }
         return stdx::err{error_t::IO_ERROR};
     }
+    crash::test_boundary(crash::boundary_t::DISK_WRITE_AFTER);
 
     TRY(io_utils::try_flush(file_));
+    crash::test_boundary(crash::boundary_t::DISK_FLUSH_AFTER);
     num_pages_ += 1;
     return pid;
 }
@@ -126,6 +130,7 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
+    crash::test_boundary(crash::boundary_t::DISK_WRITE_BEFORE);
     while (true) {
         file_.clear();
         errno = 0;
@@ -142,15 +147,10 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
         if (io_utils::interrupted()) { continue; }
         return stdx::err{error_t::IO_ERROR};
     }
+    crash::test_boundary(crash::boundary_t::DISK_WRITE_AFTER);
 
-    while (true) {
-        file_.clear();
-        errno = 0;
-        file_.flush();
-        if (!file_.fail()) { break; }
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+    TRY(io_utils::try_flush(file_));
+    crash::test_boundary(crash::boundary_t::DISK_FLUSH_AFTER);
     return {};
 }
 
