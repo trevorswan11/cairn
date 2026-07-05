@@ -9,6 +9,7 @@
 #include <ios>
 
 #include <gsl/span>
+#include <stdx/option.hh>
 #include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -33,13 +34,25 @@ auto reader::open(std::filesystem::path log_path) -> result<reader> {
     return reader{std::move(file), end};
 }
 
-auto reader::next() -> result<record> {
-    PROFILE_FUNCTION();
+auto reader::has_next() noexcept -> result<stdx::option<i64>> {
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
-    if (pos == file_size_) { return stdx::err{error_t::WAL_EOF}; }
+    if (pos == file_size_) { return stdx::none; }
     if (file_size_ - pos < record::MINIMUM_SIZE<i64>) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
+    }
+    return pos;
+}
+
+auto reader::next(stdx::option<i64> pos) -> result<record> {
+    PROFILE_FUNCTION();
+    i64 true_pos;
+    if (!pos) {
+        const auto next_pos{TRY(has_next())};
+        if (!next_pos) { return stdx::err{error_t::WAL_EOF}; }
+        true_pos = *next_pos;
+    } else {
+        true_pos = *pos;
     }
 
     std::array<char, 4> size_buf;
@@ -47,7 +60,7 @@ auto reader::next() -> result<record> {
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
     const auto size{std::bit_cast<i32>(size_buf)};
-    if (size < record::MINIMUM_SIZE<i32> || (pos + size > file_size_)) {
+    if (size < record::MINIMUM_SIZE<i32> || (true_pos + size > file_size_)) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
     }
 
@@ -62,21 +75,33 @@ auto reader::next() -> result<record> {
     return deserialize_record();
 }
 
-auto reader::prev() -> result<record> {
-    PROFILE_FUNCTION();
+auto reader::has_prev() noexcept -> result<stdx::option<i64>> {
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
-    if (pos == 0) { return stdx::err{error_t::WAL_EOF}; }
+    if (pos == 0) { return stdx::none; }
     if (pos < record::MINIMUM_SIZE<i64>) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
+    return pos;
+}
+
+auto reader::prev(stdx::option<i64> pos) -> result<record> {
+    PROFILE_FUNCTION();
+    i64 true_pos;
+    if (!pos) {
+        const auto prev_pos{TRY(has_prev())};
+        if (!prev_pos) { return stdx::err{error_t::WAL_EOF}; }
+        true_pos = *prev_pos;
+    } else {
+        true_pos = *pos;
+    }
 
     std::array<char, 4> size_buf;
-    file_.seekg(pos - static_cast<i64>(sizeof(size_buf)));
+    file_.seekg(true_pos - static_cast<i64>(sizeof(size_buf)));
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
     file_.read(size_buf.data(), sizeof(size_buf));
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
     const auto size{std::bit_cast<i32>(size_buf)};
-    if (size < record::MINIMUM_SIZE<i32> || pos < size) {
+    if (size < record::MINIMUM_SIZE<i32> || true_pos < size) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
     }
 
@@ -84,7 +109,7 @@ auto reader::prev() -> result<record> {
     record_buffer_.resize(static_cast<usize>(size));
     std::memcpy(record_buffer_.data() + size - sizeof(size_buf), size_buf.data(), sizeof(size_buf));
 
-    const auto start_pos{pos - size};
+    const auto start_pos{true_pos - size};
     file_.seekg(start_pos);
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
     file_.read(reinterpret_cast<char*>(record_buffer_.data()),

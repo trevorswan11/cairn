@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include <stdx/hash.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
@@ -9,6 +10,7 @@ namespace cairn::txn {
 
 enum class id_t : i64 {};
 constexpr id_t INVALID_TXN_ID{-1};
+using id_hash_t = stdx::hash<txn::id_t>;
 
 [[nodiscard]] constexpr auto operator++(id_t id, i32) noexcept -> id_t {
     return id_t{std::to_underlying(id) + 1};
