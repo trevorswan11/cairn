@@ -37,9 +37,6 @@
 
 namespace cairn::tests {
 
-using namespace cairn::storage;
-using namespace cairn::txn;
-using namespace cairn::wal;
 using namespace stdx::size_literals;
 
 TEST_CASE("crash recovery workload", "[.][crash]") {
@@ -56,7 +53,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
     crash::initialize();
     crash::configure(limit);
 
-    using pool_t = buffer_pool<8>;
+    using pool_t = storage::buffer_pool<8>;
     wal::log::manager log{wal_path, 4_KiB};
     auto              bp{helpers::unwrap(pool_t::open(db_path))};
     bp->set_log_manager(log);
@@ -72,8 +69,8 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
             while (!go.load()) { std::this_thread::yield(); }
 
             for (i32 i{0}; i < 3; ++i) {
-                const auto tid{tm.begin_txn()};
-                page_id_t  pid;
+                const auto         tid{tm.begin_txn()};
+                storage::page_id_t pid;
                 {
                     auto write_res{bp->new_write()};
                     if (!write_res) {
@@ -82,7 +79,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                     }
                     auto [id, guard]{std::move(write_res.value())};
                     pid = id;
-                    slotted_page sp{*guard.get()};
+                    storage::slotted_page sp{*guard.get()};
                     sp.refresh_page();
                     guard.mark_dirty();
                 }
@@ -93,8 +90,8 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                         failures++;
                         return;
                     }
-                    auto         guard{std::move(guard_res.value())};
-                    slotted_page sp{*guard.get()};
+                    auto                  guard{std::move(guard_res.value())};
+                    storage::slotted_page sp{*guard.get()};
 
                     const auto data{fmt::format("t_{}_s_{}", t, i)};
                     if (!sp.insert(helpers::span_from_string(data),
@@ -132,9 +129,9 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
 namespace {
 
 struct update_t {
-    page_id_t   pid;
-    slot_id_t   sid;
-    std::string data;
+    storage::page_id_t pid;
+    storage::slot_id_t sid;
+    std::string        data;
 };
 using update_map_t = ankerl::unordered_dense::map<txn::id_t, std::vector<update_t>, txn::id_hash_t>;
 
@@ -161,20 +158,20 @@ TEST_CASE("crash recovery entrypoint") {
             finished = true;
         } else {
             // Child crashed! Run recovery and verify consistency
-            using pool_t = buffer_pool<8>;
+            using pool_t = storage::buffer_pool<8>;
 
             {
                 wal::log::manager log{log_file.path, 4_KiB};
                 auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
                 bp->set_log_manager(log);
 
-                txn::manager         tm;
-                recovery::manager<8> rm{*bp, tm, log, control_file.path, log_file.path};
+                txn::manager              tm;
+                wal::recovery::manager<8> rm{*bp, tm, log, control_file.path, log_file.path};
                 REQUIRE(rm.recover());
             }
 
             // Check correctness of recovered state by scanning the WAL
-            auto reader_res = log::reader::open(log_file.path);
+            auto reader_res = wal::log::reader::open(log_file.path);
             if (reader_res) {
                 auto& reader{reader_res.value()};
                 REQUIRE(reader.seek_to_start());
@@ -183,12 +180,12 @@ TEST_CASE("crash recovery entrypoint") {
                 update_map_t                                            updates;
 
                 while (auto rec{helpers::unwrap(reader.next_record_lenient())}) {
-                    if (rec->type == log::record_type::COMMIT) {
+                    if (rec->type == wal::log::record_type::COMMIT) {
                         committed_txns.insert(rec->txn_id);
-                    } else if (rec->type == log::record_type::UPDATE) {
+                    } else if (rec->type == wal::log::record_type::UPDATE) {
                         updates[rec->txn_id].emplace_back(
-                            *rec->page_id,
-                            *rec->slot_id,
+                            helpers::unwrap(rec->page_id),
+                            helpers::unwrap(rec->slot_id),
                             std::string{helpers::string_from_span(rec->redo_data)});
                     }
                 }
@@ -205,15 +202,15 @@ TEST_CASE("crash recovery entrypoint") {
 
                         if (is_committed) {
                             REQUIRE(page_id_val < num_pages);
-                            auto         guard{helpers::unwrap(bp->fetch_read(upd.pid))};
-                            slotted_page sp{*guard.get()};
-                            auto         tuple{helpers::unwrap(sp.get(upd.sid))};
+                            auto                  guard{helpers::unwrap(bp->fetch_read(upd.pid))};
+                            storage::slotted_page sp{*guard.get()};
+                            auto                  tuple{helpers::unwrap(sp.get(upd.sid))};
                             CHECK(helpers::string_from_span(tuple) == upd.data);
                         } else {
                             if (page_id_val < num_pages) {
                                 if (auto guard{bp->fetch_read(upd.pid)}) {
-                                    slotted_page sp{*guard.value().get()};
-                                    auto         tuple_res{sp.get(upd.sid)};
+                                    storage::slotted_page sp{*guard.value().get()};
+                                    auto                  tuple_res{sp.get(upd.sid)};
                                     if (tuple_res) {
                                         CHECK(helpers::string_from_span(tuple_res.value()) !=
                                               upd.data);
