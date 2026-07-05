@@ -53,7 +53,8 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
     write_arbitrary(dest, type);
 
     // Type specific fields
-    if (type == log_record_type::UPDATE) {
+    switch (type) {
+    case log_record_type::UPDATE:
         write_arbitrary(dest, page_id);
         write_arbitrary(dest, slot_id);
         write_arbitrary(dest, static_cast<u32>(redo_data.size()));
@@ -61,14 +62,16 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
 
         dest.insert_range(dest.cend(), redo_data);
         dest.insert_range(dest.cend(), undo_data);
-    } else if (type == log_record_type::CLEAR) {
+        break;
+    case log_record_type::CLEAR:
         write_arbitrary(dest, page_id);
         write_arbitrary(dest, slot_id);
         write_arbitrary(dest, static_cast<u32>(redo_data.size()));
         write_arbitrary(dest, undo_next_lsn);
 
         dest.insert_range(dest.cend(), redo_data);
-    } else if (type == log_record_type::CHECKPOINT_END) {
+        break;
+    case log_record_type::CHECKPOINT_END:
         while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
         write_arbitrary(dest, static_cast<u32>(dpt.size()));
         while ((dest.size() - start) % 8 != 0) { dest.emplace_back(std::byte{0}); }
@@ -84,6 +87,8 @@ auto log_record::serialize(std::vector<std::byte>& dest) const -> void {
             const auto* bytes{reinterpret_cast<const std::byte*>(att.data())};
             dest.insert(dest.end(), bytes, bytes + att.size_bytes());
         }
+        break;
+    default: break;
     }
 
     const auto checksum_pos{dest.size()};
@@ -126,7 +131,8 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
     record.type     = read_arbitrary<log_record_type>(record_span);
 
     // Type specific fields
-    if (record.type == log_record_type::UPDATE) {
+    switch (record.type) {
+    case log_record_type::UPDATE: {
         record.page_id = read_arbitrary<stdx::option<storage::page_id_t>>(record_span);
         record.slot_id = read_arbitrary<stdx::option<storage::slot_id_t>>(record_span);
         const auto redo_len{read_arbitrary<u32>(record_span)};
@@ -136,7 +142,9 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
         record_span      = record_span.subspan(redo_len);
         record.undo_data = record_span.subspan(0, undo_len);
         record_span      = record_span.subspan(undo_len);
-    } else if (record.type == log_record_type::CLEAR) {
+        break;
+    }
+    case log_record_type::CLEAR: {
         record.page_id = read_arbitrary<stdx::option<storage::page_id_t>>(record_span);
         record.slot_id = read_arbitrary<stdx::option<storage::slot_id_t>>(record_span);
         const auto redo_len{read_arbitrary<u32>(record_span)};
@@ -144,7 +152,9 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
 
         record.redo_data = record_span.subspan(0, redo_len);
         record_span      = record_span.subspan(redo_len);
-    } else if (record.type == log_record_type::CHECKPOINT_END) {
+        break;
+    }
+    case log_record_type::CHECKPOINT_END: {
         // This is needed due to some zero padding introduced in serialization
         auto align_span = [&](gsl::span<const std::byte>& span) {
             const auto offset{static_cast<usize>(span.data() - original_span.data())};
@@ -169,6 +179,9 @@ auto log_record::deserialize(gsl::span<const std::byte>& src) noexcept -> result
         record.att = gsl::span<const checkpoint_att_entry>{
             reinterpret_cast<const checkpoint_att_entry*>(record_span.data()), att_len};
         record_span = record_span.subspan(att_bytes_len);
+        break;
+    }
+    default: break;
     }
 
     // Decode footer
