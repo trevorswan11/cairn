@@ -4,6 +4,7 @@
 #include <mutex>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -19,6 +20,10 @@ namespace cairn::txn {
 class manager {
   public:
     using active_txn_buf_t = std::vector<wal::checkpoint::att_entry>;
+
+    struct active_txn_info {};
+    using active_metadata_map_t = ankerl::unordered_dense::map<id_t, active_txn_info, id_hash_t>;
+    using commited_txn_map_t    = ankerl::unordered_dense::map<id_t, timestamp_t, id_hash_t>;
 
   public:
     [[nodiscard]] auto begin_txn() -> id_t;
@@ -45,6 +50,10 @@ class manager {
     std::mutex       mutex_;
     active_txn_buf_t active_txns_;
     id_t             next_txn_id_{1};
+    [[maybe_unused]] timestamp_t      global_ts_{0};
+
+    active_metadata_map_t active_metadata_;
+    commited_txn_map_t    committed_txns_;
 };
 
 } // namespace cairn::txn

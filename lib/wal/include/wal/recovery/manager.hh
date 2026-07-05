@@ -293,7 +293,7 @@ template <usize PoolSize> class manager {
     log::manager&                   log_manager_;
     const std::filesystem::path     control_path_;
     const std::filesystem::path     log_path_;
-    checkpoint::manager<PoolSize>   cm_;
+    checkpoint::manager             cm_;
 };
 
 } // namespace cairn::wal::recovery

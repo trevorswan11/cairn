@@ -45,8 +45,8 @@ TEST_CASE("checkpoint basic accuracy") {
     auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
-    txn::manager           tm;
-    checkpoint::manager<8> cm{control_file.path};
+    txn::manager        tm;
+    checkpoint::manager cm{control_file.path};
 
     const auto   tid{tm.begin_txn()};
     page_id_t    pid;
@@ -119,10 +119,10 @@ TEST_CASE("checkpoint concurrent with page writes") {
     auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
-    txn::manager           tm;
-    checkpoint::manager<8> cm{control_file.path};
-    const i32              num_threads{4};
-    const i32              iterations{20};
+    txn::manager        tm;
+    checkpoint::manager cm{control_file.path};
+    const i32           num_threads{4};
+    const i32           iterations{20};
 
     std::vector<std::jthread> writers;
     std::atomic<bool>         stop{false};
