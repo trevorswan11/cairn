@@ -51,21 +51,12 @@ auto reader::next_at(i64 offset) -> result<record> {
     std::array<char, 4> size_buf;
     i32                 size{0};
 
-    while (true) {
-        file_.clear();
-        errno = 0;
+    TRY(io_utils::run_io(file_, [&] -> result<void> {
         file_.seekg(offset, std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
-        errno = 0;
         file_.read(size_buf.data(), sizeof(size_buf));
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
         size = std::bit_cast<i32>(size_buf);
         if (size < record::MINIMUM_SIZE<i32> || (offset + size > file_size_)) {
@@ -76,14 +67,10 @@ auto reader::next_at(i64 offset) -> result<record> {
         record_buffer_.resize(static_cast<usize>(size));
         std::memcpy(record_buffer_.data(), size_buf.data(), sizeof(size_buf));
 
-        errno = 0;
         file_.read(reinterpret_cast<char*>(record_buffer_.data() + sizeof(size_buf)),
                    size - static_cast<std::streamoff>(sizeof(size_buf)));
-        if (!file_.fail()) { break; }
-
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+        return {};
+    }));
 
     return deserialize_record();
 }
@@ -120,21 +107,12 @@ auto reader::prev_at(i64 offset) -> result<record> {
     i32                 size{0};
     i64                 start_pos{0};
 
-    while (true) {
-        file_.clear();
-        errno = 0;
+    TRY(io_utils::run_io(file_, [&] -> result<void> {
         file_.seekg(offset - static_cast<i64>(sizeof(size_buf)), std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
-        errno = 0;
         file_.read(size_buf.data(), sizeof(size_buf));
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
         size = std::bit_cast<i32>(size_buf);
         if (size < record::MINIMUM_SIZE<i32> || offset < size) {
@@ -147,29 +125,17 @@ auto reader::prev_at(i64 offset) -> result<record> {
             record_buffer_.data() + size - sizeof(size_buf), size_buf.data(), sizeof(size_buf));
 
         start_pos = offset - size;
-        errno     = 0;
         file_.seekg(start_pos, std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
-        errno = 0;
         file_.read(reinterpret_cast<char*>(record_buffer_.data()),
                    size - static_cast<std::streamoff>(sizeof(size_buf)));
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
         // Reset the file to the start of the record for the next call
-        errno = 0;
         file_.seekg(start_pos, std::ios::beg);
-        if (!file_.fail()) { break; }
-
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+        return {};
+    }));
 
     return deserialize_record();
 }

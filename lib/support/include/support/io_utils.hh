@@ -7,32 +7,40 @@
 
 #include "support/error.hh"
 
+#include <type_traits>
+
 namespace cairn::io_utils {
 
 // This might be true when running heavily instrumented coverage builds
 [[nodiscard]] auto interrupted() noexcept -> bool;
 
-template <typename File> [[nodiscard]] auto seek_to_beg(File& file) -> result<void> {
-    file.seekg(0, std::ios::beg);
-    if (file.fail()) { return stdx::err{error_t::IO_ERROR}; }
-    return {};
-}
-
-template <typename File> [[nodiscard]] auto seek_to_end(File& file) -> result<void> {
-    file.seekg(0, std::ios::end);
-    if (file.fail()) { return stdx::err{error_t::IO_ERROR}; }
-    return {};
-}
-
-template <typename File> [[nodiscard]] auto try_flush(File& file) -> result<void> {
+// Perform a safe operation on a file with interruption checks
+template <typename File, typename Fn>
+[[nodiscard]] auto run_io(File& file, Fn&& fn) -> result<void> {
     while (true) {
         file.clear();
         errno = 0;
-        file.flush();
+        if constexpr (std::is_same_v<decltype(fn()), result<void>>) {
+            TRY(fn());
+        } else {
+            fn();
+        }
         if (!file.fail()) { return {}; }
         if (interrupted()) { continue; }
         return stdx::err{error_t::IO_ERROR};
     }
+}
+
+template <typename File> [[nodiscard]] auto seek_to_beg(File& file) -> result<void> {
+    return run_io(file, [&] { file.seekg(0, std::ios::beg); });
+}
+
+template <typename File> [[nodiscard]] auto seek_to_end(File& file) -> result<void> {
+    return run_io(file, [&] { file.seekg(0, std::ios::end); });
+}
+
+template <typename File> [[nodiscard]] auto try_flush(File& file) -> result<void> {
+    return run_io(file, [&] { file.flush(); });
 }
 
 } // namespace cairn::io_utils

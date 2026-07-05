@@ -75,21 +75,11 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
 
     static constexpr std::array<std::byte, DB_PAGE_SIZE> zeros{};
     crash::test_boundary(crash::boundary_t::DISK_WRITE_BEFORE);
-    while (true) {
-        file_.clear();
-        errno = 0;
+    TRY(io_utils::run_io(file_, [&] {
         file_.seekp(page_offset(pid), std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
-
-        errno = 0;
+        if (file_.fail()) { return; }
         file_.write(reinterpret_cast<const char*>(zeros.data()), zeros.size());
-        if (!file_.fail()) { break; }
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+    }));
     crash::test_boundary(crash::boundary_t::DISK_WRITE_AFTER);
 
     TRY(io_utils::try_flush(file_));
@@ -104,23 +94,14 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
-    while (true) {
-        file_.clear();
-        errno = 0;
+    TRY(io_utils::run_io(file_, [&] -> result<void> {
         file_.seekg(page_offset(pid), std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
+        if (file_.fail()) { return {}; }
 
-        errno = 0;
         file_.read(reinterpret_cast<char*>(buf.data()), DB_PAGE_SIZE);
-        if (!file_.fail()) { break; }
-
         if (file_.eof()) { return stdx::err{error_t::STORAGE_SHORT_READ}; }
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+        return {};
+    }));
     return {};
 }
 
@@ -131,22 +112,11 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
     crash::test_boundary(crash::boundary_t::DISK_WRITE_BEFORE);
-    while (true) {
-        file_.clear();
-        errno = 0;
+    TRY(io_utils::run_io(file_, [&] {
         file_.seekp(page_offset(pid), std::ios::beg);
-        if (file_.fail()) {
-            if (io_utils::interrupted()) { continue; }
-            return stdx::err{error_t::IO_ERROR};
-        }
-
-        errno = 0;
+        if (file_.fail()) { return; }
         file_.write(reinterpret_cast<const char*>(buf.data()), DB_PAGE_SIZE);
-        if (!file_.fail()) { break; }
-
-        if (io_utils::interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
-    }
+    }));
     crash::test_boundary(crash::boundary_t::DISK_WRITE_AFTER);
 
     TRY(io_utils::try_flush(file_));
