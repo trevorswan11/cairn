@@ -7,7 +7,8 @@ namespace cairn {
 
 // The central error type for all of cairn
 enum class error_t : u8 {
-    IO_ERROR, // a read/write/seek against the backing file failed
+    IO_ERROR,          // a read/write/seek against the backing file failed
+    SUBPROCESS_FAILED, // could not launch subprocess
 
     SUPPORT_JSON_PARSE_ERROR,
     SUPPORT_JSON_TYPE_ERROR,
