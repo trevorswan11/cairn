@@ -42,7 +42,7 @@ TEST_CASE("checkpoint basic accuracy") {
 
     using pool_t = buffer_pool<8>;
     log::manager log{log_file.path, 4_KiB};
-    auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
+    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager           tm;
@@ -116,7 +116,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
     using pool_t = buffer_pool<8>;
     log::manager log{log_file.path, 16_KiB};
-    auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
+    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager           tm;

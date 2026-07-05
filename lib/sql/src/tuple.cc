@@ -19,7 +19,7 @@
 
 namespace cairn::sql {
 
-auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> result<tuple> {
+auto tuple::serialize(const schema& sch, gsl::span<const value_t> values) -> result<tuple> {
     if (values.size() != sch.column_count()) {
         return stdx::err{error_t::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }
@@ -89,7 +89,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value> values) -> resul
     return tuple{std::move(data)};
 }
 
-auto tuple::get_value(const schema& sch, usize column_index) const -> result<value> {
+auto tuple::get_value(const schema& sch, usize column_index) const -> result<value_t> {
     if (column_index >= sch.column_count()) { return stdx::err{error_t::SQL_INVALID_COLUMN_INDEX}; }
 
     const usize byte_idx{column_index / 8};
@@ -97,7 +97,7 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
 
     const auto  is_null{(static_cast<u8>(data_[byte_idx]) & (1 << bit_idx)) != 0};
     const auto& col{sch[column_index]};
-    if (is_null) { return value::make_null(col.type()); }
+    if (is_null) { return value_t::make_null(col.type()); }
 
     usize null_bitmap_size{(sch.column_count() + 7) / 8};
     usize fixed_offset{null_bitmap_size};
@@ -116,37 +116,37 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
         case type::id_t::BOOLEAN: {
             i8 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out != 0);
+            return value_t(out != 0);
         }
         case type::id_t::TINYINT: {
             i8 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         case type::id_t::SMALLINT: {
             i16 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         case type::id_t::INTEGER: {
             i32 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         case type::id_t::BIGINT: {
             i64 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         case type::id_t::FLOAT: {
             float out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         case type::id_t::DOUBLE: {
             double out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value(out);
+            return value_t(out);
         }
         default: return stdx::err{error_t::SQL_UNSUPPORTED_FIXED_TYPE};
         }
@@ -158,10 +158,10 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
     std::memcpy(&len, data_.data() + varlen_dir_offset + 2, 2);
 
     std::string_view str{reinterpret_cast<const char*>(data_.data() + offset), len};
-    return value(str);
+    return value_t(str);
 }
 
-auto tuple::deserialize(const schema& sch, gsl::span<value> buf) const -> result<void> {
+auto tuple::deserialize(const schema& sch, gsl::span<value_t> buf) const -> result<void> {
     if (buf.size() != sch.column_count()) {
         return stdx::err{error_t::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }

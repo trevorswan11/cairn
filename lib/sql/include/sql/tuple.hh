@@ -25,13 +25,13 @@ class tuple {
     [[nodiscard]] auto data() const noexcept -> gsl::span<const std::byte> { return data_; }
     [[nodiscard]] auto size() const noexcept -> usize { return data_.size(); }
 
-    [[nodiscard]] auto get_value(const schema& sch, usize column_index) const -> result<value>;
+    [[nodiscard]] auto get_value(const schema& sch, usize column_index) const -> result<value_t>;
 
     // Serializes a list of values into a tuple byte array according to the schema
-    static auto serialize(const schema& sch, gsl::span<const value> values) -> result<tuple>;
+    static auto serialize(const schema& sch, gsl::span<const value_t> values) -> result<tuple>;
 
     // Deserializes the whole tuple into a list of values
-    [[nodiscard]] auto deserialize(const schema& sch, gsl::span<value> buf) const -> result<void>;
+    [[nodiscard]] auto deserialize(const schema& sch, gsl::span<value_t> buf) const -> result<void>;
 
   private:
     byte_buffer data_;

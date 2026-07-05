@@ -12,25 +12,25 @@
 namespace cairn::sql {
 
 // The main value abstraction over SQL data types
-class value {
+class value_t {
   public:
     using variant_t =
         stdx::variant<stdx::monostate, bool, i8, i16, i32, i64, f32, f64, std::string_view>;
 
   public:
-    value() noexcept = default;
+    value_t() noexcept = default;
 
     // Explicit constructor tracking type independently
-    explicit value(variant_t val, bool nullable = true) noexcept
-        : value_{std::move(val)}, type_{derive_type(value_)}, nullable_{nullable} {}
+    explicit value_t(variant_t value, bool nullable = true) noexcept
+        : value_{std::move(value)}, type_{derive_type(value_)}, nullable_{nullable} {}
 
     // Factory to create strongly-typed NULL values
-    [[nodiscard]] static auto make_null(type::id_t t) noexcept -> value {
-        value v;
-        v.type_ = t;
-        v.value_.emplace<stdx::monostate>();
-        v.nullable_ = true;
-        return v;
+    [[nodiscard]] static auto make_null(type::id_t t) noexcept -> value_t {
+        value_t value;
+        value.type_ = t;
+        value.value_.emplace<stdx::monostate>();
+        value.nullable_ = true;
+        return value;
     }
 
     [[nodiscard]] auto nullable() const noexcept -> bool { return nullable_; }
