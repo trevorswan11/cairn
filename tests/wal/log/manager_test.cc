@@ -107,7 +107,6 @@ TEST_CASE("log::manager double buffering boundary") {
 
 TEST_CASE("log::manager concurrent appends") {
     helpers::tempfile file{"log_manager_concurrent"};
-    std::filesystem::remove(file.path);
 
     const i32 num_threads{8};
     const i32 appends_per_thread{50};
