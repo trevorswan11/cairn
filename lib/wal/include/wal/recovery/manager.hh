@@ -152,14 +152,15 @@ template <usize PoolSize> class manager {
         stdx::option<log::seq_num> last_appended_lsn;
         while (auto prev_pos{TRY(reader.has_prev())}) {
             if (to_undo.empty()) { break; }
-
             const auto rec{TRY(reader.prev(prev_pos))};
-            {
-                const auto txn_id_it{to_undo.find(rec.txn_id)};
-                if (txn_id_it == to_undo.end()) { continue; }
-                if (txn_id_it->second != rec.lsn) { continue; }
-            }
-            auto& rec_txn_id{att[rec.txn_id]};
+
+            const auto txn_id_it{to_undo.find(rec.txn_id)};
+            if (txn_id_it == to_undo.end()) { continue; }
+            if (txn_id_it->second != rec.lsn) { continue; }
+
+            const auto att_it{att.find(rec.txn_id)};
+            if (att_it == att.end()) { continue; }
+            auto& rec_txn_id{att_it->second};
 
             switch (rec.type) {
             case log::record_type::UPDATE:
@@ -192,7 +193,7 @@ template <usize PoolSize> class manager {
                 }
 
                 if (rec.prev_lsn) {
-                    to_undo.emplace(rec.txn_id, *rec.prev_lsn);
+                    txn_id_it->second = *rec.prev_lsn;
                 } else {
                     log::record abort_rec;
                     abort_rec.txn_id   = rec.txn_id;
@@ -202,13 +203,13 @@ template <usize PoolSize> class manager {
                     const auto abort_lsn{TRY(log_manager_.append_record(abort_rec))};
                     last_appended_lsn.emplace(abort_lsn);
 
-                    to_undo.erase(rec.txn_id);
-                    att.erase(rec.txn_id);
+                    to_undo.erase(txn_id_it);
+                    att.erase(att_it);
                 }
                 break;
             case log::record_type::CLEAR:
                 if (rec.undo_next_lsn) {
-                    to_undo.emplace(rec.txn_id, *rec.undo_next_lsn);
+                    txn_id_it->second = *rec.undo_next_lsn;
                 } else {
                     log::record abort_rec;
                     abort_rec.txn_id   = rec.txn_id;
@@ -218,8 +219,8 @@ template <usize PoolSize> class manager {
                     const auto abort_lsn{TRY(log_manager_.append_record(abort_rec))};
                     last_appended_lsn.emplace(abort_lsn);
 
-                    to_undo.erase(rec.txn_id);
-                    att.erase(rec.txn_id);
+                    to_undo.erase(txn_id_it);
+                    att.erase(att_it);
                 }
                 break;
             case log::record_type::BEGIN: {
@@ -231,8 +232,8 @@ template <usize PoolSize> class manager {
                 const auto abort_lsn{TRY(log_manager_.append_record(abort_rec))};
                 last_appended_lsn.emplace(abort_lsn);
 
-                to_undo.erase(rec.txn_id);
-                att.erase(rec.txn_id);
+                to_undo.erase(txn_id_it);
+                att.erase(att_it);
                 break;
             }
             default: break;
