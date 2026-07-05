@@ -1,8 +1,6 @@
 #include "testhelpers/subprocess.hh"
 
 #include <array>
-#include <iterator>
-#include <ranges>
 #include <string>
 
 #include <cairn/config.h>
@@ -17,6 +15,9 @@
 #include "testhelpers/argv.hh"
 
 #if CAIRN_WINDOWS
+#    include <iterator>
+#    include <ranges>
+
 #    define WIN32_LEAN_AND_MEAN
 #    include <handleapi.h>
 #    include <libloaderapi.h>
@@ -31,6 +32,9 @@
 #endif
 
 #if !CAIRN_WINDOWS
+#    include <cstdlib>
+#    include <stdlib.h>
+#    include <sys/_types/_pid_t.h>
 #    include <sys/wait.h>
 #    include <unistd.h>
 #endif
@@ -93,7 +97,22 @@ auto spawn_child(const Argv& args) -> result<u32> {
     ::CloseHandle(pi.hThread);
     return exit_code;
 #else
-    return 0;
+    ::pid_t pid{::fork()};
+    if (pid < 0) { return stdx::err{error_t::SUBPROCESS_FAILED}; }
+
+    if (pid == 0) {
+        // Child
+        ::execvp(args[0], args.argv());
+        std::_Exit(127); // execvp failed
+    } else {
+        // Parent
+        i32 status;
+        if (::waitpid(pid, &status, 0) < 0) { return stdx::err{error_t::SUBPROCESS_FAILED}; }
+
+        if (WIFEXITED(status)) { return WEXITSTATUS(status); }
+        if (WIFSIGNALED(status)) { return 128 + WTERMSIG(status); }
+    }
+    return stdx::err{error_t::SUBPROCESS_FAILED};
 #endif
 }
 
