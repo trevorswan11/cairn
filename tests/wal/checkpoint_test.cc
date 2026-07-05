@@ -23,10 +23,10 @@
 #include "txn/manager.hh"
 #include "wal/checkpoint_manager.hh"
 #include "wal/checkpoints.hh"
-#include "wal/manager.hh"
-#include "wal/reader.hh"
-#include "wal/record.hh"
-#include "wal/sequence_number.hh"
+#include "wal/log_manager.hh"
+#include "wal/log_reader.hh"
+#include "wal/log_record.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::tests {
 
@@ -41,8 +41,8 @@ TEST_CASE("checkpoint basic accuracy") {
     helpers::tempfile control_file{"checkpoint_basic_control"};
 
     using pool_t = buffer_pool<8>;
-    wal::manager log{log_file.path, 4_KiB};
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+    wal::log_manager log{log_file.path, 4_KiB};
+    auto             bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager          tm;
@@ -80,22 +80,22 @@ TEST_CASE("checkpoint basic accuracy") {
     CHECK(persisted_lsn == cm_lsn);
 
     {
-        auto reader{helpers::unwrap(reader::open(log_file.path))};
+        auto reader{helpers::unwrap(log_reader::open(log_file.path))};
 
         // Record 1: UPDATE
         auto r1{helpers::unwrap(reader.next())};
         CHECK(r1.lsn == update_lsn);
-        CHECK(r1.type == record_type::UPDATE);
+        CHECK(r1.type == log_record_type::UPDATE);
         CHECK(r1.txn_id == tid);
 
         // Record 2: CHECKPOINT_BEGIN
         auto r2{helpers::unwrap(reader.next())};
         CHECK(r2.lsn == cm_lsn);
-        CHECK(r2.type == record_type::CHECKPOINT_BEGIN);
+        CHECK(r2.type == log_record_type::CHECKPOINT_BEGIN);
 
         // Record 3: CHECKPOINT_END
         auto r3{helpers::unwrap(reader.next())};
-        CHECK(r3.type == record_type::CHECKPOINT_END);
+        CHECK(r3.type == log_record_type::CHECKPOINT_END);
 
         // DPT and ATT details inside CHECKPOINT_END
         REQUIRE(r3.dpt.size() == 1);
@@ -115,8 +115,8 @@ TEST_CASE("checkpoint concurrent with page writes") {
     helpers::tempfile control_file{"checkpoint_concurrent_control"};
 
     using pool_t = buffer_pool<8>;
-    wal::manager log{log_file.path, 16_KiB};
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+    wal::log_manager log{log_file.path, 16_KiB};
+    auto             bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager          tm;

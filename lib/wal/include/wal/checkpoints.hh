@@ -5,7 +5,7 @@
 
 #include "storage/page.hh"
 #include "txn/id.hh"
-#include "wal/sequence_number.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::wal {
 

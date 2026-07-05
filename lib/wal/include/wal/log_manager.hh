@@ -13,20 +13,20 @@
 #include <stdx/utility.hh>
 
 #include "support/error.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::wal {
 
 // A thread safe manager of log appending and flushing
-class manager {
+class log_manager {
   public:
-    explicit manager(std::filesystem::path log_path,
-                     usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
-    ~manager();
-    MAKE_PINNED(manager)
+    explicit log_manager(std::filesystem::path log_path,
+                         usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
+    ~log_manager();
+    MAKE_PINNED(log_manager)
 
     // Appends a record to the active bugger, assigning its lsn and triggering swap if needed
-    [[nodiscard]] auto append_record(record& record) -> result<lsn_t>;
+    [[nodiscard]] auto append_record(log_record& record) -> result<lsn_t>;
 
     // Wait until the record with the given lsn has been flushed to disk
     [[nodiscard]] auto flush(lsn_t lsn) -> result<void>;

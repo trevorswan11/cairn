@@ -1,4 +1,4 @@
-#include "wal/manager.hh"
+#include "wal/log_manager.hh"
 
 #include <atomic>
 #include <cstddef>
@@ -17,18 +17,18 @@
 #include <stdx/utility.hh>
 
 #include "support/error.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::wal {
 
-manager::manager(std::filesystem::path log_path, usize buffer_size) noexcept
+log_manager::log_manager(std::filesystem::path log_path, usize buffer_size) noexcept
     : log_path_{std::move(log_path)}, buffer_size_{buffer_size} {
     active_buffer_.reserve(buffer_size_);
     flush_buffer_.reserve(buffer_size_);
-    flush_thread_ = std::jthread{&manager::flush_loop, this};
+    flush_thread_ = std::jthread{&log_manager::flush_loop, this};
 };
 
-manager::~manager() {
+log_manager::~log_manager() {
     PROFILE_FUNCTION();
 
     // Halt flush execution and force a final swap if needed
@@ -42,7 +42,7 @@ manager::~manager() {
     if (flush_thread_.joinable()) { flush_thread_.join(); }
 }
 
-auto manager::append_record(record& record) -> result<lsn_t> {
+auto log_manager::append_record(log_record& record) -> result<lsn_t> {
     PROFILE_FUNCTION();
 
     // Staging is done locally to allow for lock-free operation
@@ -69,7 +69,7 @@ auto manager::append_record(record& record) -> result<lsn_t> {
     return lsn;
 }
 
-auto manager::flush(lsn_t lsn) -> result<void> {
+auto log_manager::flush(lsn_t lsn) -> result<void> {
     PROFILE_FUNCTION();
 
     std::unique_lock lock{mutex_};
@@ -89,7 +89,7 @@ auto manager::flush(lsn_t lsn) -> result<void> {
     return {};
 }
 
-auto manager::trigger_buffer_swap() -> void {
+auto log_manager::trigger_buffer_swap() -> void {
     PROFILE_FUNCTION();
     std::swap(active_buffer_, flush_buffer_);
     highest_lsn_to_flush_ =
@@ -98,7 +98,7 @@ auto manager::trigger_buffer_swap() -> void {
     append_cv_.notify_all();
 }
 
-auto manager::flush_loop() -> void {
+auto log_manager::flush_loop() -> void {
     std::ofstream out{log_path_, std::ios::out | std::ios::binary | std::ios::app};
     VERIFY(out.is_open(), "Background flush thread could not open file");
 
@@ -137,7 +137,7 @@ auto manager::flush_loop() -> void {
     }
 }
 
-auto manager::next_lsn() noexcept -> lsn_t {
+auto log_manager::next_lsn() noexcept -> lsn_t {
     PROFILE_FUNCTION();
     lsn_t current{next_lsn_.load(std::memory_order_relaxed)}, next{INVALID_LSN};
     do {
