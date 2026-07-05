@@ -56,10 +56,23 @@ class slotted_page {
     [[nodiscard]] auto slot_count() const noexcept -> i32;
     [[nodiscard]] auto free_space() const noexcept -> i32;
 
+    // Supports low-level recovery updates that modify pages in memory without touching wal. Cases:
+    // 1. Passing `stdx::none` as data will delete the slot if it exists or no-op
+    // 2. Passing an id greater than the slot count dynamically inserts empty slots up to that point
+    // 3. An active slot as the id that can hold the passed data will be updated
+    // 4. Otherwise the data will try to find a new allocation space for the slot
+    [[nodiscard]] auto write_slot_raw(slot_id_t id, stdx::option<gsl::span<const std::byte>> data)
+        -> result<void>;
+
   private:
     struct slot_t {
         u16                       offset;
         stdx::option<slot_size_t> size;
+
+        constexpr auto mark_deleted() noexcept {
+            offset = 0;
+            size.reset();
+        }
     };
 
     struct header_t {

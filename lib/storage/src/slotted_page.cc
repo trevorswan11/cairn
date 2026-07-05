@@ -7,6 +7,7 @@
 #include <gsl/pointers>
 #include <gsl/span>
 #include <stdx/fixed/vector.hh>
+#include <stdx/option.hh>
 #include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -58,8 +59,10 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple, log_update_params_t 
 
     const auto slots{as_slots()};
     const auto u_id{static_cast<usize>(id)};
-    slots[u_id].size.emplace(static_cast<u16>(tuple.size()));
-    slots[u_id].offset = static_cast<u16>(header->free_space_ptr);
+    slots[u_id] = {
+        .offset = static_cast<u16>(header->free_space_ptr),
+        .size   = static_cast<slot_size_t>(tuple.size()),
+    };
 
     page_->set_dirty(true);
     if (log_params.log) {
@@ -99,11 +102,11 @@ auto slotted_page::update(slot_id_t                  id,
     const auto slot_size{std::to_underlying(*slot->size)};
     if (tuple.size() < slot_size) {
         std::copy_n(tuple.data(), tuple.size(), page_->data() + slot->offset);
-        slot->size.emplace(static_cast<u16>(tuple.size()));
+        slot->size.emplace(static_cast<slot_size_t>(tuple.size()));
     } else {
         // We need more space
         const auto old_offset{slot->offset};
-        slot->size.reset();
+        slot->mark_deleted();
         header->deleted_slot_count++;
 
         // Compacting might open up enough space for the tuple to pack in
@@ -123,8 +126,10 @@ auto slotted_page::update(slot_id_t                  id,
         header->free_space_ptr -= static_cast<i32>(tuple.size());
         std::copy_n(tuple.data(), tuple.size(), page_->data() + header->free_space_ptr);
 
-        slot->offset = static_cast<u16>(header->free_space_ptr);
-        slot->size.emplace(static_cast<u16>(tuple.size()));
+        *slot = {
+            .offset = static_cast<u16>(header->free_space_ptr),
+            .size   = static_cast<slot_size_t>(tuple.size()),
+        };
     }
 
     page_->set_dirty(true);
@@ -156,7 +161,7 @@ auto slotted_page::remove(slot_id_t id, log_update_params_t log_params) -> resul
     }
 
     const auto [header, slot]{TRY(get_raw(id))};
-    slot->size.reset();
+    slot->mark_deleted();
     header->deleted_slot_count++;
 
     page_->set_dirty(true);
@@ -215,6 +220,85 @@ auto slotted_page::slot_count() const noexcept -> i32 { return as_header()->slot
 auto slotted_page::free_space() const noexcept -> i32 {
     const auto header{as_header()};
     return header->free_space_ptr - (HEADER_SIZE<i32> + header->slot_count * SLOT_SIZE<i32>);
+}
+
+auto slotted_page::write_slot_raw(slot_id_t id, stdx::option<gsl::span<const std::byte>> data)
+    -> result<void> {
+    PROFILE_FUNCTION();
+    auto       header{as_header()};
+    const auto id_under{std::to_underlying(id)};
+    const auto u_id{static_cast<usize>(id)};
+
+    // Case 1. No data removes the slot, no-op required on OOB
+    if (!data) {
+        if (id < slot_id_t{0} || id_under >= header->slot_count) { return {}; }
+        auto& slot{as_slots()[u_id]};
+        if (slot.size) {
+            slot.mark_deleted();
+            header->deleted_slot_count++;
+        }
+
+        page_->set_dirty(true);
+        return {};
+    }
+
+    // Case 2. OOB id with data should expand the slots dynamically
+    if (id_under >= header->slot_count) {
+        const auto old_count{header->slot_count};
+        header->slot_count = id_under + 1;
+
+        // Check that there is enough space or that more can be created
+        const auto slots_to_add{header->slot_count - old_count};
+        const auto required_slot_space{slots_to_add * SLOT_SIZE<i32>};
+        if (free_space() < required_slot_space) {
+            compact();
+            if (free_space() < required_slot_space) {
+                return stdx::err{error_t::STORAGE_PAGE_FULL};
+            }
+        }
+
+        // All new slots should be initialized as deleted
+        auto slots{as_slots()};
+        for (i32 i{old_count}; i < header->slot_count; ++i) {
+            slots[static_cast<usize>(i)].mark_deleted();
+            header->deleted_slot_count++;
+        }
+    }
+
+    auto&      slot{as_slots()[u_id]};
+    const auto tuple{*data};
+    const auto i_tuple_size{static_cast<i32>(tuple.size())};
+
+    // Case 3. In-place write if slot is active and data fits
+    if (slot.size && i_tuple_size <= std::to_underlying(*slot.size)) {
+        std::copy_n(tuple.data(), tuple.size(), page_->data() + slot.offset);
+        slot.size.emplace(static_cast<slot_size_t>(tuple.size()));
+        page_->set_dirty(true);
+        return {};
+    }
+
+    // Case 4. Out-of-place write needs allocation
+    const auto was_deleted{!slot.size};
+    if (!was_deleted) {
+        slot.mark_deleted();
+        header->deleted_slot_count++;
+    }
+
+    if (free_space() < i_tuple_size) {
+        compact();
+        if (free_space() < i_tuple_size) { return stdx::err{error_t::STORAGE_PAGE_FULL}; }
+    }
+
+    header->free_space_ptr -= i_tuple_size;
+    std::copy_n(tuple.data(), tuple.size(), page_->data() + header->free_space_ptr);
+    slot = {
+        .offset = static_cast<u16>(header->free_space_ptr),
+        .size   = static_cast<slot_size_t>(tuple.size()),
+    };
+    if (was_deleted) { header->deleted_slot_count--; }
+
+    page_->set_dirty(true);
+    return {};
 }
 
 } // namespace cairn::storage

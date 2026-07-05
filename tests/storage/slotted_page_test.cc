@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
+#include <stdx/option.hh>
+#include <stdx/types.hh>
 
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
@@ -87,6 +89,49 @@ TEST_CASE("slotted_page compaction") {
 
     CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id1))) == data1);
     CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id3))) == data3);
+}
+
+TEST_CASE("slotted_page write_slot_raw") {
+    page         p;
+    slotted_page sp{p};
+    sp.refresh_page();
+
+    // Case 1. Deletion test
+    {
+        const std::string_view data{"delete me"};
+        const auto             id{helpers::unwrap(sp.insert(helpers::span_from_string(data)))};
+        CHECK(id == slot_id_t{0});
+        CHECK(sp.slot_count() == 1);
+
+        REQUIRE(sp.write_slot_raw(id, stdx::none));
+        CHECK(helpers::unwrap_err(sp.get(id)) == error_t::STORAGE_TUPLE_DELETED);
+        REQUIRE(sp.write_slot_raw(slot_id_t{10}, stdx::none));
+    }
+
+    // Case 2. Out-of-bounds insert test
+    {
+        const std::string_view data{"oob insert"};
+        REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
+        CHECK(sp.slot_count() == 6);
+        for (i32 i{0}; i < 5; ++i) {
+            CHECK(helpers::unwrap_err(sp.get(slot_id_t{i})) == error_t::STORAGE_TUPLE_DELETED);
+        }
+        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+    }
+
+    // Case 3. In-place update test
+    {
+        const std::string_view data{"small"};
+        REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
+        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+    }
+
+    // Case 4. Out-of-place update test
+    {
+        const std::string_view data{"much larger tuple data"};
+        REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
+        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+    }
 }
 
 } // namespace cairn::tests
