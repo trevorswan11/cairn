@@ -11,11 +11,15 @@
 #include "storage/slotted_page.hh"
 #include "support/error.hh"
 #include "testhelpers/conversion.hh"
+#include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
+#include "txn/id.hh"
+#include "wal/log/manager.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::storage;
+using namespace stdx::size_literals;
 
 TEST_CASE("slotted_page guards when empty") {
     page         p;
@@ -132,6 +136,59 @@ TEST_CASE("slotted_page write_slot_raw") {
         REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
         CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
     }
+}
+
+TEST_CASE("slotted_page logging updates") {
+    helpers::tempfile file{"slotted_page_logging"};
+    wal::log::manager lm{file.path, 4_KiB};
+
+    page         p;
+    slotted_page sp{p};
+    sp.refresh_page();
+
+    log_update_params_t log_params{
+        .txn_id      = txn::id_t{1},
+        .prev_lsn    = stdx::none,
+        .log_manager = lm,
+    };
+
+    const std::string_view data1{"insert logged"};
+    const auto id{helpers::unwrap(sp.insert(helpers::span_from_string(data1), log_params))};
+    CHECK(id == slot_id_t{0});
+
+    // Update with log
+    log_params.prev_lsn = p.page_lsn();
+    const std::string_view data2{"update logged"};
+    REQUIRE(sp.update(id, helpers::span_from_string(data2), log_params));
+
+    // Remove with log
+    log_params.prev_lsn = p.page_lsn();
+    REQUIRE(sp.remove(id, log_params));
+}
+
+TEST_CASE("slotted_page compaction and full errors during update") {
+    page         p;
+    slotted_page sp{p};
+    sp.refresh_page();
+
+    const std::string data1(1'200, 'a');
+    const auto        id1{helpers::unwrap(sp.insert(helpers::span_from_string(data1)))};
+    const std::string data2(1'200, 'b');
+    const auto        id2{helpers::unwrap(sp.insert(helpers::span_from_string(data2)))};
+    const std::string data3(1'200, 'c');
+    REQUIRE(sp.insert(helpers::span_from_string(data3)));
+    REQUIRE(sp.remove(id2)); // Fragment
+
+    // Try to update id1 to 1400 bytes to compact and fit
+    const std::string data1_larger(1'400, 'x');
+    REQUIRE(sp.update(id1, helpers::span_from_string(data1_larger)));
+    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id1))) == data1_larger);
+
+    // Try to update id1 to 7000 bytes to compact but still fail
+    const std::string data1_too_large(7'000, 'y');
+    auto              update_res = sp.update(id1, helpers::span_from_string(data1_too_large));
+    CHECK_FALSE(update_res.has_value());
+    CHECK(update_res.error() == error_t::STORAGE_PAGE_FULL);
 }
 
 } // namespace cairn::tests
