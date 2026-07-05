@@ -17,6 +17,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
+#include "support/crash/injection.hh"
 #include "support/error.hh"
 #include "support/io_utils.hh"
 #include "wal/log/record.hh"
@@ -102,6 +103,7 @@ auto manager::trigger_buffer_swap() -> void {
 }
 
 auto manager::flush_loop() -> void {
+    PROFILE_FUNCTION();
     std::ofstream out{log_path_, std::ios::out | std::ios::binary | std::ios::app};
     VERIFY(out.is_open(), "Background flush thread could not open file");
 
@@ -124,6 +126,7 @@ auto manager::flush_loop() -> void {
             // Release the lock for concurrent file I/O
             lock.unlock();
 
+            crash::test_boundary(crash::boundary_t::WAL_WRITE_BEFORE);
             while (true) {
                 out.clear();
                 errno = 0;
@@ -133,8 +136,10 @@ auto manager::flush_loop() -> void {
                 if (io_utils::interrupted()) { continue; }
                 break;
             }
+            crash::test_boundary(crash::boundary_t::WAL_WRITE_AFTER);
 
             DISCARD(io_utils::try_flush(out));
+            crash::test_boundary(crash::boundary_t::WAL_FLUSH_AFTER);
             lock.lock();
 
             // Mark the flush complete and notify the waiting threads
