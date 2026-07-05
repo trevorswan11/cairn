@@ -27,7 +27,7 @@ class Argv {
         pointers_.emplace_back(nullptr);
     }
 
-    [[nodiscard]] auto argv() noexcept -> char** { return pointers_.data(); }
+    [[nodiscard]] auto argv() const noexcept -> char** { return pointers_.data(); }
     template <stdx::NumericIntegral I = i32> [[nodiscard]] auto argc() const noexcept -> I {
         return static_cast<I>(strings_.size());
     }
@@ -39,7 +39,7 @@ class Argv {
 
   private:
     std::vector<std::string> strings_;
-    args_t                   pointers_;
+    mutable args_t           pointers_;
 };
 
 } // namespace cairn::tests::helpers
