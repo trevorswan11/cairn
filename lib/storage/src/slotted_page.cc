@@ -19,6 +19,8 @@
 
 namespace cairn::storage {
 
+static_assert(DB_PAGE_SIZE < MAX_SLOT_SIZE, "stdx::option<slot_size_t> invariant violated");
+
 auto slotted_page::refresh_page() noexcept -> void {
     auto header{as_header()};
     *header = header_t{};
