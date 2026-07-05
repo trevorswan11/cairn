@@ -172,7 +172,7 @@ template <usize PoolSize> class buffer_pool {
         return buf;
     }
 
-    [[nodiscard]] auto num_pages() const noexcept -> usize { return disk_->num_pages(); }
+    [[nodiscard]] auto num_pages() const noexcept { return disk_->num_pages(); }
 
     // Pins the provided pid and returns a stable pointer
     [[nodiscard]] auto fetch_page(page_id_t pid) -> result<gsl::not_null<page*>> {
