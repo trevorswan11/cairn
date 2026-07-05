@@ -5,6 +5,8 @@
 namespace cairn::crash {
 
 // Indicates that boundaries should be respected
+//
+// Resets all boundary limits and counters
 auto initialize() noexcept -> void;
 
 // Configured such that after `limit` boundaries, the program crashes
