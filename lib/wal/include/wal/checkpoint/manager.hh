@@ -1,12 +1,6 @@
 #pragma once
 
-#include <array>
-#include <bit>
 #include <filesystem>
-#include <fstream>
-#include <ios>
-#include <system_error>
-#include <utility>
 
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -20,11 +14,11 @@
 
 namespace cairn::wal::checkpoint {
 
-template <usize PoolSize> class manager {
+class manager {
   public:
-    explicit manager(std::filesystem::path control_path) noexcept
-        : control_path_{std::move(control_path)} {}
+    explicit manager(std::filesystem::path control_path) noexcept;
 
+    template <usize PoolSize>
     auto checkpoint(storage::buffer_pool<PoolSize>& pool,
                     txn::manager&                   tm,
                     log::manager&                   wal_manager) -> result<log::seq_num> {
@@ -47,35 +41,10 @@ template <usize PoolSize> class manager {
     }
 
     // Read the latest checkpoint LSN from the control block/file
-    auto read_latest_checkpoint_lsn() -> result<log::seq_num> {
-        if (!std::filesystem::exists(control_path_)) {
-            return stdx::err{error_t::WAL_CONTROL_PATH_NOT_FOUND};
-        }
-
-        std::ifstream in{control_path_, std::ios::in | std::ios::binary};
-        if (!in.is_open()) { return stdx::err{error_t::IO_ERROR}; }
-        std::array<char, sizeof(log::seq_num)> checkpoint_lsn;
-        in.read(checkpoint_lsn.data(), checkpoint_lsn.size());
-        if (in.fail()) { return stdx::err{error_t::IO_ERROR}; }
-        return std::bit_cast<log::seq_num>(checkpoint_lsn);
-    }
+    auto read_latest_checkpoint_lsn() -> result<log::seq_num>;
 
   private:
-    auto persist_lsn(log::seq_num lsn) -> result<void> {
-        auto temp_path{control_path_};
-        temp_path.replace_extension(".tmp");
-
-        {
-            std::ofstream out{temp_path, std::ios::out | std::ios::binary | std::ios::trunc};
-            if (!out.is_open()) { return stdx::err{error_t::IO_ERROR}; }
-            out.write(reinterpret_cast<const char*>(&lsn), sizeof(lsn));
-        }
-
-        std::error_code ec;
-        std::filesystem::rename(temp_path, control_path_, ec);
-        if (ec) { return stdx::err{error_t::IO_ERROR}; }
-        return {};
-    }
+    auto persist_lsn(log::seq_num lsn) -> result<void>;
 
   private:
     const std::filesystem::path control_path_;

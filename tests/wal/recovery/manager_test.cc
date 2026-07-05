@@ -204,8 +204,8 @@ TEST_CASE("recovery with checkpoint") {
         auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
-        txn::manager           tm;
-        checkpoint::manager<8> cm{control_file.path};
+        txn::manager        tm;
+        checkpoint::manager cm{control_file.path};
 
         const auto t1{tm.begin_txn()};
         const auto t2{tm.begin_txn()};
