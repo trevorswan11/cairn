@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <random>
 #include <string_view>
-#include <system_error>
 
 #include <fmt/format.h>
 #include <stdx/types.hh>
@@ -24,11 +23,10 @@ auto tempfile_path(std::string_view tag) -> std::filesystem::path {
 
 } // namespace
 
-tempfile::tempfile(std::string_view tag) : path{tempfile_path(tag)} {}
-
-tempfile::~tempfile() {
-    std::error_code ec;
-    std::filesystem::remove(path, ec);
+tempfile::tempfile(std::string_view tag) : path{tempfile_path(tag)} {
+    std::filesystem::remove(path);
 }
+
+tempfile::~tempfile() { std::filesystem::remove(path); }
 
 } // namespace cairn::tests::helpers

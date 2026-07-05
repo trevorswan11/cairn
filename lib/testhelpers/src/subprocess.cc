@@ -1,7 +1,9 @@
 #include "testhelpers/subprocess.hh"
 
 #include <array>
+#include <cstdlib>
 #include <string>
+#include <string_view>
 
 #include <cairn/config.h>
 #include <fmt/base.h>
@@ -13,6 +15,7 @@
 
 #include "support/error.hh"
 #include "testhelpers/argv.hh"
+#include "testhelpers/internal/safe_assertions.hh"
 
 #if CAIRN_WINDOWS
 #    include <iterator>
@@ -32,7 +35,6 @@
 #endif
 
 #if !CAIRN_WINDOWS
-#    include <cstdlib>
 #    include <stdlib.h>
 #    include <sys/_types/_pid_t.h>
 #    include <sys/wait.h>
@@ -67,6 +69,12 @@ auto set_env(const std::string& name, const std::string& value) -> void {
 #else
     ::setenv(name.c_str(), value.c_str(), 1);
 #endif
+}
+
+auto get_env(const std::string& name) -> std::string_view {
+    const auto* var{std::getenv(name.c_str())};
+    CAIRN_REQUIRE(var);
+    return var;
 }
 
 auto spawn_child(const Argv& args) -> result<u32> {
