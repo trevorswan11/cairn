@@ -83,18 +83,18 @@ TEST_CASE("checkpoint basic accuracy") {
         auto reader{helpers::unwrap(log::reader::open(log_file.path))};
 
         // Record 1: UPDATE
-        auto r1{helpers::unwrap(reader.next())};
+        auto r1{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r1.lsn == update_lsn);
         CHECK(r1.type == log::record_type::UPDATE);
         CHECK(r1.txn_id == tid);
 
         // Record 2: CHECKPOINT_BEGIN
-        auto r2{helpers::unwrap(reader.next())};
+        auto r2{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r2.lsn == cm_lsn);
         CHECK(r2.type == log::record_type::CHECKPOINT_BEGIN);
 
         // Record 3: CHECKPOINT_END
-        auto r3{helpers::unwrap(reader.next())};
+        auto r3{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r3.type == log::record_type::CHECKPOINT_END);
 
         // DPT and ATT details inside CHECKPOINT_END

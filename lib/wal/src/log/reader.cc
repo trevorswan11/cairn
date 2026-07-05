@@ -45,16 +45,8 @@ auto reader::has_next() noexcept -> result<stdx::option<i64>> {
     return pos;
 }
 
-auto reader::next(stdx::option<i64> pos) -> result<record> {
+auto reader::next_at(i64 offset) -> result<record> {
     PROFILE_FUNCTION();
-    i64 true_pos;
-    if (!pos) {
-        const auto next_pos{TRY(has_next())};
-        if (!next_pos) { return stdx::err{error_t::WAL_EOF}; }
-        true_pos = *next_pos;
-    } else {
-        true_pos = *pos;
-    }
 
     std::array<char, 4> size_buf;
     i32                 size{0};
@@ -62,7 +54,7 @@ auto reader::next(stdx::option<i64> pos) -> result<record> {
     while (true) {
         file_.clear();
         errno = 0;
-        file_.seekg(true_pos, std::ios::beg);
+        file_.seekg(offset, std::ios::beg);
         if (file_.fail()) {
             if (io_utils::interrupted()) { continue; }
             return stdx::err{error_t::IO_ERROR};
@@ -76,7 +68,7 @@ auto reader::next(stdx::option<i64> pos) -> result<record> {
         }
 
         size = std::bit_cast<i32>(size_buf);
-        if (size < record::MINIMUM_SIZE<i32> || (true_pos + size > file_size_)) {
+        if (size < record::MINIMUM_SIZE<i32> || (offset + size > file_size_)) {
             return stdx::err{error_t::WAL_SIZE_CORRUPT};
         }
 
@@ -96,6 +88,23 @@ auto reader::next(stdx::option<i64> pos) -> result<record> {
     return deserialize_record();
 }
 
+auto reader::next_record() -> result<stdx::option<record>> {
+    if (const auto next_pos{TRY(has_next())}) { return TRY(next_at(*next_pos)); }
+    return stdx::none;
+}
+
+auto reader::next_record_lenient() -> result<stdx::option<record>> {
+    auto rec_res{next_record()};
+    if (!rec_res) {
+        if (rec_res.error() == error_t::WAL_SIZE_CORRUPT ||
+            rec_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
+            return stdx::none;
+        }
+        return stdx::err{rec_res.error()};
+    }
+    return rec_res.value();
+}
+
 auto reader::has_prev() noexcept -> result<stdx::option<i64>> {
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
@@ -104,16 +113,8 @@ auto reader::has_prev() noexcept -> result<stdx::option<i64>> {
     return pos;
 }
 
-auto reader::prev(stdx::option<i64> pos) -> result<record> {
+auto reader::prev_at(i64 offset) -> result<record> {
     PROFILE_FUNCTION();
-    i64 true_pos;
-    if (!pos) {
-        const auto prev_pos{TRY(has_prev())};
-        if (!prev_pos) { return stdx::err{error_t::WAL_EOF}; }
-        true_pos = *prev_pos;
-    } else {
-        true_pos = *pos;
-    }
 
     std::array<char, 4> size_buf;
     i32                 size{0};
@@ -122,7 +123,7 @@ auto reader::prev(stdx::option<i64> pos) -> result<record> {
     while (true) {
         file_.clear();
         errno = 0;
-        file_.seekg(true_pos - static_cast<i64>(sizeof(size_buf)), std::ios::beg);
+        file_.seekg(offset - static_cast<i64>(sizeof(size_buf)), std::ios::beg);
         if (file_.fail()) {
             if (io_utils::interrupted()) { continue; }
             return stdx::err{error_t::IO_ERROR};
@@ -136,7 +137,7 @@ auto reader::prev(stdx::option<i64> pos) -> result<record> {
         }
 
         size = std::bit_cast<i32>(size_buf);
-        if (size < record::MINIMUM_SIZE<i32> || true_pos < size) {
+        if (size < record::MINIMUM_SIZE<i32> || offset < size) {
             return stdx::err{error_t::WAL_SIZE_CORRUPT};
         }
 
@@ -145,7 +146,7 @@ auto reader::prev(stdx::option<i64> pos) -> result<record> {
         std::memcpy(
             record_buffer_.data() + size - sizeof(size_buf), size_buf.data(), sizeof(size_buf));
 
-        start_pos = true_pos - size;
+        start_pos = offset - size;
         errno     = 0;
         file_.seekg(start_pos, std::ios::beg);
         if (file_.fail()) {
@@ -171,6 +172,11 @@ auto reader::prev(stdx::option<i64> pos) -> result<record> {
     }
 
     return deserialize_record();
+}
+
+auto reader::prev_record() -> result<stdx::option<record>> {
+    if (const auto prev_pos{TRY(has_prev())}) { return TRY(prev_at(*prev_pos)); }
+    return stdx::none;
 }
 
 auto reader::deserialize_record() noexcept -> result<record> {

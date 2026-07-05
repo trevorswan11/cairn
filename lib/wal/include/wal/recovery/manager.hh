@@ -83,53 +83,51 @@ template <usize PoolSize> class manager {
         // Only seek to the checkpoint if it was able to resolved
         if (checkpoint_lsn) {
             TRY(reader.seek_to_start());
-            while (auto rec_opt{TRY(get_next_record(reader))}) {
-                const auto& rec{*rec_opt};
-                res.max_lsn.emplace(rec.lsn);
-                res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
-                if (rec.lsn == *checkpoint_lsn) { break; }
+            while (const auto rec{TRY(reader.next_record_lenient())}) {
+                res.max_lsn.emplace(rec->lsn);
+                res.max_txn_id = std::max(res.max_txn_id, rec->txn_id);
+                if (rec->lsn == *checkpoint_lsn) { break; }
             }
         } else {
             TRY(reader.seek_to_start());
         }
 
-        while (auto rec_opt{TRY(get_next_record(reader))}) {
-            const auto& rec{*rec_opt};
-            res.max_lsn.emplace(rec.lsn);
-            res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
+        while (const auto rec{TRY(reader.next_record_lenient())}) {
+            res.max_lsn.emplace(rec->lsn);
+            res.max_txn_id = std::max(res.max_txn_id, rec->txn_id);
 
-            switch (rec.type) {
+            switch (rec->type) {
             case log::record_type::CHECKPOINT_END:
-                for (const auto& entry : rec.att) { res.active_txns.emplace(entry.txn_id, entry); }
-                for (const auto& entry : rec.dpt) {
+                for (const auto& entry : rec->att) { res.active_txns.emplace(entry.txn_id, entry); }
+                for (const auto& entry : rec->dpt) {
                     res.dirty_pages.try_emplace(entry.page_id, entry.rec_lsn);
                 }
                 break;
             case log::record_type::BEGIN:
-                res.active_txns.emplace(rec.txn_id,
+                res.active_txns.emplace(rec->txn_id,
                                         checkpoint::att_entry{
-                                            .txn_id   = rec.txn_id,
+                                            .txn_id   = rec->txn_id,
                                             .state    = checkpoint::att_entry::state_t::ACTIVE,
-                                            .last_lsn = rec.lsn,
+                                            .last_lsn = rec->lsn,
                                         });
                 break;
             case log::record_type::UPDATE:
             case log::record_type::CLEAR:  {
                 auto emplace{
-                    res.active_txns.try_emplace(rec.txn_id,
+                    res.active_txns.try_emplace(rec->txn_id,
                                                 checkpoint::att_entry{
-                                                    .txn_id = rec.txn_id,
+                                                    .txn_id = rec->txn_id,
                                                     .state = checkpoint::att_entry::state_t::ACTIVE,
-                                                    .last_lsn = rec.lsn,
+                                                    .last_lsn = rec->lsn,
                                                 })};
 
-                if (!emplace.second) { emplace.first->second.last_lsn = rec.lsn; }
-                if (rec.page_id) { res.dirty_pages.try_emplace(*rec.page_id, rec.lsn); }
+                if (!emplace.second) { emplace.first->second.last_lsn = rec->lsn; }
+                if (rec->page_id) { res.dirty_pages.try_emplace(*rec->page_id, rec->lsn); }
                 break;
             }
             case log::record_type::COMMIT:
             case log::record_type::ABORT:  {
-                res.active_txns.erase(rec.txn_id);
+                res.active_txns.erase(rec->txn_id);
                 break;
             }
             case log::record_type::CHECKPOINT_BEGIN: break;
@@ -152,7 +150,7 @@ template <usize PoolSize> class manager {
         stdx::option<log::seq_num> last_appended_lsn;
         while (auto prev_pos{TRY(reader.has_prev())}) {
             if (to_undo.empty()) { break; }
-            const auto rec{TRY(reader.prev(prev_pos))};
+            const auto rec{TRY(reader.prev_at(*prev_pos))};
 
             const auto txn_id_it{to_undo.find(rec.txn_id)};
             if (txn_id_it == to_undo.end()) { continue; }
@@ -253,62 +251,36 @@ template <usize PoolSize> class manager {
         auto reader{TRY(log::reader::open(log_path_))};
         TRY(reader.seek_to_start());
 
-        while (auto rec_opt{TRY(get_next_record(reader))}) {
-            const auto& rec{*rec_opt};
-            if (std::to_underlying(rec.lsn) < std::to_underlying(min_rec_lsn)) { continue; }
+        while (const auto rec{TRY(reader.next_record_lenient())}) {
+            if (std::to_underlying(rec->lsn) < std::to_underlying(min_rec_lsn)) { continue; }
 
-            if (rec.type == log::record_type::UPDATE || rec.type == log::record_type::CLEAR) {
-                if (!rec.page_id) { continue; }
-                const auto pid{*rec.page_id};
+            if (rec->type == log::record_type::UPDATE || rec->type == log::record_type::CLEAR) {
+                if (!rec->page_id) { continue; }
+                const auto pid{*rec->page_id};
 
                 const auto pid_it{dirty_pages.find(pid)};
                 if (pid_it == dirty_pages.end()) { continue; }
-                if (std::to_underlying(rec.lsn) < std::to_underlying(pid_it->second)) { continue; }
+                if (std::to_underlying(rec->lsn) < std::to_underlying(pid_it->second)) { continue; }
 
                 auto guard{TRY(pool_.fetch_write(pid))};
                 auto page_lsn{guard.get()->page_lsn()};
-                if (page_lsn && std::to_underlying(*page_lsn) >= std::to_underlying(rec.lsn)) {
+                if (page_lsn && std::to_underlying(*page_lsn) >= std::to_underlying(rec->lsn)) {
                     continue;
                 }
 
                 storage::slotted_page sp{*guard.get()};
-                if (!rec.redo_data.empty()) {
-                    TRY(sp.write_slot_raw(*rec.slot_id, rec.redo_data));
+                if (!rec->redo_data.empty()) {
+                    TRY(sp.write_slot_raw(*rec->slot_id, rec->redo_data));
                 } else {
-                    TRY(sp.write_slot_raw(*rec.slot_id, stdx::none));
+                    TRY(sp.write_slot_raw(*rec->slot_id, stdx::none));
                 }
 
-                guard.get()->set_page_lsn(rec.lsn);
+                guard.get()->set_page_lsn(rec->lsn);
                 guard.mark_dirty();
             }
         }
 
         return {};
-    }
-
-  private:
-    [[nodiscard]] static auto get_next_record(log::reader& reader)
-        -> result<stdx::option<log::record>> {
-        auto next_pos_res{reader.has_next()};
-        if (!next_pos_res) {
-            if (next_pos_res.error() == error_t::WAL_SIZE_CORRUPT ||
-                next_pos_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
-                return stdx::none;
-            }
-            return stdx::err{next_pos_res.error()};
-        }
-        auto next_pos{next_pos_res.value()};
-        if (!next_pos) { return stdx::none; }
-
-        auto rec_res{reader.next(next_pos)};
-        if (!rec_res) {
-            if (rec_res.error() == error_t::WAL_SIZE_CORRUPT ||
-                rec_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
-                return stdx::none;
-            }
-            return stdx::err{rec_res.error()};
-        }
-        return stdx::option<log::record>{std::move(rec_res.value())};
     }
 
   private:

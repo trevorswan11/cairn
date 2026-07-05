@@ -23,7 +23,6 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "support/crash/injection.hh"
-#include "support/error.hh"
 #include "testhelpers/argv.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/subprocess.hh"
@@ -183,36 +182,14 @@ TEST_CASE("crash recovery entrypoint") {
                 ankerl::unordered_dense::set<txn::id_t, txn::id_hash_t> committed_txns;
                 update_map_t                                            updates;
 
-                while (true) {
-                    auto next_pos_res{reader.has_next()};
-                    if (!next_pos_res) {
-                        if (next_pos_res.error() == error_t::WAL_SIZE_CORRUPT ||
-                            next_pos_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
-                            break;
-                        }
-                        FAIL("reader.has_next() failed: "
-                             << magic_enum::enum_name(next_pos_res.error()));
-                    }
-                    auto next_pos{helpers::unwrap(next_pos_res)};
-                    if (!next_pos) { break; }
-
-                    auto rec_res{reader.next(next_pos)};
-                    if (!rec_res) {
-                        if (rec_res.error() == error_t::WAL_SIZE_CORRUPT ||
-                            rec_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
-                            break;
-                        }
-                        FAIL("reader.next() failed: " << magic_enum::enum_name(rec_res.error()));
-                    }
-                    const auto rec{std::move(rec_res.value())};
-
-                    if (rec.type == log::record_type::COMMIT) {
-                        committed_txns.insert(rec.txn_id);
-                    } else if (rec.type == log::record_type::UPDATE) {
-                        updates[rec.txn_id].emplace_back(
-                            *rec.page_id,
-                            *rec.slot_id,
-                            std::string{helpers::string_from_span(rec.redo_data)});
+                while (auto rec{helpers::unwrap(reader.next_record_lenient())}) {
+                    if (rec->type == log::record_type::COMMIT) {
+                        committed_txns.insert(rec->txn_id);
+                    } else if (rec->type == log::record_type::UPDATE) {
+                        updates[rec->txn_id].emplace_back(
+                            *rec->page_id,
+                            *rec->slot_id,
+                            std::string{helpers::string_from_span(rec->redo_data)});
                     }
                 }
 
