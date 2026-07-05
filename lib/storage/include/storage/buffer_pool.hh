@@ -19,8 +19,8 @@
 #include "storage/frame_replacer.hh"
 #include "storage/page.hh"
 #include "support/error.hh"
-#include "wal/checkpoints.hh"
-#include "wal/log_manager.hh"
+#include "wal/checkpoint/types.hh"
+#include "wal/log/manager.hh"
 
 namespace cairn::storage {
 
@@ -160,11 +160,11 @@ template <usize PoolSize> class buffer_pool {
         return stdx::make_box<buffer_pool>(std::move(dm));
     }
 
-    auto set_log_manager(stdx::option<wal::log_manager&> log) noexcept -> void { log_ = log; }
+    auto set_log_manager(stdx::option<wal::log::manager&> log) noexcept -> void { log_ = log; }
 
-    auto snapshot_dpt() noexcept -> std::vector<wal::checkpoint_dpt_entry> {
-        std::scoped_lock                       lock{mutex_};
-        std::vector<wal::checkpoint_dpt_entry> buf;
+    auto snapshot_dpt() noexcept -> std::vector<wal::checkpoint::dpt_entry> {
+        std::scoped_lock                        lock{mutex_};
+        std::vector<wal::checkpoint::dpt_entry> buf;
         for (usize i{0}; i < PoolSize; ++i) {
             auto& f{frame_at(static_cast<frame_id_t>(i))};
             if (f.is_dirty() && f.rec_lsn()) { buf.emplace_back(f.page_id(), *f.rec_lsn()); }
@@ -386,7 +386,7 @@ template <usize PoolSize> class buffer_pool {
     usize                                                        page_table_churn_{0};
     stdx::fixed::hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
 
-    stdx::option<wal::log_manager&> log_;
+    stdx::option<wal::log::manager&> log_;
 };
 
 } // namespace cairn::storage

@@ -21,12 +21,12 @@
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "txn/manager.hh"
-#include "wal/checkpoint_manager.hh"
-#include "wal/checkpoints.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_reader.hh"
-#include "wal/log_record.hh"
-#include "wal/log_sequence_number.hh"
+#include "wal/checkpoint/manager.hh"
+#include "wal/checkpoint/types.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/reader.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::tests {
 
@@ -41,16 +41,16 @@ TEST_CASE("checkpoint basic accuracy") {
     helpers::tempfile control_file{"checkpoint_basic_control"};
 
     using pool_t = buffer_pool<8>;
-    wal::log_manager log{log_file.path, 4_KiB};
-    auto             bp{helpers::unwrap(pool_t::open(db_file.path))};
+    wal::log::manager log{log_file.path, 4_KiB};
+    auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
-    txn::manager          tm;
-    checkpoint_manager<8> cm{control_file.path};
+    txn::manager           tm;
+    checkpoint::manager<8> cm{control_file.path};
 
-    const auto tid{tm.begin_txn()};
-    page_id_t  pid;
-    lsn_t      update_lsn;
+    const auto   tid{tm.begin_txn()};
+    page_id_t    pid;
+    log::seq_num update_lsn;
 
     {
         auto [id, guard]{helpers::unwrap(bp->new_write())};
@@ -62,9 +62,9 @@ TEST_CASE("checkpoint basic accuracy") {
         const std::string_view data{"checkpoint test record"};
         CHECK(sp.insert(helpers::span_from_string(data),
                         {
-                            .txn_id   = tid,
-                            .prev_lsn = stdx::none,
-                            .log      = log,
+                            .txn_id      = tid,
+                            .prev_lsn    = stdx::none,
+                            .log_manager = log,
                         }));
 
         update_lsn = helpers::unwrap(guard.get()->page_lsn());
@@ -75,27 +75,27 @@ TEST_CASE("checkpoint basic accuracy") {
     }
 
     const auto cm_lsn{helpers::unwrap(cm.checkpoint(*bp, tm, log))};
-    CHECK(cm_lsn != INVALID_LSN);
+    CHECK(cm_lsn != log::INVALID_LSN);
     const auto persisted_lsn{helpers::unwrap(cm.read_latest_checkpoint_lsn())};
     CHECK(persisted_lsn == cm_lsn);
 
     {
-        auto reader{helpers::unwrap(log_reader::open(log_file.path))};
+        auto reader{helpers::unwrap(log::reader::open(log_file.path))};
 
         // Record 1: UPDATE
         auto r1{helpers::unwrap(reader.next())};
         CHECK(r1.lsn == update_lsn);
-        CHECK(r1.type == log_record_type::UPDATE);
+        CHECK(r1.type == log::record_type::UPDATE);
         CHECK(r1.txn_id == tid);
 
         // Record 2: CHECKPOINT_BEGIN
         auto r2{helpers::unwrap(reader.next())};
         CHECK(r2.lsn == cm_lsn);
-        CHECK(r2.type == log_record_type::CHECKPOINT_BEGIN);
+        CHECK(r2.type == log::record_type::CHECKPOINT_BEGIN);
 
         // Record 3: CHECKPOINT_END
         auto r3{helpers::unwrap(reader.next())};
-        CHECK(r3.type == log_record_type::CHECKPOINT_END);
+        CHECK(r3.type == log::record_type::CHECKPOINT_END);
 
         // DPT and ATT details inside CHECKPOINT_END
         REQUIRE(r3.dpt.size() == 1);
@@ -104,7 +104,7 @@ TEST_CASE("checkpoint basic accuracy") {
 
         REQUIRE(r3.att.size() == 1);
         CHECK(r3.att[0].txn_id == tid);
-        CHECK(r3.att[0].state == att_state_t::ACTIVE);
+        CHECK(r3.att[0].state == checkpoint::att_entry::state_t::ACTIVE);
         CHECK(r3.att[0].last_lsn == update_lsn);
     }
 }
@@ -115,14 +115,14 @@ TEST_CASE("checkpoint concurrent with page writes") {
     helpers::tempfile control_file{"checkpoint_concurrent_control"};
 
     using pool_t = buffer_pool<8>;
-    wal::log_manager log{log_file.path, 16_KiB};
-    auto             bp{helpers::unwrap(pool_t::open(db_file.path))};
+    wal::log::manager log{log_file.path, 16_KiB};
+    auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
-    txn::manager          tm;
-    checkpoint_manager<8> cm{control_file.path};
-    const i32             num_threads{4};
-    const i32             iterations{20};
+    txn::manager           tm;
+    checkpoint::manager<8> cm{control_file.path};
+    const i32              num_threads{4};
+    const i32              iterations{20};
 
     std::vector<std::jthread> writers;
     std::atomic<bool>         stop{false};
@@ -149,9 +149,9 @@ TEST_CASE("checkpoint concurrent with page writes") {
                 const auto data{fmt::format("writer {} seq {}", t, seq++)};
                 auto       slot_id{sp.insert(helpers::span_from_string(data),
                                              {
-                                                 .txn_id   = tid,
-                                                 .prev_lsn = stdx::none,
-                                                 .log      = log,
+                                                 .txn_id      = tid,
+                                                 .prev_lsn    = stdx::none,
+                                                 .log_manager = log,
                                        })};
                 if (slot_id) {
                     if (auto page_lsn{guard.get()->page_lsn()}) {

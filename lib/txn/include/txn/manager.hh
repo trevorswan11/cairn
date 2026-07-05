@@ -10,21 +10,21 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
-#include "wal/checkpoints.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_sequence_number.hh"
+#include "wal/checkpoint/types.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::txn {
 
 class manager {
   public:
-    using active_txn_buf_t = std::vector<wal::checkpoint_att_entry>;
+    using active_txn_buf_t = std::vector<wal::checkpoint::att_entry>;
 
   public:
     [[nodiscard]] auto begin_txn() -> id_t;
-    [[nodiscard]] auto commit_txn(id_t id, wal::log_manager& manager) -> result<void>;
-    [[nodiscard]] auto abort_txn(id_t id, wal::log_manager& manager) -> result<void>;
-    [[nodiscard]] auto update_txn_lsn(id_t id, wal::lsn_t lsn) -> result<void>;
+    [[nodiscard]] auto commit_txn(id_t id, wal::log::manager& manager) -> result<void>;
+    [[nodiscard]] auto abort_txn(id_t id, wal::log::manager& manager) -> result<void>;
+    [[nodiscard]] auto update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void>;
     [[nodiscard]] auto snapshot_att() -> active_txn_buf_t;
 
   private:
