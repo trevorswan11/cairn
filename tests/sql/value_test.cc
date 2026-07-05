@@ -66,7 +66,7 @@ TEST_CASE("sql::value basics") {
     }
 
     SECTION("Make Null") {
-        value_t v = value_t::make_null(type::id_t::INTEGER);
+        value_t v{value_t::make_null(type::id_t::INTEGER)};
         CHECK(v.type() == type::id_t::INTEGER);
         CHECK(v.is_null());
         CHECK(v.nullable());

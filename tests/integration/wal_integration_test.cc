@@ -40,17 +40,14 @@ TEST_CASE("WAL page flush forces WAL flush") {
         sp.refresh_page();
 
         const std::string_view data{"hello wal integration"};
-        const auto             slot_id = helpers::unwrap(sp.insert(helpers::span_from_string(data),
-                                                                   {
-                                                                       .txn_id      = txn::id_t{1},
-                                                                       .prev_lsn    = stdx::none,
-                                                                       .log_manager = log,
-                                                       }));
+        const auto             slot_id{helpers::unwrap(sp.insert(helpers::span_from_string(data),
+                                                                 {
+                                                                     .txn_id      = txn::id_t{1},
+                                                                     .prev_lsn    = stdx::none,
+                                                                     .log_manager = log,
+                                                     }))};
         CHECK(slot_id == storage::slot_id_t{0});
-
-        auto page_lsn = guard.get()->page_lsn();
-        REQUIRE(page_lsn.has_value());
-        expected_lsn = *page_lsn;
+        expected_lsn = helpers::unwrap(guard.get()->page_lsn());
 
         CHECK(log.flushed_lsn() < expected_lsn);
         guard.mark_dirty();

@@ -1,28 +1,36 @@
-#include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <vector>
 
+#include <catch2/catch_test_macros.hpp>
+#include <stdx/memory.hh>
+
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
+#include "txn/id.hh"
 #include "txn/manager.hh"
+#include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
 #include "wal/log/reader.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::txn;
+using namespace stdx::size_literals;
 using helpers::unwrap;
 
 TEST_CASE("txn::manager basics") {
     manager           tm;
     helpers::tempfile file{"txn_manager_test"};
-    wal::log::manager lm{file.path, 1'024};
+    wal::log::manager lm{file.path, 1_KiB};
 
     SECTION("begin, update LSN, commit") {
-        const auto id1 = tm.begin_txn();
+        const auto id1{tm.begin_txn()};
         CHECK(id1 == id_t{1});
 
-        auto att = tm.snapshot_att();
+        auto att{tm.snapshot_att()};
         REQUIRE(att.size() == 1);
         CHECK(att[0].txn_id == id1);
         CHECK(att[0].state == wal::checkpoint::att_entry::state_t::ACTIVE);
@@ -47,7 +55,7 @@ TEST_CASE("txn::manager basics") {
     }
 
     SECTION("abort transaction") {
-        const auto id2 = tm.begin_txn();
+        const auto id2{tm.begin_txn()};
         CHECK(id2 == id_t{1});
 
         REQUIRE(tm.update_txn_lsn(id2, wal::log::seq_num{55}));
@@ -66,22 +74,15 @@ TEST_CASE("txn::manager basics") {
 
     SECTION("set next txn id") {
         tm.set_next_txn_id(id_t{100});
-        const auto id = tm.begin_txn();
+        const auto id{tm.begin_txn()};
         CHECK(id == id_t{100});
     }
 
     SECTION("not found / error cases") {
-        auto res_commit = tm.commit_txn(id_t{999}, lm);
-        CHECK_FALSE(res_commit.has_value());
-        CHECK(res_commit.error() == error_t::TXN_NOT_FOUND);
-
-        auto res_abort = tm.abort_txn(id_t{999}, lm);
-        CHECK_FALSE(res_abort.has_value());
-        CHECK(res_abort.error() == error_t::TXN_NOT_FOUND);
-
-        auto res_update = tm.update_txn_lsn(id_t{999}, wal::log::seq_num{123});
-        CHECK_FALSE(res_update.has_value());
-        CHECK(res_update.error() == error_t::TXN_NOT_FOUND);
+        CHECK(helpers::unwrap_err(tm.commit_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);
+        CHECK(helpers::unwrap_err(tm.abort_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);
+        CHECK(helpers::unwrap_err(tm.update_txn_lsn(id_t{999}, wal::log::seq_num{123})) ==
+              error_t::TXN_NOT_FOUND);
     }
 }
 
