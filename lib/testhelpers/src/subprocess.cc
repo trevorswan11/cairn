@@ -36,7 +36,6 @@
 
 #if !CAIRN_WINDOWS
 #    include <stdlib.h>
-#    include <sys/_types/_pid_t.h>
 #    include <sys/wait.h>
 #    include <unistd.h>
 #endif
@@ -105,7 +104,7 @@ auto spawn_child(const Argv& args) -> result<u32> {
     ::CloseHandle(pi.hThread);
     return exit_code;
 #else
-    ::pid_t pid{::fork()};
+    const auto pid{::fork()};
     if (pid < 0) { return stdx::err{error_t::SUBPROCESS_FAILED}; }
 
     if (pid == 0) {
