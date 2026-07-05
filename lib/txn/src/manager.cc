@@ -3,6 +3,7 @@
 #include <mutex>
 #include <vector>
 
+#include <stdx/enum.hh>
 #include <stdx/option.hh>
 #include <stdx/profiler.hh>
 #include <stdx/result.hh>
@@ -18,6 +19,7 @@
 namespace cairn::txn {
 
 auto manager::begin_txn() -> id_t {
+    using namespace stdx::enum_ops;
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     const id_t       id{next_txn_id_++};

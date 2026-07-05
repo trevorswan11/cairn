@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <stdx/profiler.hh>
 #include <utility>
 
 #include <ankerl/unordered_dense.h>
+#include <stdx/enum.hh>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -36,6 +38,8 @@ template <usize PoolSize> class manager {
           log_path_{std::move(log_path)}, cm_{control_path_} {}
 
     [[nodiscard]] auto recover() -> result<void> {
+        PROFILE_FUNCTION();
+        using namespace stdx::enum_ops;
         auto analysis_res{TRY(run_analysis())};
         if (analysis_res.max_lsn) { log_manager_.set_lsn_watermarks(*analysis_res.max_lsn); }
         tm_.set_next_txn_id(++analysis_res.max_txn_id);

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <utility>
-
 #include <stdx/hash.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
@@ -12,16 +10,8 @@ enum class id_t : i64 {};
 constexpr id_t INVALID_TXN_ID{-1};
 using id_hash_t = stdx::hash<txn::id_t>;
 
-[[nodiscard]] constexpr auto operator++(id_t& id) noexcept -> id_t {
-    id = id_t{std::to_underlying(id) + 1};
-    return id;
-}
-
-[[nodiscard]] constexpr auto operator++(id_t& id, i32) noexcept -> id_t {
-    id_t tmp{id};
-    id = id_t{std::to_underlying(id) + 1};
-    return tmp;
-}
+enum class timestamp_t : u64 {};
+constexpr timestamp_t INVALID_TIMESTAMP{stdx::nullable<timestamp_t>::invalid()};
 
 } // namespace cairn::txn
 
