@@ -74,6 +74,10 @@ pub fn build(b: *std.Build) !void {
                 include_patterns.append(b.fmt("lib/{s}/include", .{library}));
             }
 
+            var exclude_patterns: stdx.ArrayList([]const u8) = .init(b);
+            exclude_patterns.append("lib/support/src/crash/injection.cc");
+            exclude_patterns.append("lib/support/src/io_utils.cc");
+
             var configs: stdx.ArrayList(stdx.steps.RunKcovConfig) = .init(b);
             var suites: stdx.ArrayList(Test) = .fromSlice(b, tests.unit_suites);
             suites.appendSlice(tests.fuzz_suites);
@@ -82,6 +86,7 @@ pub fn build(b: *std.Build) !void {
                 configs.append(.{
                     .artifact = suite.artifact,
                     .include_patterns = include_patterns.wrapped.items,
+                    .exclude_patterns = exclude_patterns.wrapped.items,
                 });
             }
 
@@ -556,7 +561,7 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{ libwal.artifact, libstorage.artifact, libtxn.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("txn", .{
-            .link_libraries = &.{libtxn.artifact},
+            .link_libraries = &.{ libtxn.artifact, libwal.artifact, libstorage.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
             .link_libraries = &.{ libsql.artifact, libstorage.artifact, libwal.artifact },

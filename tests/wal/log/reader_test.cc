@@ -8,6 +8,7 @@
 #include <gsl/span>
 
 #include "helpers/mock_records.hh"
+#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "wal/log/reader.hh"
@@ -92,6 +93,35 @@ TEST_CASE("log::reader bidirectional scan") {
 
         CHECK_FALSE(unwrap(reader.prev_record()));
     }
+}
+
+TEST_CASE("log::reader lenient reading with size corruption") {
+    helpers::tempfile      corrupt_file{"wal_reader_corrupt"};
+    std::vector<std::byte> corrupt_buffer;
+
+    // Serialize 1 good record and 2 bytes of garbage
+    const auto corrupt_rec1{helpers::write_begin_log(corrupt_buffer)};
+    corrupt_buffer.emplace_back(std::byte{0x01});
+    corrupt_buffer.emplace_back(std::byte{0x02});
+
+    {
+        std::ofstream out{corrupt_file.path, std::ios::out | std::ios::binary};
+        REQUIRE(out.is_open());
+        out.write(reinterpret_cast<const char*>(corrupt_buffer.data()),
+                  static_cast<std::streamsize>(corrupt_buffer.size()));
+        REQUIRE_FALSE(out.fail());
+    }
+
+    auto reader_corrupt{helpers::unwrap(log::reader::open(corrupt_file.path))};
+    helpers::records_eq(helpers::unwrap(helpers::unwrap(reader_corrupt.next_record())),
+                        corrupt_rec1);
+
+    CHECK(helpers::unwrap_err(reader_corrupt.next_record()) == error_t::WAL_SIZE_CORRUPT);
+    auto reader_lenient{helpers::unwrap(log::reader::open(corrupt_file.path))};
+    helpers::records_eq(helpers::unwrap(helpers::unwrap(reader_lenient.next_record_lenient())),
+                        corrupt_rec1);
+
+    CHECK_FALSE(helpers::unwrap(reader_lenient.next_record_lenient()));
 }
 
 } // namespace cairn::tests

@@ -23,16 +23,16 @@ TEST_CASE("tuple serialization and deserialization") {
                              {"description", type::id_t::VARCHAR, true}};
     schema              sch{cols};
 
-    stdx::fixed::vector<value, 5> out_vals;
+    stdx::fixed::vector<value_t, 5> out_vals;
     out_vals.resize(out_vals.capacity());
 
     SECTION("Serialize and Deserialize basic row") {
-        std::vector<value> vals{value{i32{42}},
-                                value{std::string_view{"Alice"}},
-                                value{true},
-                                value{double{99.5}},
-                                value::make_null(type::id_t::VARCHAR)};
-        const auto         t{helpers::unwrap(tuple::serialize(sch, vals))};
+        std::vector<value_t> vals{value_t{i32{42}},
+                                  value_t{std::string_view{"Alice"}},
+                                  value_t{true},
+                                  value_t{double{99.5}},
+                                  value_t::make_null(type::id_t::VARCHAR)};
+        const auto           t{helpers::unwrap(tuple::serialize(sch, vals))};
 
         REQUIRE(t.deserialize(sch, out_vals));
         REQUIRE(out_vals.size() == 5);
@@ -45,12 +45,12 @@ TEST_CASE("tuple serialization and deserialization") {
     }
 
     SECTION("All nulls") {
-        const std::vector<value> vals{value::make_null(type::id_t::INTEGER),
-                                      value::make_null(type::id_t::VARCHAR),
-                                      value::make_null(type::id_t::BOOLEAN),
-                                      value::make_null(type::id_t::DOUBLE),
-                                      value::make_null(type::id_t::VARCHAR)};
-        const auto               t{helpers::unwrap(tuple::serialize(sch, vals))};
+        const std::vector<value_t> vals{value_t::make_null(type::id_t::INTEGER),
+                                        value_t::make_null(type::id_t::VARCHAR),
+                                        value_t::make_null(type::id_t::BOOLEAN),
+                                        value_t::make_null(type::id_t::DOUBLE),
+                                        value_t::make_null(type::id_t::VARCHAR)};
+        const auto                 t{helpers::unwrap(tuple::serialize(sch, vals))};
 
         REQUIRE(t.deserialize(sch, out_vals));
         REQUIRE(out_vals.size() == 5);
