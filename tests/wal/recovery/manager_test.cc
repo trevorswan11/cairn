@@ -228,7 +228,7 @@ TEST_CASE("recovery with checkpoint") {
         }
 
         // 2. Perform a checkpoint
-        const auto cp_lsn = helpers::unwrap(cm.checkpoint(*bp, tm, log));
+        const auto cp_lsn{helpers::unwrap(cm.checkpoint(*bp, tm, log))};
         REQUIRE(cp_lsn != log::INVALID_LSN);
 
         // 3. Write T2 page 2

@@ -171,50 +171,46 @@ TEST_CASE("crash recovery entrypoint") {
             }
 
             // Check correctness of recovered state by scanning the WAL
-            auto reader_res = wal::log::reader::open(log_file.path);
-            if (reader_res) {
-                auto& reader{reader_res.value()};
-                REQUIRE(reader.seek_to_start());
+            auto reader{helpers::unwrap(wal::log::reader::open(log_file.path))};
+            REQUIRE(reader.seek_to_start());
 
-                ankerl::unordered_dense::set<txn::id_t, txn::id_hash_t> committed_txns;
-                update_map_t                                            updates;
+            ankerl::unordered_dense::set<txn::id_t, txn::id_hash_t> committed_txns;
+            update_map_t                                            updates;
 
-                while (auto rec{helpers::unwrap(reader.next_record_lenient())}) {
-                    if (rec->type == wal::log::record_type::COMMIT) {
-                        committed_txns.insert(rec->txn_id);
-                    } else if (rec->type == wal::log::record_type::UPDATE) {
-                        updates[rec->txn_id].emplace_back(
-                            helpers::unwrap(rec->page_id),
-                            helpers::unwrap(rec->slot_id),
-                            std::string{helpers::string_from_span(rec->redo_data)});
-                    }
+            while (auto rec{helpers::unwrap(reader.next_record_lenient())}) {
+                if (rec->type == wal::log::record_type::COMMIT) {
+                    committed_txns.insert(rec->txn_id);
+                } else if (rec->type == wal::log::record_type::UPDATE) {
+                    updates[rec->txn_id].emplace_back(
+                        helpers::unwrap(rec->page_id),
+                        helpers::unwrap(rec->slot_id),
+                        std::string{helpers::string_from_span(rec->redo_data)});
                 }
+            }
 
-                // Verify recovered database pages match the committed txn state
-                auto      bp{helpers::unwrap(pool_t::open(db_file.path))};
-                const i64 num_pages{bp->num_pages()};
+            // Verify recovered database pages match the committed txn state
+            auto      bp{helpers::unwrap(pool_t::open(db_file.path))};
+            const i64 num_pages{bp->num_pages()};
 
-                for (const auto& [tid, tx_updates] : updates) {
-                    const bool is_committed{committed_txns.contains(tid)};
+            for (const auto& [tid, tx_updates] : updates) {
+                const bool is_committed{committed_txns.contains(tid)};
 
-                    for (const auto& upd : tx_updates) {
-                        const auto page_id_val{std::to_underlying(upd.pid)};
+                for (const auto& upd : tx_updates) {
+                    const auto page_id_val{std::to_underlying(upd.pid)};
 
-                        if (is_committed) {
-                            REQUIRE(page_id_val < num_pages);
-                            auto                  guard{helpers::unwrap(bp->fetch_read(upd.pid))};
-                            storage::slotted_page sp{*guard.get()};
-                            auto                  tuple{helpers::unwrap(sp.get(upd.sid))};
-                            CHECK(helpers::string_from_span(tuple) == upd.data);
-                        } else {
-                            if (page_id_val < num_pages) {
-                                if (auto guard{bp->fetch_read(upd.pid)}) {
-                                    storage::slotted_page sp{*guard.value().get()};
-                                    auto                  tuple_res{sp.get(upd.sid)};
-                                    if (tuple_res) {
-                                        CHECK(helpers::string_from_span(tuple_res.value()) !=
-                                              upd.data);
-                                    }
+                    if (is_committed) {
+                        REQUIRE(page_id_val < num_pages);
+                        auto                  guard{helpers::unwrap(bp->fetch_read(upd.pid))};
+                        storage::slotted_page sp{*guard.get()};
+                        auto                  tuple{helpers::unwrap(sp.get(upd.sid))};
+                        CHECK(helpers::string_from_span(tuple) == upd.data);
+                    } else {
+                        if (page_id_val < num_pages) {
+                            if (auto guard{bp->fetch_read(upd.pid)}) {
+                                storage::slotted_page sp{*guard.value().get()};
+                                auto                  tuple_res{sp.get(upd.sid)};
+                                if (tuple_res) {
+                                    CHECK(helpers::string_from_span(tuple_res.value()) != upd.data);
                                 }
                             }
                         }
