@@ -10,9 +10,9 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
-#include "wal/manager.hh"
-#include "wal/record.hh"
-#include "wal/sequence_number.hh"
+#include "wal/log_manager.hh"
+#include "wal/log_record.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::txn {
 
@@ -24,15 +24,15 @@ auto manager::begin_txn() -> id_t {
     return id;
 }
 
-auto manager::commit_txn(id_t id, wal::manager& manager) -> result<void> {
+auto manager::commit_txn(id_t id, wal::log_manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     auto             it{TRY(find_id(id))};
 
     if (it->last_lsn) {
-        wal::record rec;
+        wal::log_record rec;
         rec.txn_id   = id;
-        rec.type     = wal::record_type::COMMIT;
+        rec.type     = wal::log_record_type::COMMIT;
         rec.prev_lsn = it->last_lsn;
 
         auto lsn{TRY(manager.append_record(rec))};
@@ -43,15 +43,15 @@ auto manager::commit_txn(id_t id, wal::manager& manager) -> result<void> {
     return {};
 }
 
-auto manager::abort_txn(id_t id, wal::manager& manager) -> result<void> {
+auto manager::abort_txn(id_t id, wal::log_manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     auto             it{TRY(find_id(id))};
 
     if (it->last_lsn) {
-        wal::record rec;
+        wal::log_record rec;
         rec.txn_id   = id;
-        rec.type     = wal::record_type::ABORT;
+        rec.type     = wal::log_record_type::ABORT;
         rec.prev_lsn = it->last_lsn;
 
         auto lsn{TRY(manager.append_record(rec))};

@@ -10,7 +10,7 @@
 #include "helpers/mock_records.hh"
 #include "support/error.hh"
 #include "testhelpers/unwrap.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::tests {
 
@@ -59,7 +59,7 @@ TEST_CASE("log_record checksum corruption") {
 
     buffer[25] ^= std::byte{0xFF};
     gsl::span<const std::byte> src{buffer};
-    CHECK(helpers::unwrap_err(record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
+    CHECK(helpers::unwrap_err(log_record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
 }
 
 } // namespace cairn::tests

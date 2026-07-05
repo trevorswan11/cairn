@@ -1,4 +1,4 @@
-#include "wal/reader.hh"
+#include "wal/log_reader.hh"
 
 #include <array>
 #include <bit>
@@ -16,11 +16,11 @@
 
 #include "support/error.hh"
 #include "support/io_utils.hh"
-#include "wal/record.hh"
+#include "wal/log_record.hh"
 
 namespace cairn::wal {
 
-auto reader::open(std::filesystem::path log_path) -> result<reader> {
+auto log_reader::open(std::filesystem::path log_path) -> result<log_reader> {
     PROFILE_FUNCTION();
     std::ifstream file{log_path, std::ios::in | std::ios::binary};
     if (!file.is_open()) { return stdx::err{error_t::WAL_LOG_FILE_NOT_FOUND}; }
@@ -30,15 +30,15 @@ auto reader::open(std::filesystem::path log_path) -> result<reader> {
     if (end < 0) { return stdx::err{error_t::IO_ERROR}; }
     TRY(io_utils::seek_to_beg(file));
 
-    return reader{std::move(file), end};
+    return log_reader{std::move(file), end};
 }
 
-auto reader::next() -> result<record> {
+auto log_reader::next() -> result<log_record> {
     PROFILE_FUNCTION();
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
     if (pos == file_size_) { return stdx::err{error_t::WAL_EOF}; }
-    if (file_size_ - pos < record::MINIMUM_SIZE<i64>) {
+    if (file_size_ - pos < log_record::MINIMUM_SIZE<i64>) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
     }
 
@@ -47,7 +47,7 @@ auto reader::next() -> result<record> {
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
     const auto size{std::bit_cast<i32>(size_buf)};
-    if (size < record::MINIMUM_SIZE<i32> || (pos + size > file_size_)) {
+    if (size < log_record::MINIMUM_SIZE<i32> || (pos + size > file_size_)) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
     }
 
@@ -62,12 +62,12 @@ auto reader::next() -> result<record> {
     return deserialize_record();
 }
 
-auto reader::prev() -> result<record> {
+auto log_reader::prev() -> result<log_record> {
     PROFILE_FUNCTION();
     const i64 pos{file_.tellg()};
     if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
     if (pos == 0) { return stdx::err{error_t::WAL_EOF}; }
-    if (pos < record::MINIMUM_SIZE<i64>) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
+    if (pos < log_record::MINIMUM_SIZE<i64>) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
 
     std::array<char, 4> size_buf;
     file_.seekg(pos - static_cast<i64>(sizeof(size_buf)));
@@ -76,7 +76,7 @@ auto reader::prev() -> result<record> {
     if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
 
     const auto size{std::bit_cast<i32>(size_buf)};
-    if (size < record::MINIMUM_SIZE<i32> || pos < size) {
+    if (size < log_record::MINIMUM_SIZE<i32> || pos < size) {
         return stdx::err{error_t::WAL_SIZE_CORRUPT};
     }
 
@@ -98,10 +98,10 @@ auto reader::prev() -> result<record> {
     return deserialize_record();
 }
 
-auto reader::deserialize_record() noexcept -> result<record> {
+auto log_reader::deserialize_record() noexcept -> result<log_record> {
     PROFILE_FUNCTION();
     gsl::span<const std::byte> buf{record_buffer_};
-    const auto                 record{TRY(record::deserialize(buf))};
+    const auto                 record{TRY(log_record::deserialize(buf))};
     if (!buf.empty()) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
     return std::move(record);
 }

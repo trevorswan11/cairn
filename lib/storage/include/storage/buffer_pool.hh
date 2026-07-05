@@ -20,7 +20,7 @@
 #include "storage/page.hh"
 #include "support/error.hh"
 #include "wal/checkpoints.hh"
-#include "wal/manager.hh"
+#include "wal/log_manager.hh"
 
 namespace cairn::storage {
 
@@ -160,7 +160,7 @@ template <usize PoolSize> class buffer_pool {
         return stdx::make_box<buffer_pool>(std::move(dm));
     }
 
-    auto set_log_manager(stdx::option<wal::manager&> log) noexcept -> void { log_ = log; }
+    auto set_log_manager(stdx::option<wal::log_manager&> log) noexcept -> void { log_ = log; }
 
     auto snapshot_dpt() noexcept -> std::vector<wal::checkpoint_dpt_entry> {
         std::scoped_lock                       lock{mutex_};
@@ -386,7 +386,7 @@ template <usize PoolSize> class buffer_pool {
     usize                                                        page_table_churn_{0};
     stdx::fixed::hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
 
-    stdx::option<wal::manager&> log_;
+    stdx::option<wal::log_manager&> log_;
 };
 
 } // namespace cairn::storage

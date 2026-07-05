@@ -11,8 +11,8 @@
 #include "support/error.hh"
 #include "txn/id.hh"
 #include "wal/checkpoints.hh"
-#include "wal/manager.hh"
-#include "wal/sequence_number.hh"
+#include "wal/log_manager.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::txn {
 
@@ -22,8 +22,8 @@ class manager {
 
   public:
     [[nodiscard]] auto begin_txn() -> id_t;
-    [[nodiscard]] auto commit_txn(id_t id, wal::manager& manager) -> result<void>;
-    [[nodiscard]] auto abort_txn(id_t id, wal::manager& manager) -> result<void>;
+    [[nodiscard]] auto commit_txn(id_t id, wal::log_manager& manager) -> result<void>;
+    [[nodiscard]] auto abort_txn(id_t id, wal::log_manager& manager) -> result<void>;
     [[nodiscard]] auto update_txn_lsn(id_t id, wal::lsn_t lsn) -> result<void>;
     [[nodiscard]] auto snapshot_att() -> active_txn_buf_t;
 

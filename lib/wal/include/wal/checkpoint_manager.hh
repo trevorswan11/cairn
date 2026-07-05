@@ -14,9 +14,9 @@
 #include "storage/buffer_pool.hh"
 #include "support/error.hh"
 #include "txn/manager.hh"
-#include "wal/manager.hh"
-#include "wal/record.hh"
-#include "wal/sequence_number.hh"
+#include "wal/log_manager.hh"
+#include "wal/log_record.hh"
+#include "wal/log_sequence_number.hh"
 
 namespace cairn::wal {
 
@@ -25,17 +25,18 @@ template <usize PoolSize> class checkpoint_manager {
     explicit checkpoint_manager(std::filesystem::path control_path) noexcept
         : control_path_{std::move(control_path)} {}
 
-    auto checkpoint(storage::buffer_pool<PoolSize>& pool, txn::manager& tm, manager& wal_manager)
-        -> result<lsn_t> {
-        record begin_rec;
-        begin_rec.type = record_type::CHECKPOINT_BEGIN;
+    auto checkpoint(storage::buffer_pool<PoolSize>& pool,
+                    txn::manager&                   tm,
+                    log_manager&                    wal_manager) -> result<lsn_t> {
+        log_record begin_rec;
+        begin_rec.type = log_record_type::CHECKPOINT_BEGIN;
         const auto begin_lsn{TRY(wal_manager.append_record(begin_rec))};
 
         auto dpt{pool.snapshot_dpt()};
         auto att{tm.snapshot_att()};
 
-        record end_rec;
-        end_rec.type = record_type::CHECKPOINT_END;
+        log_record end_rec;
+        end_rec.type = log_record_type::CHECKPOINT_END;
         end_rec.dpt  = dpt;
         end_rec.att  = att;
 
