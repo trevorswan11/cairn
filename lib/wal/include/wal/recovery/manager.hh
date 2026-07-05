@@ -83,8 +83,8 @@ template <usize PoolSize> class manager {
         // Only seek to the checkpoint if it was able to resolved
         if (checkpoint_lsn) {
             TRY(reader.seek_to_start());
-            while (auto next_pos{TRY(reader.has_next())}) {
-                const auto rec{TRY(reader.next(next_pos))};
+            while (auto rec_opt{TRY(get_next_record(reader))}) {
+                const auto& rec{*rec_opt};
                 res.max_lsn.emplace(rec.lsn);
                 res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
                 if (rec.lsn == *checkpoint_lsn) { break; }
@@ -93,8 +93,8 @@ template <usize PoolSize> class manager {
             TRY(reader.seek_to_start());
         }
 
-        while (auto next_pos{TRY(reader.has_next())}) {
-            const auto rec{TRY(reader.next(next_pos))};
+        while (auto rec_opt{TRY(get_next_record(reader))}) {
+            const auto& rec{*rec_opt};
             res.max_lsn.emplace(rec.lsn);
             res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
 
@@ -253,8 +253,8 @@ template <usize PoolSize> class manager {
         auto reader{TRY(log::reader::open(log_path_))};
         TRY(reader.seek_to_start());
 
-        while (auto next_pos{TRY(reader.has_next())}) {
-            const auto rec{TRY(reader.next(next_pos))};
+        while (auto rec_opt{TRY(get_next_record(reader))}) {
+            const auto& rec{*rec_opt};
             if (std::to_underlying(rec.lsn) < std::to_underlying(min_rec_lsn)) { continue; }
 
             if (rec.type == log::record_type::UPDATE || rec.type == log::record_type::CLEAR) {
@@ -284,6 +284,31 @@ template <usize PoolSize> class manager {
         }
 
         return {};
+    }
+
+  private:
+    [[nodiscard]] static auto get_next_record(log::reader& reader)
+        -> result<stdx::option<log::record>> {
+        auto next_pos_res{reader.has_next()};
+        if (!next_pos_res) {
+            if (next_pos_res.error() == error_t::WAL_SIZE_CORRUPT ||
+                next_pos_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
+                return stdx::none;
+            }
+            return stdx::err{next_pos_res.error()};
+        }
+        auto next_pos{next_pos_res.value()};
+        if (!next_pos) { return stdx::none; }
+
+        auto rec_res{reader.next(next_pos)};
+        if (!rec_res) {
+            if (rec_res.error() == error_t::WAL_SIZE_CORRUPT ||
+                rec_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
+                return stdx::none;
+            }
+            return stdx::err{rec_res.error()};
+        }
+        return stdx::option<log::record>{std::move(rec_res.value())};
     }
 
   private:
