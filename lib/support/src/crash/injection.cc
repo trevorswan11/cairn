@@ -14,8 +14,8 @@ namespace cairn::crash {
 namespace {
 
 constinit std::atomic<bool> initialized{false};
-constinit std::atomic<i32>  boundary_limit{0};
-constinit std::atomic<i32>  boundaries{0};
+constinit std::atomic<i32>  boundary_limit;
+constinit std::atomic<i32>  boundaries;
 
 [[noreturn]] auto bail(boundary_t boundary) -> void {
     fmt::println("[CRASH INJECTION] Bailing at boundary: {} (limit: {})",
@@ -26,7 +26,11 @@ constinit std::atomic<i32>  boundaries{0};
 
 } // namespace
 
-auto initialize() noexcept -> void { initialized.store(true); }
+auto initialize() noexcept -> void {
+    initialized.store(true);
+    boundary_limit.store(0);
+    boundaries.store(0);
+}
 
 auto configure(i32 limit) noexcept -> void {
     ASSERT(initialized, "configure called prior to initialization");
