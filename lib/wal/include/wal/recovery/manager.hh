@@ -37,6 +37,9 @@ template <usize PoolSize> class manager {
 
     [[nodiscard]] auto recover() -> result<void> {
         auto analysis_res{TRY(run_analysis())};
+        if (analysis_res.max_lsn) { log_manager_.set_lsn_watermarks(*analysis_res.max_lsn); }
+        tm_.set_next_txn_id(++analysis_res.max_txn_id);
+
         TRY(run_redo(analysis_res.dirty_pages));
         TRY(run_undo(analysis_res.active_txns));
         return {};
@@ -49,14 +52,16 @@ template <usize PoolSize> class manager {
         ankerl::unordered_dense::map<storage::page_id_t, log::seq_num, storage::page_id_hash_t>;
     using to_undo_map_t = ankerl::unordered_dense::map<txn::id_t, log::seq_num, txn::id_hash_t>;
 
-    struct analysis_result {
-        active_txn_map_t active_txns;
-        dirty_page_map_t dirty_pages;
+    struct analysis_data {
+        active_txn_map_t           active_txns;
+        dirty_page_map_t           dirty_pages;
+        stdx::option<log::seq_num> max_lsn;
+        txn::id_t                  max_txn_id;
     };
 
   private:
-    [[nodiscard]] auto run_analysis() -> result<analysis_result> {
-        analysis_result res;
+    [[nodiscard]] auto run_analysis() -> result<analysis_data> {
+        analysis_data res;
 
         // Setup should only be fatal if there's an IO error
         stdx::option<log::seq_num> checkpoint_lsn;
@@ -80,6 +85,8 @@ template <usize PoolSize> class manager {
             TRY(reader.seek_to_start());
             while (auto next_pos{TRY(reader.has_next())}) {
                 const auto rec{TRY(reader.next(next_pos))};
+                res.max_lsn.emplace(rec.lsn);
+                res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
                 if (rec.lsn == *checkpoint_lsn) { break; }
             }
         } else {
@@ -88,16 +95,17 @@ template <usize PoolSize> class manager {
 
         while (auto next_pos{TRY(reader.has_next())}) {
             const auto rec{TRY(reader.next(next_pos))};
+            res.max_lsn.emplace(rec.lsn);
+            res.max_txn_id = std::max(res.max_txn_id, rec.txn_id);
 
             switch (rec.type) {
-            case log::record_type::CHECKPOINT_END: {
+            case log::record_type::CHECKPOINT_END:
                 for (const auto& entry : rec.att) { res.active_txns.emplace(entry.txn_id, entry); }
                 for (const auto& entry : rec.dpt) {
                     res.dirty_pages.try_emplace(entry.page_id, entry.rec_lsn);
                 }
                 break;
-            }
-            case log::record_type::BEGIN: {
+            case log::record_type::BEGIN:
                 res.active_txns.emplace(rec.txn_id,
                                         checkpoint::att_entry{
                                             .txn_id   = rec.txn_id,
@@ -105,7 +113,6 @@ template <usize PoolSize> class manager {
                                             .last_lsn = rec.lsn,
                                         });
                 break;
-            }
             case log::record_type::UPDATE:
             case log::record_type::CLEAR:  {
                 auto emplace{
