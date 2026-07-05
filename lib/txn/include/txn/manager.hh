@@ -27,7 +27,13 @@ class manager {
     [[nodiscard]] auto update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void>;
     [[nodiscard]] auto snapshot_att() -> active_txn_buf_t;
 
+    auto set_next_txn_id(id_t id) noexcept -> void {
+        std::scoped_lock lock{mutex_};
+        next_txn_id_ = id;
+    }
+
   private:
+    // Assumes you hold the mutex
     [[nodiscard]] auto find_id(id_t id) noexcept -> result<active_txn_buf_t::iterator> {
         auto it{std::ranges::find_if(active_txns_,
                                      [id](const auto& entry) { return entry.txn_id == id; })};

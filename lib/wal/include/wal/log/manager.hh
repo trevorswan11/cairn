@@ -35,6 +35,12 @@ class manager {
         return flushed_lsn_.load(std::memory_order_relaxed);
     }
 
+    auto set_lsn_watermarks(seq_num last_lsn) noexcept -> void {
+        std::scoped_lock lock{mutex_};
+        next_lsn_.store(seq_num{std::to_underlying(last_lsn) + 1}, std::memory_order_relaxed);
+        flushed_lsn_.store(last_lsn, std::memory_order_relaxed);
+    }
+
   private:
     // The caller must hold the mutex
     auto trigger_buffer_swap() -> void;

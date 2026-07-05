@@ -10,6 +10,7 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
 #include "wal/log/record.hh"
 #include "wal/log/seq_num.hh"
