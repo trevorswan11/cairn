@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cerrno>
 #include <ios>
 
 #include <stdx/result.hh>
@@ -21,6 +22,17 @@ template <typename File> [[nodiscard]] auto seek_to_end(File& file) -> result<vo
     file.seekg(0, std::ios::end);
     if (file.fail()) { return stdx::err{error_t::IO_ERROR}; }
     return {};
+}
+
+template <typename File> [[nodiscard]] auto try_flush(File& file) -> result<void> {
+    while (true) {
+        file.clear();
+        errno = 0;
+        file.flush();
+        if (!file.fail()) { return {}; }
+        if (interrupted()) { continue; }
+        return stdx::err{error_t::IO_ERROR};
+    }
 }
 
 } // namespace cairn::io_utils
