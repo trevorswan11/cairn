@@ -343,8 +343,9 @@ const Test = struct {
 };
 
 const Tests = struct {
+    b: *std.Build,
     unit_suites: []const Test,
-    integration: Test,
+    system_suites: []const Test,
     fuzz_suites: []const Test,
 
     pub fn configure(self: *const Tests, config: struct {
@@ -352,7 +353,7 @@ const Tests = struct {
         fuzz_install_dir: ?[]const u8,
         install_only: bool,
     }) !void {
-        const b = self.integration.step.owner;
+        const b = self.b;
         const test_step = b.step("test", "Build/run all unit tests");
         for (self.unit_suites) |suite| {
             _ = stdx.utils.ExecutableBehavior.installArtifact(
@@ -364,14 +365,19 @@ const Tests = struct {
             );
         }
 
-        const test_all_step = b.step("test-all", "Build/run all tests, including integration");
-        _ = stdx.utils.ExecutableBehavior.installArtifact(
-            b,
-            self.integration.artifact,
-            test_all_step,
-            config.test_install_dir,
-            config.install_only,
-        );
+        const system_step = b.step("test-system", "Build/run all system integration and resilience tests");
+        for (self.system_suites) |suite| {
+            _ = stdx.utils.ExecutableBehavior.installArtifact(
+                b,
+                suite.artifact,
+                system_step,
+                config.test_install_dir,
+                config.install_only,
+            );
+        }
+
+        const test_all_step = b.step("test-all", "Build/run all non-fuzzy tests");
+        test_all_step.dependOn(system_step);
         test_all_step.dependOn(test_step);
 
         // Fuzz tests aren't looped into normal tests since they're more expensive
@@ -466,11 +472,13 @@ fn addArtifacts(b: *std.Build, config: struct {
         .link_libraries = &.{libstorage.artifact},
     }));
 
-    const link_libraries = [_]*std.Build.Step.Compile{
-        libexec.artifact,                 libnet.artifact,     libopt.artifact, libsql.artifact,
-        libstorage.artifact,              libsupport.artifact, libtxn.artifact, libwal.artifact,
-        config.stdx_dep.artifact("stdx"),
+    const all_cairn_libraries = [_]*std.Build.Step.Compile{
+        libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
+        libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
     };
+
+    var exe_link_libraries: stdx.ArrayList(*std.Build.Step.Compile) = .fromSlice(b, &all_cairn_libraries);
+    exe_link_libraries.append(config.stdx_dep.artifact("stdx"));
 
     const cairnd = stdx.utils.createExecutable(b, .{
         .target = target,
@@ -479,7 +487,7 @@ fn addArtifacts(b: *std.Build, config: struct {
             .files = &.{"cairn/cairnd.cc"},
             .flags = config.cxx_flags,
         },
-        .link_libraries = &link_libraries,
+        .link_libraries = exe_link_libraries.wrapped.items,
     }, .{
         .name = "cairnd",
         .behavior = config.exe_override_behavior orelse .{
@@ -499,7 +507,7 @@ fn addArtifacts(b: *std.Build, config: struct {
             .files = &.{"cairn/cairnctl.cc"},
             .flags = config.cxx_flags,
         },
-        .link_libraries = &link_libraries,
+        .link_libraries = exe_link_libraries.wrapped.items,
     }, .{
         .name = "cairnctl",
         .behavior = config.exe_override_behavior orelse .{
@@ -563,13 +571,13 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{libnet.artifact},
         })));
 
-        const integration_libraries = [_]*std.Build.Step.Compile{
-            libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
-            libstorage.artifact, libsupport.artifact, libtxn.artifact, libwal.artifact,
-        };
-        const integration: Test = .init(b, base_test_config.with("integration", .{
-            .link_libraries = &integration_libraries,
-        }));
+        var system_suites: stdx.ArrayList(Test) = .init(b);
+        system_suites.append(.init(b, base_test_config.with("integration", .{
+            .link_libraries = &all_cairn_libraries,
+        })));
+        system_suites.append(.init(b, base_test_config.with("crash", .{
+            .link_libraries = &all_cairn_libraries,
+        })));
 
         const base_fuzz_config: ArtifactConfig = .{
             .name = undefined,
@@ -589,16 +597,17 @@ fn addArtifacts(b: *std.Build, config: struct {
         var fuzz_suites: stdx.ArrayList(Test) = .init(b);
         if (stdx.FuzztestBuilder.canFuzz(target)) {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/bplus_tree", .{
-                .link_libraries = &integration_libraries,
+                .link_libraries = &all_cairn_libraries,
             })));
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
-                .link_libraries = &integration_libraries,
+                .link_libraries = &all_cairn_libraries,
             })));
         }
 
         tests = .{
+            .b = b,
             .unit_suites = unit_suites.wrapped.items,
-            .integration = integration,
+            .system_suites = system_suites.wrapped.items,
             .fuzz_suites = fuzz_suites.wrapped.items,
         };
         try tests.?.configure(.{
