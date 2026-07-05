@@ -8,7 +8,6 @@
 #include <gsl/span>
 
 #include "helpers/mock_records.hh"
-#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "wal/log/reader.hh"
@@ -33,31 +32,65 @@ TEST_CASE("log::reader bidirectional scan") {
                   static_cast<std::streamsize>(buffer.size()));
         REQUIRE_FALSE(out.fail());
     }
-    auto reader{helpers::unwrap(log::reader::open(file.path))};
+
+    using helpers::unwrap;
+    auto reader{unwrap(log::reader::open(file.path))};
 
     SECTION("Sequential bidirectional access") {
-        helpers::records_eq(helpers::unwrap(reader.next()), rec1);
-        helpers::records_eq(helpers::unwrap(reader.next()), rec2);
-        helpers::records_eq(helpers::unwrap(reader.next()), rec3);
-        CHECK(helpers::unwrap_err(reader.next()) == error_t::WAL_EOF);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec1);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec2);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec3);
+        CHECK_FALSE(unwrap(reader.next_record()).has_value());
 
-        helpers::records_eq(helpers::unwrap(reader.prev()), rec3);
-        helpers::records_eq(helpers::unwrap(reader.prev()), rec2);
-        helpers::records_eq(helpers::unwrap(reader.prev()), rec1);
-        CHECK(helpers::unwrap_err(reader.prev()) == error_t::WAL_EOF);
+        helpers::records_eq(unwrap(unwrap(reader.prev_record())), rec3);
+        helpers::records_eq(unwrap(unwrap(reader.prev_record())), rec2);
+        helpers::records_eq(unwrap(unwrap(reader.prev_record())), rec1);
+        CHECK_FALSE(unwrap(reader.prev_record()).has_value());
     }
 
     SECTION("Alternating access") {
-        helpers::records_eq(helpers::unwrap(reader.next()), rec1);
-        helpers::records_eq(helpers::unwrap(reader.prev()), rec1);
-        CHECK(helpers::unwrap_err(reader.prev()) == error_t::WAL_EOF);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec1);
+        helpers::records_eq(unwrap(unwrap(reader.prev_record())), rec1);
+        CHECK_FALSE(unwrap(reader.prev_record()).has_value());
 
-        helpers::records_eq(helpers::unwrap(reader.next()), rec1);
-        helpers::records_eq(helpers::unwrap(reader.next()), rec2);
-        helpers::records_eq(helpers::unwrap(reader.next()), rec3);
-        helpers::records_eq(helpers::unwrap(reader.prev()), rec3);
-        helpers::records_eq(helpers::unwrap(reader.next()), rec3);
-        CHECK(helpers::unwrap_err(reader.next()) == error_t::WAL_EOF);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec1);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec2);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec3);
+        helpers::records_eq(unwrap(unwrap(reader.prev_record())), rec3);
+        helpers::records_eq(unwrap(unwrap(reader.next_record())), rec3);
+        CHECK_FALSE(unwrap(reader.next_record()).has_value());
+    }
+
+    SECTION("Low-level next_at and prev_at APIs") {
+        auto next1{unwrap(reader.has_next())};
+        helpers::records_eq(unwrap(reader.next_at(unwrap(next1))), rec1);
+        auto next2{unwrap(reader.has_next())};
+        helpers::records_eq(unwrap(reader.next_at(unwrap(next2))), rec2);
+        auto next3{unwrap(reader.has_next())};
+        helpers::records_eq(unwrap(reader.next_at(unwrap(next3))), rec3);
+        auto prev3{unwrap(reader.has_prev())};
+        helpers::records_eq(unwrap(reader.prev_at(unwrap(prev3))), rec3);
+    }
+
+    SECTION("High-level next_record, next_record_lenient, and prev_record APIs") {
+        auto next1{unwrap(reader.next_record())};
+        helpers::records_eq(unwrap(next1), rec1);
+        auto next2{unwrap(reader.next_record_lenient())};
+        helpers::records_eq(unwrap(next2), rec2);
+        auto next3{unwrap(reader.next_record())};
+        helpers::records_eq(unwrap(next3), rec3);
+
+        CHECK_FALSE(unwrap(reader.next_record()));
+        CHECK_FALSE(unwrap(reader.next_record_lenient()));
+
+        auto prev3{unwrap(reader.prev_record())};
+        helpers::records_eq(unwrap(prev3), rec3);
+        auto prev2{unwrap(reader.prev_record())};
+        helpers::records_eq(unwrap(prev2), rec2);
+        auto prev1{unwrap(reader.prev_record())};
+        helpers::records_eq(unwrap(prev1), rec1);
+
+        CHECK_FALSE(unwrap(reader.prev_record()));
     }
 }
 

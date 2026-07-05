@@ -61,7 +61,7 @@ TEST_CASE("WAL page flush forces WAL flush") {
 
     {
         auto reader{helpers::unwrap(wal::log::reader::open(log_file.path))};
-        auto r{helpers::unwrap(reader.next())};
+        auto r{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r.lsn == expected_lsn);
         CHECK(r.txn_id == txn::id_t{1});
         CHECK(r.type == wal::log::record_type::UPDATE);

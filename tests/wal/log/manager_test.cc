@@ -12,7 +12,6 @@
 #include "helpers/mock_records.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "txn/id.hh"
@@ -57,11 +56,11 @@ TEST_CASE("log::manager append and flush") {
     // Verify written data by reading it back
     {
         auto reader{helpers::unwrap(log::reader::open(file.path))};
-        auto r1{helpers::unwrap(reader.next())};
+        auto r1{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r1.lsn == log::seq_num{1});
         CHECK(r1.type == log::record_type::BEGIN);
 
-        auto r2{helpers::unwrap(reader.next())};
+        auto r2{helpers::unwrap(helpers::unwrap(reader.next_record()))};
         CHECK(r2.lsn == log::seq_num{2});
         CHECK(r2.type == log::record_type::UPDATE);
         CHECK(r2.page_id == storage::page_id_t{4});
@@ -97,7 +96,7 @@ TEST_CASE("log::manager double buffering boundary") {
     {
         auto reader{helpers::unwrap(log::reader::open(file.path))};
         for (i64 i{0}; i < 10; ++i) {
-            auto r{helpers::unwrap(reader.next())};
+            auto r{helpers::unwrap(helpers::unwrap(reader.next_record()))};
             CHECK(r.lsn == log::seq_num{i + 1});
             CHECK(r.txn_id == txn::id_t{i});
             CHECK(r.page_id == storage::page_id_t{i});
@@ -139,14 +138,9 @@ TEST_CASE("log::manager concurrent appends") {
 
     // Read back and verify count and content consistency
     {
-        auto reader{helpers::unwrap(log::reader::open(file.path))};
         i32  total_records{0};
-        while (true) {
-            auto res{reader.next()};
-            if (!res.has_value() && res.error() == error_t::WAL_EOF) { break; }
-            REQUIRE(res.has_value());
-            total_records++;
-        }
+        auto reader{helpers::unwrap(log::reader::open(file.path))};
+        while (helpers::unwrap(reader.next_record())) { total_records++; }
         CHECK(total_records == num_threads * appends_per_thread);
     }
 }
