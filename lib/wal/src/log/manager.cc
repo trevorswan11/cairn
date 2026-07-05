@@ -1,6 +1,7 @@
 #include "wal/log/manager.hh"
 
 #include <atomic>
+#include <cerrno>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +18,7 @@
 #include <stdx/utility.hh>
 
 #include "support/error.hh"
+#include "support/io_utils.hh"
 #include "wal/log/record.hh"
 #include "wal/log/seq_num.hh"
 
@@ -122,9 +124,17 @@ auto manager::flush_loop() -> void {
             // Release the lock for concurrent file I/O
             lock.unlock();
 
-            out.write(reinterpret_cast<const char*>(flush_buffer_.data()),
-                      static_cast<std::streamsize>(flush_buffer_.size()));
-            out.flush(); // Sync to the OS
+            while (true) {
+                out.clear();
+                errno = 0;
+                out.write(reinterpret_cast<const char*>(flush_buffer_.data()),
+                          static_cast<std::streamsize>(flush_buffer_.size()));
+                if (!out.fail()) { break; }
+                if (io_utils::interrupted()) { continue; }
+                break;
+            }
+
+            DISCARD(io_utils::try_flush(out));
             lock.lock();
 
             // Mark the flush complete and notify the waiting threads

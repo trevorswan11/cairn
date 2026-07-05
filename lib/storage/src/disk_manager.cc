@@ -1,6 +1,7 @@
 #include "storage/disk_manager.hh"
 
 #include <array>
+#include <cerrno>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
@@ -72,13 +73,23 @@ auto disk_manager::allocate_page() -> result<page_id_t> {
     const page_id_t  pid{num_pages_};
 
     static constexpr std::array<std::byte, DB_PAGE_SIZE> zeros{};
-    file_.clear();
-    file_.seekp(page_offset(pid), std::ios::beg);
-    file_.write(reinterpret_cast<const char*>(zeros.data()), zeros.size());
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
-    file_.flush();
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    while (true) {
+        file_.clear();
+        errno = 0;
+        file_.seekp(page_offset(pid), std::ios::beg);
+        if (file_.fail()) {
+            if (io_utils::interrupted()) { continue; }
+            return stdx::err{error_t::IO_ERROR};
+        }
 
+        errno = 0;
+        file_.write(reinterpret_cast<const char*>(zeros.data()), zeros.size());
+        if (!file_.fail()) { break; }
+        if (io_utils::interrupted()) { continue; }
+        return stdx::err{error_t::IO_ERROR};
+    }
+
+    TRY(io_utils::try_flush(file_));
     num_pages_ += 1;
     return pid;
 }
@@ -89,27 +100,22 @@ auto disk_manager::read_page(page_id_t pid, read_buf_t buf) -> result<void> {
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
-    file_.clear();
-    file_.seekg(page_offset(pid), std::ios::beg);
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    while (true) {
+        file_.clear();
+        errno = 0;
+        file_.seekg(page_offset(pid), std::ios::beg);
+        if (file_.fail()) {
+            if (io_utils::interrupted()) { continue; }
+            return stdx::err{error_t::IO_ERROR};
+        }
 
-    usize bytes_read{0};
-    while (bytes_read < DB_PAGE_SIZE) {
-        file_.read(reinterpret_cast<char*>(buf.data()) + bytes_read,
-                   static_cast<std::streamsize>(DB_PAGE_SIZE - bytes_read));
-
-        const auto count{static_cast<usize>(file_.gcount())};
-        bytes_read += count;
-        if (bytes_read == DB_PAGE_SIZE) { break; }
+        errno = 0;
+        file_.read(reinterpret_cast<char*>(buf.data()), DB_PAGE_SIZE);
+        if (!file_.fail()) { break; }
 
         if (file_.eof()) { return stdx::err{error_t::STORAGE_SHORT_READ}; }
-        if (file_.fail()) {
-            if (io_utils::interrupted()) {
-                file_.clear();
-                continue;
-            }
-            return stdx::err{error_t::STORAGE_SHORT_READ};
-        }
+        if (io_utils::interrupted()) { continue; }
+        return stdx::err{error_t::IO_ERROR};
     }
     return {};
 }
@@ -120,24 +126,31 @@ auto disk_manager::write_page(page_id_t pid, write_buf_t buf) -> result<void> {
     const auto       id{std::to_underlying(pid)};
     if (id < 0 || id >= num_pages_) { return stdx::err{error_t::STORAGE_INVALID_PAGE_ID}; }
 
-    usize bytes_written{0};
-    while (bytes_written < DB_PAGE_SIZE) {
+    while (true) {
         file_.clear();
+        errno = 0;
         file_.seekp(page_offset(pid), std::ios::beg);
-        if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
-
-        file_.write(reinterpret_cast<const char*>(buf.data()), DB_PAGE_SIZE);
-        if (!file_.fail()) {
-            bytes_written = DB_PAGE_SIZE;
-            break;
+        if (file_.fail()) {
+            if (io_utils::interrupted()) { continue; }
+            return stdx::err{error_t::IO_ERROR};
         }
+
+        errno = 0;
+        file_.write(reinterpret_cast<const char*>(buf.data()), DB_PAGE_SIZE);
+        if (!file_.fail()) { break; }
+
         if (io_utils::interrupted()) { continue; }
         return stdx::err{error_t::IO_ERROR};
     }
 
-    file_.clear();
-    file_.flush();
-    if (file_.fail()) { return stdx::err{error_t::IO_ERROR}; }
+    while (true) {
+        file_.clear();
+        errno = 0;
+        file_.flush();
+        if (!file_.fail()) { break; }
+        if (io_utils::interrupted()) { continue; }
+        return stdx::err{error_t::IO_ERROR};
+    }
     return {};
 }
 
