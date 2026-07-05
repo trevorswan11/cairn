@@ -127,15 +127,10 @@ auto manager::flush_loop() -> void {
             lock.unlock();
 
             crash::test_boundary(crash::boundary_t::WAL_WRITE_BEFORE);
-            while (true) {
-                out.clear();
-                errno = 0;
+            DISCARD(io_utils::run_io(out, [&] {
                 out.write(reinterpret_cast<const char*>(flush_buffer_.data()),
                           static_cast<std::streamsize>(flush_buffer_.size()));
-                if (!out.fail()) { break; }
-                if (io_utils::interrupted()) { continue; }
-                break;
-            }
+            }));
             crash::test_boundary(crash::boundary_t::WAL_WRITE_AFTER);
 
             DISCARD(io_utils::try_flush(out));

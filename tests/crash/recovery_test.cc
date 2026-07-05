@@ -65,7 +65,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
     std::atomic<i32>          failures{0};
 
     for (i32 t{0}; t < 2; ++t) {
-        writers.emplace_back([&bp, &log, &tm, t, &go, &failures]() {
+        writers.emplace_back([&bp, &log, &tm, t, &go, &failures] {
             while (!go.load()) { std::this_thread::yield(); }
 
             for (i32 i{0}; i < 3; ++i) {

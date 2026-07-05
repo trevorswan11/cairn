@@ -129,7 +129,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
     std::atomic<i32>          update_failures{0};
 
     for (i32 t{0}; t < num_threads; ++t) {
-        writers.emplace_back([&bp, &log, &tm, t, &stop, &update_failures]() {
+        writers.emplace_back([&bp, &log, &tm, t, &stop, &update_failures] {
             const auto tid{tm.begin_txn()};
 
             page_id_t pid;

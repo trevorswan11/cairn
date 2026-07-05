@@ -117,7 +117,7 @@ TEST_CASE("log::manager concurrent appends") {
         std::atomic<bool>         go{false};
 
         for (i32 t{0}; t < num_threads; ++t) {
-            workers.emplace_back([&manager, t, &go]() {
+            workers.emplace_back([&manager, t, &go] {
                 while (!go.load()) { std::this_thread::yield(); }
 
                 for (i32 i{0}; i < appends_per_thread; ++i) {
