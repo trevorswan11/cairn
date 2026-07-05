@@ -7,6 +7,7 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
+#include <stdx/hash.hh>
 
 #include "storage/rw_latch.hh"
 #include "wal/log/seq_num.hh"
@@ -16,6 +17,7 @@ namespace cairn::storage {
 // Logical identifier of a page with the backing file. Page 0 is reserved for metadata
 enum class page_id_t : i64 {};
 constexpr page_id_t INVALID_PAGE_ID{-1};
+using page_id_hash_t = stdx::hash<storage::page_id_t>;
 
 constexpr usize DB_PAGE_SIZE{stdx::sizes::kib(8UZ)};
 

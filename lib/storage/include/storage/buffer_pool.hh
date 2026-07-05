@@ -62,7 +62,7 @@ class read_guard {
         return stdx::object_at<T>(pg_->data());
     }
 
-    [[nodiscard]] auto get() const noexcept -> gsl::not_null<const page*> { return &*pg_; }
+    [[nodiscard]] auto get(this auto&& self) noexcept { return gsl::not_null{self.pg_.get()}; }
 
     // Called automatically on destruction but safe to call manually
     auto drop() noexcept -> void {
