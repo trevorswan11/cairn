@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <cstddef>
 
+#include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
-#include <stdx/hash.hh>
 
 #include "storage/rw_latch.hh"
 #include "wal/log/seq_num.hh"
