@@ -1,4 +1,4 @@
-#include "wal/log_manager.hh"
+#include "wal/log/manager.hh"
 
 #include <atomic>
 #include <cstddef>
@@ -17,18 +17,19 @@
 #include <stdx/utility.hh>
 
 #include "support/error.hh"
-#include "wal/log_record.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
-namespace cairn::wal {
+namespace cairn::wal::log {
 
-log_manager::log_manager(std::filesystem::path log_path, usize buffer_size) noexcept
+manager::manager(std::filesystem::path log_path, usize buffer_size) noexcept
     : log_path_{std::move(log_path)}, buffer_size_{buffer_size} {
     active_buffer_.reserve(buffer_size_);
     flush_buffer_.reserve(buffer_size_);
-    flush_thread_ = std::jthread{&log_manager::flush_loop, this};
+    flush_thread_ = std::jthread{&manager::flush_loop, this};
 };
 
-log_manager::~log_manager() {
+manager::~manager() {
     PROFILE_FUNCTION();
 
     // Halt flush execution and force a final swap if needed
@@ -42,7 +43,7 @@ log_manager::~log_manager() {
     if (flush_thread_.joinable()) { flush_thread_.join(); }
 }
 
-auto log_manager::append_record(log_record& record) -> result<lsn_t> {
+auto manager::append_record(record& record) -> result<seq_num> {
     PROFILE_FUNCTION();
 
     // Staging is done locally to allow for lock-free operation
@@ -69,7 +70,7 @@ auto log_manager::append_record(log_record& record) -> result<lsn_t> {
     return lsn;
 }
 
-auto log_manager::flush(lsn_t lsn) -> result<void> {
+auto manager::flush(seq_num lsn) -> result<void> {
     PROFILE_FUNCTION();
 
     std::unique_lock lock{mutex_};
@@ -89,23 +90,23 @@ auto log_manager::flush(lsn_t lsn) -> result<void> {
     return {};
 }
 
-auto log_manager::trigger_buffer_swap() -> void {
+auto manager::trigger_buffer_swap() -> void {
     PROFILE_FUNCTION();
     std::swap(active_buffer_, flush_buffer_);
     highest_lsn_to_flush_ =
-        lsn_t{std::to_underlying(next_lsn_.load(std::memory_order_relaxed)) - 1};
+        seq_num{std::to_underlying(next_lsn_.load(std::memory_order_relaxed)) - 1};
     swap_requested_.store(true, std::memory_order_relaxed);
     append_cv_.notify_all();
 }
 
-auto log_manager::flush_loop() -> void {
+auto manager::flush_loop() -> void {
     std::ofstream out{log_path_, std::ios::out | std::ios::binary | std::ios::app};
     VERIFY(out.is_open(), "Background flush thread could not open file");
 
     std::unique_lock lock{mutex_};
     while (running() || swap_requested_.load(std::memory_order_relaxed) ||
            !active_buffer_.empty()) {
-        PROFILE_SCOPE("log_manager flush loop iteration");
+        PROFILE_SCOPE("manager flush loop iteration");
         append_cv_.wait(lock, [&] {
             return swap_requested_.load(std::memory_order_relaxed) || !running() ||
                    (!active_buffer_.empty() && !running());
@@ -137,13 +138,13 @@ auto log_manager::flush_loop() -> void {
     }
 }
 
-auto log_manager::next_lsn() noexcept -> lsn_t {
+auto manager::next_lsn() noexcept -> seq_num {
     PROFILE_FUNCTION();
-    lsn_t current{next_lsn_.load(std::memory_order_relaxed)}, next{INVALID_LSN};
+    seq_num current{next_lsn_.load(std::memory_order_relaxed)}, next{INVALID_LSN};
     do {
-        next = lsn_t{std::to_underlying(current) + 1};
+        next = seq_num{std::to_underlying(current) + 1};
     } while (!next_lsn_.compare_exchange_weak(current, next, std::memory_order_relaxed));
     return current;
 }
 
-} // namespace cairn::wal
+} // namespace cairn::wal::log

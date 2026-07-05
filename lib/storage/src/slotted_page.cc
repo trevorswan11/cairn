@@ -14,8 +14,8 @@
 
 #include "storage/page.hh"
 #include "support/error.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_record.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/record.hh"
 
 namespace cairn::storage {
 
@@ -65,15 +65,15 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple, log_update_params_t 
     };
 
     page_->set_dirty(true);
-    if (log_params.log) {
-        wal::log_record rec;
+    if (log_params.log_manager) {
+        wal::log::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::log::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;
         rec.redo_data = tuple;
-        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+        page_->set_page_lsn(TRY(log_params.log_manager->append_record(rec)));
     }
 
     return id;
@@ -91,7 +91,7 @@ auto slotted_page::update(slot_id_t                  id,
 
     thread_local stdx::fixed::vector<std::byte, MAX_SLOT_SIZE> old_tuple_data;
     old_tuple_data.clear();
-    if (log_params.log) {
+    if (log_params.log_manager) {
         const auto [_, slot]{TRY(get_raw(id))};
         const auto size{std::to_underlying(*slot->size)};
         old_tuple_data.resize(size);
@@ -133,16 +133,16 @@ auto slotted_page::update(slot_id_t                  id,
     }
 
     page_->set_dirty(true);
-    if (log_params.log) {
-        wal::log_record rec;
+    if (log_params.log_manager) {
+        wal::log::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::log::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;
         rec.redo_data = tuple;
         rec.undo_data = old_tuple_data;
-        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+        page_->set_page_lsn(TRY(log_params.log_manager->append_record(rec)));
     }
 
     return {};
@@ -153,7 +153,7 @@ auto slotted_page::remove(slot_id_t id, log_update_params_t log_params) -> resul
 
     thread_local stdx::fixed::vector<std::byte, MAX_SLOT_SIZE> old_tuple_data;
     old_tuple_data.clear();
-    if (log_params.log) {
+    if (log_params.log_manager) {
         const auto [_, slot]{TRY(get_raw(id))};
         const auto size{std::to_underlying(*slot->size)};
         old_tuple_data.resize(size);
@@ -165,15 +165,15 @@ auto slotted_page::remove(slot_id_t id, log_update_params_t log_params) -> resul
     header->deleted_slot_count++;
 
     page_->set_dirty(true);
-    if (log_params.log) {
-        wal::log_record rec;
+    if (log_params.log_manager) {
+        wal::log::record rec;
         rec.txn_id    = log_params.txn_id;
-        rec.type      = wal::log_record_type::UPDATE;
+        rec.type      = wal::log::record_type::UPDATE;
         rec.page_id   = page_->page_id();
         rec.slot_id   = id;
         rec.prev_lsn  = log_params.prev_lsn;
         rec.undo_data = old_tuple_data;
-        page_->set_page_lsn(TRY(log_params.log->append_record(rec)));
+        page_->set_page_lsn(TRY(log_params.log_manager->append_record(rec)));
     }
 
     return {};

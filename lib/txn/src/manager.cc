@@ -10,9 +10,9 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_record.hh"
-#include "wal/log_sequence_number.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::txn {
 
@@ -20,19 +20,19 @@ auto manager::begin_txn() -> id_t {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     const id_t       id{next_txn_id_++};
-    active_txns_.emplace_back(id, wal::att_state_t::ACTIVE, stdx::none);
+    active_txns_.emplace_back(id, wal::checkpoint::att_entry::state_t::ACTIVE, stdx::none);
     return id;
 }
 
-auto manager::commit_txn(id_t id, wal::log_manager& manager) -> result<void> {
+auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     auto             it{TRY(find_id(id))};
 
     if (it->last_lsn) {
-        wal::log_record rec;
+        wal::log::record rec;
         rec.txn_id   = id;
-        rec.type     = wal::log_record_type::COMMIT;
+        rec.type     = wal::log::record_type::COMMIT;
         rec.prev_lsn = it->last_lsn;
 
         auto lsn{TRY(manager.append_record(rec))};
@@ -43,15 +43,15 @@ auto manager::commit_txn(id_t id, wal::log_manager& manager) -> result<void> {
     return {};
 }
 
-auto manager::abort_txn(id_t id, wal::log_manager& manager) -> result<void> {
+auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     auto             it{TRY(find_id(id))};
 
     if (it->last_lsn) {
-        wal::log_record rec;
+        wal::log::record rec;
         rec.txn_id   = id;
-        rec.type     = wal::log_record_type::ABORT;
+        rec.type     = wal::log::record_type::ABORT;
         rec.prev_lsn = it->last_lsn;
 
         auto lsn{TRY(manager.append_record(rec))};
@@ -62,7 +62,7 @@ auto manager::abort_txn(id_t id, wal::log_manager& manager) -> result<void> {
     return {};
 }
 
-auto manager::update_txn_lsn(id_t id, wal::lsn_t lsn) -> result<void> {
+auto manager::update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     auto             it{TRY(find_id(id))};

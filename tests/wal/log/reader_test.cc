@@ -11,13 +11,13 @@
 #include "support/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
-#include "wal/log_reader.hh"
+#include "wal/log/reader.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::wal;
 
-TEST_CASE("log_reader bidirectional scan") {
+TEST_CASE("log::reader bidirectional scan") {
     helpers::tempfile      file{"wal_reader"};
     std::vector<std::byte> buffer;
 
@@ -33,7 +33,7 @@ TEST_CASE("log_reader bidirectional scan") {
                   static_cast<std::streamsize>(buffer.size()));
         REQUIRE_FALSE(out.fail());
     }
-    auto reader{helpers::unwrap(log_reader::open(file.path))};
+    auto reader{helpers::unwrap(log::reader::open(file.path))};
 
     SECTION("Sequential bidirectional access") {
         helpers::records_eq(helpers::unwrap(reader.next()), rec1);

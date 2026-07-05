@@ -13,24 +13,25 @@
 #include <stdx/utility.hh>
 
 #include "support/error.hh"
-#include "wal/log_record.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
-namespace cairn::wal {
+namespace cairn::wal::log {
 
 // A thread safe manager of log appending and flushing
-class log_manager {
+class manager {
   public:
-    explicit log_manager(std::filesystem::path log_path,
-                         usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
-    ~log_manager();
-    MAKE_PINNED(log_manager)
+    explicit manager(std::filesystem::path log_path,
+                     usize                 buffer_size = stdx::sizes::kib(64UZ)) noexcept;
+    ~manager();
+    MAKE_PINNED(manager)
 
     // Appends a record to the active bugger, assigning its lsn and triggering swap if needed
-    [[nodiscard]] auto append_record(log_record& record) -> result<lsn_t>;
+    [[nodiscard]] auto append_record(record& record) -> result<seq_num>;
 
     // Wait until the record with the given lsn has been flushed to disk
-    [[nodiscard]] auto flush(lsn_t lsn) -> result<void>;
-    [[nodiscard]] auto flushed_lsn() const noexcept -> lsn_t {
+    [[nodiscard]] auto flush(seq_num lsn) -> result<void>;
+    [[nodiscard]] auto flushed_lsn() const noexcept -> seq_num {
         return flushed_lsn_.load(std::memory_order_relaxed);
     }
 
@@ -39,7 +40,7 @@ class log_manager {
     auto trigger_buffer_swap() -> void;
     auto flush_loop() -> void;
 
-    [[nodiscard]] auto next_lsn() noexcept -> lsn_t;
+    [[nodiscard]] auto next_lsn() noexcept -> seq_num;
     [[nodiscard]] auto running() const noexcept -> bool {
         return running_.load(std::memory_order_relaxed);
     }
@@ -55,13 +56,13 @@ class log_manager {
     std::vector<std::byte> active_buffer_;
     std::vector<std::byte> flush_buffer_;
 
-    std::atomic<lsn_t> next_lsn_{lsn_t{1}};
-    std::atomic<lsn_t> flushed_lsn_{lsn_t{0}};
+    std::atomic<seq_num> next_lsn_{seq_num{1}};
+    std::atomic<seq_num> flushed_lsn_{seq_num{0}};
 
     std::jthread      flush_thread_;
     std::atomic<bool> running_{true};
     std::atomic<bool> swap_requested_{false};
-    lsn_t             highest_lsn_to_flush_{INVALID_LSN};
+    seq_num           highest_lsn_to_flush_{INVALID_LSN};
 };
 
-} // namespace cairn::wal
+} // namespace cairn::wal::log

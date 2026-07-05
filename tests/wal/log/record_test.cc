@@ -10,13 +10,13 @@
 #include "helpers/mock_records.hh"
 #include "support/error.hh"
 #include "testhelpers/unwrap.hh"
-#include "wal/log_record.hh"
+#include "wal/log/record.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::wal;
 
-TEST_CASE("log_record begin") {
+TEST_CASE("log::record begin") {
     std::vector<std::byte>     buffer;
     const auto                 rec{helpers::write_begin_log(buffer)};
     gsl::span<const std::byte> src{buffer};
@@ -24,7 +24,7 @@ TEST_CASE("log_record begin") {
     CHECK(src.empty());
 }
 
-TEST_CASE("log_record update") {
+TEST_CASE("log::record update") {
     std::vector<std::byte>     buffer;
     const auto                 rec{helpers::write_update_log(buffer)};
     gsl::span<const std::byte> src{buffer};
@@ -32,7 +32,7 @@ TEST_CASE("log_record update") {
     CHECK(src.empty());
 }
 
-TEST_CASE("log_record clear") {
+TEST_CASE("log::record clear") {
     std::vector<std::byte>     buffer;
     auto                       rec{helpers::write_clear_log(buffer)};
     gsl::span<const std::byte> src{buffer};
@@ -40,7 +40,7 @@ TEST_CASE("log_record clear") {
     CHECK(src.empty());
 }
 
-TEST_CASE("log_record multiple read/write") {
+TEST_CASE("log::record multiple read/write") {
     std::vector<std::byte> buffer;
     const auto             begin_rec{helpers::write_begin_log(buffer)};
     const auto             update_rec{helpers::write_update_log(buffer)};
@@ -53,13 +53,13 @@ TEST_CASE("log_record multiple read/write") {
     CHECK(src.empty());
 }
 
-TEST_CASE("log_record checksum corruption") {
+TEST_CASE("log::record checksum corruption") {
     std::vector<std::byte> buffer;
     DISCARD(helpers::write_begin_log(buffer));
 
     buffer[25] ^= std::byte{0xFF};
     gsl::span<const std::byte> src{buffer};
-    CHECK(helpers::unwrap_err(log_record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
+    CHECK(helpers::unwrap_err(log::record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
 }
 
 } // namespace cairn::tests

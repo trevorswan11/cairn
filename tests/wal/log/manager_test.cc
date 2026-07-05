@@ -16,38 +16,38 @@
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "txn/id.hh"
-#include "wal/log_manager.hh"
-#include "wal/log_reader.hh"
-#include "wal/log_record.hh"
-#include "wal/log_sequence_number.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/reader.hh"
+#include "wal/log/record.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::tests {
 
 using namespace cairn::wal;
 using namespace stdx::size_literals;
 
-TEST_CASE("log_manager append and flush") {
+TEST_CASE("log::manager append and flush") {
     helpers::tempfile file{"log_manager_basic"};
 
     {
-        log_manager manager{file.path, 1_KiB};
+        log::manager manager{file.path, 1_KiB};
 
-        log_record rec1;
+        log::record rec1;
         rec1.txn_id = txn::id_t{1};
-        rec1.type   = log_record_type::BEGIN;
+        rec1.type   = log::record_type::BEGIN;
         auto lsn1   = helpers::unwrap(manager.append_record(rec1));
 
-        log_record rec2;
+        log::record rec2;
         rec2.txn_id    = txn::id_t{1};
-        rec2.type      = log_record_type::UPDATE;
+        rec2.type      = log::record_type::UPDATE;
         rec2.page_id   = storage::page_id_t{4};
         rec2.slot_id   = storage::slot_id_t{2};
         rec2.redo_data = helpers::redo_bytes;
         rec2.undo_data = helpers::undo_bytes;
         auto lsn2{helpers::unwrap(manager.append_record(rec2))};
 
-        CHECK(lsn1 == lsn_t{1});
-        CHECK(lsn2 == lsn_t{2});
+        CHECK(lsn1 == log::seq_num{1});
+        CHECK(lsn2 == log::seq_num{2});
 
         // Flush up to lsn2
         CHECK(manager.flush(lsn2));
@@ -56,31 +56,31 @@ TEST_CASE("log_manager append and flush") {
 
     // Verify written data by reading it back
     {
-        auto reader{helpers::unwrap(log_reader::open(file.path))};
+        auto reader{helpers::unwrap(log::reader::open(file.path))};
         auto r1{helpers::unwrap(reader.next())};
-        CHECK(r1.lsn == lsn_t{1});
-        CHECK(r1.type == log_record_type::BEGIN);
+        CHECK(r1.lsn == log::seq_num{1});
+        CHECK(r1.type == log::record_type::BEGIN);
 
         auto r2{helpers::unwrap(reader.next())};
-        CHECK(r2.lsn == lsn_t{2});
-        CHECK(r2.type == log_record_type::UPDATE);
+        CHECK(r2.lsn == log::seq_num{2});
+        CHECK(r2.type == log::record_type::UPDATE);
         CHECK(r2.page_id == storage::page_id_t{4});
         CHECK(r2.slot_id == storage::slot_id_t{2});
     }
 }
 
-TEST_CASE("log_manager double buffering boundary") {
+TEST_CASE("log::manager double buffering boundary") {
     helpers::tempfile file{"log_manager_boundary"};
 
     {
-        log_manager manager{file.path, 128};
+        log::manager manager{file.path, 128};
 
         // Append multiple records to force multiple buffer swaps
-        std::vector<lsn_t> lsns;
+        std::vector<log::seq_num> lsns;
         for (i64 i{0}; i < 10; ++i) {
-            log_record rec;
+            log::record rec;
             rec.txn_id    = txn::id_t{i};
-            rec.type      = log_record_type::UPDATE;
+            rec.type      = log::record_type::UPDATE;
             rec.page_id   = storage::page_id_t{i};
             rec.slot_id   = storage::slot_id_t{0};
             rec.redo_data = helpers::redo_bytes;
@@ -95,17 +95,17 @@ TEST_CASE("log_manager double buffering boundary") {
 
     // Verify all 10 records are read back successfully
     {
-        auto reader{helpers::unwrap(log_reader::open(file.path))};
+        auto reader{helpers::unwrap(log::reader::open(file.path))};
         for (i64 i{0}; i < 10; ++i) {
             auto r{helpers::unwrap(reader.next())};
-            CHECK(r.lsn == lsn_t{i + 1});
+            CHECK(r.lsn == log::seq_num{i + 1});
             CHECK(r.txn_id == txn::id_t{i});
             CHECK(r.page_id == storage::page_id_t{i});
         }
     }
 }
 
-TEST_CASE("log_manager concurrent appends") {
+TEST_CASE("log::manager concurrent appends") {
     helpers::tempfile file{"log_manager_concurrent"};
     std::filesystem::remove(file.path);
 
@@ -113,7 +113,7 @@ TEST_CASE("log_manager concurrent appends") {
     const i32 appends_per_thread{50};
 
     {
-        log_manager manager{file.path, 4_KiB};
+        log::manager manager{file.path, 4_KiB};
 
         std::vector<std::jthread> workers;
         std::atomic<bool>         go{false};
@@ -123,9 +123,9 @@ TEST_CASE("log_manager concurrent appends") {
                 while (!go.load()) { std::this_thread::yield(); }
 
                 for (i32 i{0}; i < appends_per_thread; ++i) {
-                    log_record rec;
+                    log::record rec;
                     rec.txn_id    = txn::id_t{t};
-                    rec.type      = log_record_type::UPDATE;
+                    rec.type      = log::record_type::UPDATE;
                     rec.page_id   = storage::page_id_t{i};
                     rec.slot_id   = storage::slot_id_t{0};
                     rec.redo_data = helpers::redo_bytes;
@@ -140,7 +140,7 @@ TEST_CASE("log_manager concurrent appends") {
 
     // Read back and verify count and content consistency
     {
-        auto reader{helpers::unwrap(log_reader::open(file.path))};
+        auto reader{helpers::unwrap(log::reader::open(file.path))};
         i32  total_records{0};
         while (true) {
             auto res{reader.next()};
