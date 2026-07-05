@@ -14,6 +14,7 @@
 #elif CAIRN_APPLE
 #    include <mach-o/dyld.h>
 #else
+#    include <unistd.h>
 #endif
 
 namespace cairn::tests::helpers {
@@ -31,6 +32,9 @@ auto self_exe_path() -> std::string {
     ::_NSGetExecutablePath(buffer.data(), &size);
     return buffer.data();
 #else
+    const auto len{readlink("/proc/self/exe", buffer.data(), buffer.size() - 1)};
+    if (len != -1) { buffer[static_cast<usize>(len)] = '\0'; }
+    return buffer.data();
 #endif
 }
 
