@@ -39,7 +39,7 @@ auto manager::begin_txn() -> id_t {
 auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
-    auto [found, it]{TRY(find_id(id))};
+    auto [found, it]{TRY(find_id_locked(id))};
 
     if (found->last_lsn) {
         wal::log::record rec;
@@ -63,7 +63,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
 auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
-    auto [found, it]{TRY(find_id(id))};
+    auto [found, it]{TRY(find_id_locked(id))};
 
     if (found->last_lsn) {
         wal::log::record rec;
@@ -84,7 +84,7 @@ auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
 auto manager::update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
-    auto [found, _]{TRY(find_id(id))};
+    auto [found, _]{TRY(find_id_locked(id))};
     found->last_lsn = lsn;
     return {};
 }
@@ -128,8 +128,7 @@ auto manager::prune_committed_txns(timestamp_t horizon) noexcept -> void {
     prune_committed_txns_locked(horizon);
 }
 
-auto manager::find_id(id_t id) noexcept
-    -> result<std::pair<gsl::not_null<att_entry*>, active_txn_map_t::iterator>> {
+auto manager::find_id_locked(id_t id) noexcept -> found_id_res_t {
     if (auto it{active_txns_.find(id)}; it != active_txns_.end()) {
         return std::make_pair(gsl::not_null{&it->second}, it);
     }
