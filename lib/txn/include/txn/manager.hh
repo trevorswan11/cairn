@@ -23,6 +23,7 @@ class manager {
     using att_entry          = wal::checkpoint::att_entry;
     using active_txn_map_t   = ankerl::unordered_dense::map<id_t, att_entry, id_hash_t>;
     using commited_txn_map_t = ankerl::unordered_dense::map<id_t, timestamp_t, id_hash_t>;
+    using found_id_res_t = result<std::pair<gsl::not_null<att_entry*>, active_txn_map_t::iterator>>;
 
   public:
     [[nodiscard]] auto begin_txn() -> id_t;
@@ -45,11 +46,9 @@ class manager {
     auto prune_committed_txns(timestamp_t horizon) noexcept -> void;
 
   private:
-    [[nodiscard]] auto find_id(id_t id) noexcept
-        -> result<std::pair<gsl::not_null<att_entry*>, active_txn_map_t::iterator>>;
-
-    auto prune_committed_txns_locked(timestamp_t horizon) noexcept -> void;     // Must hold lock
-    [[nodiscard]] auto snapshot_horizon_locked() const noexcept -> timestamp_t; // Must hold lock
+    [[nodiscard]] auto find_id_locked(id_t id) noexcept -> found_id_res_t;
+    auto               prune_committed_txns_locked(timestamp_t horizon) noexcept -> void;
+    [[nodiscard]] auto snapshot_horizon_locked() const noexcept -> timestamp_t;
 
   private:
     mutable std::mutex mutex_;
