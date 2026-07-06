@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <string_view>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
@@ -46,25 +47,27 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
         CHECK(header.txn_id == txn::id_t{2});
         CHECK_FALSE(header.is_deleted);
 
-        auto undo_rec = unwrap(undo_mgr.read_record(unwrap(header.undo_ptr)));
-        CHECK(undo_rec.record.txn_id == txn::id_t{1});
-        CHECK(undo_rec.record.op == undo::op_t::UPDATE);
-        CHECK(helpers::string_from_span(undo_rec.payload) == val1);
-        CHECK_FALSE(undo_rec.record.prev_undo_ptr);
+        std::vector<std::byte> rec_payload;
+        const auto undo_rec{unwrap(undo_mgr.read_record(unwrap(header.undo_ptr), rec_payload))};
+        CHECK(undo_rec.txn_id == txn::id_t{1});
+        CHECK(undo_rec.op == undo::op_t::UPDATE);
+        CHECK(helpers::string_from_span(rec_payload) == val1);
+        CHECK_FALSE(undo_rec.prev_undo_ptr);
     }
 
     REQUIRE(tree.delete_txn(txn::id_t{3}, 10));
     {
-        auto [header, payload] = unwrap(tree.get_raw(10));
+        auto [header, payload]{unwrap(tree.get_raw(10))};
         CHECK(header.txn_id == txn::id_t{3});
         CHECK(header.is_deleted);
         CHECK(payload.empty());
 
-        auto undo_rec = unwrap(undo_mgr.read_record(unwrap(header.undo_ptr)));
-        CHECK(undo_rec.record.txn_id == txn::id_t{2});
-        CHECK(undo_rec.record.op == undo::op_t::DELETE);
-        CHECK(helpers::string_from_span(undo_rec.payload) == val2);
-        CHECK(undo_rec.record.prev_undo_ptr);
+        std::vector<std::byte> rec_payload;
+        const auto undo_rec{unwrap(undo_mgr.read_record(unwrap(header.undo_ptr), rec_payload))};
+        CHECK(undo_rec.txn_id == txn::id_t{2});
+        CHECK(undo_rec.op == undo::op_t::DELETE);
+        CHECK(helpers::string_from_span(rec_payload) == val2);
+        CHECK(undo_rec.prev_undo_ptr);
     }
 }
 

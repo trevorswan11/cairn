@@ -28,13 +28,13 @@ class manager {
         begin_rec.type = log::record_type::CHECKPOINT_BEGIN;
         const auto begin_lsn{TRY(wal_manager.append_record(begin_rec))};
 
-        pool.snapshot_dpt(dpt_);
-        tm.snapshot_att(att_);
+        pool.snapshot_dpt(dpt_buf_);
+        tm.snapshot_att(att_buf_);
 
         log::record end_rec;
         end_rec.type = log::record_type::CHECKPOINT_END;
-        end_rec.dpt  = dpt_;
-        end_rec.att  = att_;
+        end_rec.dpt  = dpt_buf_;
+        end_rec.att  = att_buf_;
 
         const auto end_lsn{TRY(wal_manager.append_record(end_rec))};
         TRY(wal_manager.flush(end_lsn));
@@ -50,8 +50,8 @@ class manager {
 
   private:
     const std::filesystem::path control_path_;
-    std::vector<dpt_entry>      dpt_;
-    std::vector<att_entry>      att_;
+    std::vector<dpt_entry>      dpt_buf_;
+    std::vector<att_entry>      att_buf_;
 };
 
 } // namespace cairn::wal::checkpoint

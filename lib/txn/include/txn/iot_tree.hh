@@ -35,6 +35,7 @@ class iot_tree {
   public:
     using tree_t =
         storage::iot_tree<Key, MaxTupleSize + sizeof(tuple_version_header_t), PoolSize, Compare>;
+    using buf_t = stdx::fixed::vector<std::byte, tree_t::pool_size>;
 
   public:
     iot_tree(tree_t& tree, undo::manager<Key, PoolSize>& undo_mgr) noexcept
@@ -42,30 +43,23 @@ class iot_tree {
 
     [[nodiscard]] auto insert_txn(txn::id_t id, const Key& key, gsl::span<const std::byte> payload)
         -> result<void> {
-        if (auto get{tree_.get(key)}) {
-            std::vector<std::byte>     old_val_buf((*get).begin(), (*get).end());
-            gsl::span<const std::byte> old_val{old_val_buf};
-            auto                       header{read_version_header(old_val)};
-            if (!header.is_deleted) { return stdx::err{error_t::STORAGE_DUPLICATE_KEY}; }
+        if (const auto get{tree_.get(key)}) {
+            if (!read_version_header(*get).is_deleted) {
+                return stdx::err{error_t::STORAGE_DUPLICATE_KEY};
+            }
             return update_txn(id, key, payload);
         } else if (get.error() != error_t::STORAGE_KEY_NOT_FOUND) {
             return stdx::err{get.error()};
         }
 
-        tuple_version_header_t header{
+        const tuple_version_header_t header{
             .txn_id       = id,
             .is_timestamp = false,
             .is_deleted   = false,
             .undo_ptr     = stdx::none,
         };
 
-        std::vector<std::byte> buf(sizeof(tuple_version_header_t) + payload.size_bytes());
-        std::memcpy(buf.data(), &header, sizeof(tuple_version_header_t));
-        if (!payload.empty()) {
-            std::memcpy(
-                buf.data() + sizeof(tuple_version_header_t), payload.data(), payload.size_bytes());
-        }
-
+        const auto buf{make_buf(header, payload)};
         TRY(tree_.emplace(key, gsl::span<const std::byte>{buf}));
         TRY(undo_mgr_.append_record(
             id, key, undo::op_t::INSERT, false, false, txn::INVALID_TXN_ID, stdx::none, {}));
@@ -75,58 +69,49 @@ class iot_tree {
 
     [[nodiscard]] auto update_txn(txn::id_t id, const Key& key, gsl::span<const std::byte> payload)
         -> result<void> {
-        auto                       get{TRY(tree_.get(key))};
-        std::vector<std::byte>     old_val_buf(get.begin(), get.end());
-        gsl::span<const std::byte> old_val{old_val_buf};
-        auto                       old_header  = read_version_header(old_val);
-        auto                       old_payload = read_payload(old_val);
+        const auto get{TRY(tree_.get(key))};
+        const auto old_val{snapshot(get)};
+        const auto old_header{read_version_header(old_val)};
+        const auto old_payload{read_payload(old_val)};
 
-        auto undo_ptr{TRY(undo_mgr_.append_record(id,
-                                                  key,
-                                                  undo::op_t::UPDATE,
-                                                  old_header.is_timestamp,
-                                                  old_header.is_deleted,
-                                                  old_header.txn_id,
-                                                  old_header.undo_ptr,
-                                                  old_payload))};
+        const auto undo_ptr{TRY(undo_mgr_.append_record(id,
+                                                        key,
+                                                        undo::op_t::UPDATE,
+                                                        old_header.is_timestamp,
+                                                        old_header.is_deleted,
+                                                        old_header.txn_id,
+                                                        old_header.undo_ptr,
+                                                        old_payload))};
 
-        tuple_version_header_t new_header{
+        const tuple_version_header_t new_header{
             .txn_id       = id,
             .is_timestamp = false,
             .is_deleted   = false,
             .undo_ptr     = undo_ptr,
         };
 
-        std::vector<std::byte> buf(sizeof(tuple_version_header_t) + payload.size_bytes());
-        std::memcpy(buf.data(), &new_header, sizeof(tuple_version_header_t));
-        if (!payload.empty()) {
-            std::memcpy(
-                buf.data() + sizeof(tuple_version_header_t), payload.data(), payload.size_bytes());
-        }
-
+        const auto buf{make_buf(new_header, payload)};
         TRY(tree_.update(key, gsl::span<const std::byte>{buf}));
         return {};
     }
 
     [[nodiscard]] auto delete_txn(txn::id_t id, const Key& key) -> result<void> {
-        auto get_res{TRY(tree_.get(key))};
-
-        std::vector<std::byte>     old_val_buf(get_res.begin(), get_res.end());
-        gsl::span<const std::byte> old_val{old_val_buf};
-        auto                       old_header{read_version_header(old_val)};
+        const auto get{TRY(tree_.get(key))};
+        const auto old_val{snapshot(get)};
+        const auto old_header{read_version_header(old_val)};
         if (old_header.is_deleted) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
-        auto old_payload{read_payload(old_val)};
+        const auto old_payload{read_payload(old_val)};
 
-        auto undo_ptr{TRY(undo_mgr_.append_record(id,
-                                                  key,
-                                                  undo::op_t::DELETE,
-                                                  old_header.is_timestamp,
-                                                  old_header.is_deleted,
-                                                  old_header.txn_id,
-                                                  old_header.undo_ptr,
-                                                  old_payload))};
+        const auto undo_ptr{TRY(undo_mgr_.append_record(id,
+                                                        key,
+                                                        undo::op_t::DELETE,
+                                                        old_header.is_timestamp,
+                                                        old_header.is_deleted,
+                                                        old_header.txn_id,
+                                                        old_header.undo_ptr,
+                                                        old_payload))};
 
-        tuple_version_header_t new_header{
+        const tuple_version_header_t new_header{
             .txn_id       = id,
             .is_timestamp = false,
             .is_deleted   = true,
@@ -136,17 +121,15 @@ class iot_tree {
         stdx::fixed::vector<std::byte, sizeof(tuple_version_header_t)> buf;
         buf.resize(buf.capacity());
         std::memcpy(buf.data(), &new_header, buf.capacity());
-        TRY(tree_.update(key, gsl::span<const std::byte>{buf}));
-        return {};
+        return tree_.update(key, buf);
     }
 
     [[nodiscard]] auto rollback_txn(txn::id_t id) -> result<void> {
-        auto cur_ptr{undo_mgr_.get_last_txn_undo(id)};
+        auto                   cur_ptr{undo_mgr_.get_last_txn_undo(id)};
+        std::vector<std::byte> payload;
 
         while (cur_ptr) {
-            auto        read_res{TRY(undo_mgr_.read_record(*cur_ptr))};
-            const auto& rec{read_res.record};
-            const auto& payload{read_res.payload};
+            const auto rec{TRY(undo_mgr_.read_record(*cur_ptr, payload))};
 
             switch (rec.op) {
             case undo::op_t::INSERT: {
@@ -155,22 +138,15 @@ class iot_tree {
             }
             case undo::op_t::UPDATE:
             case undo::op_t::DELETE: {
-                tuple_version_header_t old_header{
+                const tuple_version_header_t old_header{
                     .txn_id       = rec.txn_id,
                     .is_timestamp = rec.is_timestamp,
                     .is_deleted   = rec.is_deleted,
                     .undo_ptr     = rec.prev_undo_ptr,
                 };
 
-                std::vector<std::byte> buf(sizeof(tuple_version_header_t) + payload.size());
-                std::memcpy(buf.data(), &old_header, sizeof(tuple_version_header_t));
-                if (!payload.empty()) {
-                    std::memcpy(buf.data() + sizeof(tuple_version_header_t),
-                                payload.data(),
-                                payload.size());
-                }
-
-                TRY(tree_.update(rec.key, gsl::span<const std::byte>{buf}));
+                auto buf{make_buf(old_header, payload)};
+                TRY(tree_.update(rec.key, buf));
                 break;
             }
             }
@@ -184,10 +160,31 @@ class iot_tree {
 
     [[nodiscard]] auto get_raw(const Key& key)
         -> result<std::pair<tuple_version_header_t, gsl::span<const std::byte>>> {
-        auto val{TRY(tree_.get(key))};
-        auto header{read_version_header(val)};
-        auto payload{read_payload(val)};
+        const auto val{TRY(tree_.get(key))};
+        const auto header{read_version_header(val)};
+        const auto payload{read_payload(val)};
         return std::make_pair(header, payload);
+    }
+
+  private:
+    [[nodiscard]] static auto make_buf(const tuple_version_header_t& header,
+                                       gsl::span<const std::byte>    payload) noexcept -> buf_t {
+        buf_t buf;
+        buf.resize(sizeof(tuple_version_header_t) + payload.size_bytes());
+        std::memcpy(buf.data(), &header, sizeof(tuple_version_header_t));
+        if (!payload.empty()) {
+            std::memcpy(
+                buf.data() + sizeof(tuple_version_header_t), payload.data(), payload.size_bytes());
+        }
+        return buf;
+    }
+
+    // Snapshot a tree-owned span into a fixed buffer
+    [[nodiscard]] static auto snapshot(gsl::span<const std::byte> span) noexcept -> buf_t {
+        buf_t buf;
+        buf.resize(span.size_bytes());
+        if (!span.empty()) { std::memcpy(buf.data(), span.data(), buf.size()); }
+        return buf;
     }
 
   private:

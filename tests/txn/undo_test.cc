@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
@@ -46,18 +47,19 @@ TEST_CASE("undo::manager read/write records") {
                                             helpers::span_from_string(payload2)))};
     CHECK(ptr1 != ptr2);
 
-    auto read1{unwrap(undo_mgr.read_record(ptr1))};
-    CHECK(read1.record.txn_id == txn::INVALID_TXN_ID);
-    CHECK(read1.record.key == 100);
-    CHECK(read1.record.op == undo::op_t::INSERT);
-    CHECK(helpers::string_from_span(read1.payload) == payload1);
+    std::vector<std::byte> rec_payload;
+    const auto             rec1{unwrap(undo_mgr.read_record(ptr1, rec_payload))};
+    CHECK(rec1.txn_id == txn::INVALID_TXN_ID);
+    CHECK(rec1.key == 100);
+    CHECK(rec1.op == undo::op_t::INSERT);
+    CHECK(helpers::string_from_span(rec_payload) == payload1);
 
-    auto read2{unwrap(undo_mgr.read_record(ptr2))};
-    CHECK(read2.record.txn_id == txn::id_t{10});
-    CHECK(read2.record.key == 100);
-    CHECK(read2.record.op == undo::op_t::UPDATE);
-    CHECK(read2.record.prev_undo_ptr == ptr1);
-    CHECK(helpers::string_from_span(read2.payload) == payload2);
+    const auto rec2{unwrap(undo_mgr.read_record(ptr2, rec_payload))};
+    CHECK(rec2.txn_id == txn::id_t{10});
+    CHECK(rec2.key == 100);
+    CHECK(rec2.op == undo::op_t::UPDATE);
+    CHECK(rec2.prev_undo_ptr == ptr1);
+    CHECK(helpers::string_from_span(rec_payload) == payload2);
 }
 
 } // namespace cairn::tests
