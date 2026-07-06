@@ -69,13 +69,23 @@ template <BPlusNodePayload Key, BPlusNodePayload Value> struct default_leaf_trai
         return as_node(p)->next;
     }
 
-    [[nodiscard]] static auto
-    can_emplace(const_page_ptr_t p, const Key& /*key*/, const Value& /*value*/) noexcept -> bool {
+    [[nodiscard]] static auto can_emplace(const_page_ptr_t p, const Key&, const Value&) noexcept
+        -> bool {
         return size(p) < CAP;
     }
 
     [[nodiscard]] static auto can_remove(const_page_ptr_t p) noexcept -> bool {
         return size(p) > MIN;
+    }
+
+    [[nodiscard]] static auto can_update(const_page_ptr_t, i32, const Value&) noexcept -> bool {
+        return true;
+    }
+
+    static auto update_at(page_ptr_t p, i32 idx, const Value& value) noexcept -> void {
+        auto       n{as_node(p)};
+        const auto u_idx{static_cast<usize>(idx)};
+        n->values[u_idx] = value;
     }
 
     static auto emplace_at(page_ptr_t p, i32 idx, const Key& key, const Value& value) noexcept
@@ -269,8 +279,8 @@ template <BPlusNodePayload Key> struct default_internal_trait {
         return as_node(p)->children[static_cast<usize>(idx)];
     }
 
-    [[nodiscard]] static auto
-    can_emplace(const_page_ptr_t p, const Key& /*key*/, page_id_t /*pid*/) noexcept -> bool {
+    [[nodiscard]] static auto can_emplace(const_page_ptr_t p, const Key&, page_id_t) noexcept
+        -> bool {
         return size(p) < CAP;
     }
 

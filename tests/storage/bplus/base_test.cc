@@ -253,4 +253,27 @@ TEST_CASE("bplus_tree persists across a buffer-pool reopen") {
     for (i64 i{0}; i < n; ++i) { CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i + 1)); }
 }
 
+TEST_CASE("bplus_tree update operations") {
+    helpers::tempfile file{"bpt_update"};
+    using tree_t = bplus_tree<i64, u64, 64>;
+    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
+    auto tree{helpers::unwrap(tree_t::create(*pool))};
+
+    SECTION("Basic update") {
+        CHECK(helpers::unwrap_err(tree.update(42, 100)) == error_t::STORAGE_KEY_NOT_FOUND);
+        REQUIRE(tree.emplace(42, 10));
+        CHECK(helpers::unwrap(tree.get(42)) == 10);
+        REQUIRE(tree.update(42, 20));
+        CHECK(helpers::unwrap(tree.get(42)) == 20);
+    }
+
+    SECTION("Multiple update") {
+        for (i64 i{0}; i < 100; ++i) { REQUIRE(tree.emplace(i, static_cast<u64>(i * 10))); }
+        for (i64 i{0}; i < 100; ++i) { REQUIRE(tree.update(i, static_cast<u64>(i * 100))); }
+        for (i64 i{0}; i < 100; ++i) {
+            CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i * 100));
+        }
+    }
+}
+
 } // namespace cairn::tests

@@ -101,6 +101,36 @@ template <BPlusNodePayload Key, usize MaxTupleSize> struct iot_leaf_trait {
         return size(p) > MIN;
     }
 
+    [[nodiscard]] static auto can_update(const_page_ptr_t p, i32 idx, const Value& val) noexcept
+        -> bool {
+        auto  n{as_node(p)};
+        usize used_data_bytes{0};
+        for (const auto& slot : n->get_slots()) { used_data_bytes += slot.size; }
+
+        const usize logical_free{
+            DB_PAGE_SIZE -
+            (NODE_PREFIX + (static_cast<usize>(n->size) * sizeof(slot_t)) + used_data_bytes)};
+
+        const auto& slot{n->get_slots()[static_cast<usize>(idx)]};
+        return (logical_free + slot.size) >= val.size_bytes();
+    }
+
+    static auto update_at(page_ptr_t p, i32 idx, const Value& val) noexcept -> void {
+        auto       n{as_node(p)};
+        const auto u_idx{static_cast<usize>(idx)};
+        auto&      slot{n->get_slots()[u_idx]};
+
+        const usize physical_free{n->free_space_ptr -
+                                  (NODE_PREFIX + (static_cast<usize>(n->size) * sizeof(slot_t)))};
+        if (physical_free < val.size_bytes()) { compact(n, p); }
+
+        n->free_space_ptr -= static_cast<u16>(val.size_bytes());
+        slot.offset = n->free_space_ptr;
+        slot.size   = static_cast<u16>(val.size_bytes());
+
+        std::copy_n(val.data(), val.size_bytes(), p->data() + n->free_space_ptr);
+    }
+
     static auto compact(gsl::not_null<node_type*> n, page_ptr_t p) noexcept -> void {
         std::array<std::byte, DB_PAGE_SIZE> temp_buf;
         usize                               current_offset{DB_PAGE_SIZE};
@@ -217,8 +247,7 @@ template <BPlusNodePayload Key, usize MaxTupleSize> struct iot_leaf_trait {
         return as_node(right_p)->get_slots()[0].key;
     }
 
-    static auto merge_into_left(page_ptr_t left_p, page_ptr_t right_p, Key& /*sep*/) noexcept
-        -> void {
+    static auto merge_into_left(page_ptr_t left_p, page_ptr_t right_p, Key&) noexcept -> void {
         auto       r{as_node(right_p)};
         const auto r_size{r->size};
 

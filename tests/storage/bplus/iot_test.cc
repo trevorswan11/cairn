@@ -69,4 +69,32 @@ TEST_CASE("iot_tree handles compaction and removal") {
               })) == 50);
 }
 
+TEST_CASE("iot_tree update operations") {
+    helpers::tempfile file{"iot_update"};
+    using tree_t = iot_tree<i64, 128, 64>;
+    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
+    auto tree{helpers::unwrap(tree_t::create(*pool))};
+
+    const std::string_view val1{"short"};
+    const std::string_view val2{"medium_value"};
+    const std::string      val3(100, 'x');
+
+    // Update non-existent key
+    CHECK(helpers::unwrap_err(tree.update(1, helpers::span_from_string(val1))) ==
+          error_t::STORAGE_KEY_NOT_FOUND);
+
+    // Emplace and update
+    REQUIRE(tree.emplace(1, helpers::span_from_string(val1)));
+    REQUIRE(tree.update(1, helpers::span_from_string(val2)));
+    CHECK(helpers::string_from_span(helpers::unwrap(tree.get(1))) == val2);
+
+    // Update to shrink size
+    REQUIRE(tree.update(1, helpers::span_from_string(val1)));
+    CHECK(helpers::string_from_span(helpers::unwrap(tree.get(1))) == val1);
+
+    // Update to grow significantly
+    REQUIRE(tree.update(1, helpers::span_from_string(val3)));
+    CHECK(helpers::string_from_span(helpers::unwrap(tree.get(1))) == val3);
+}
+
 } // namespace cairn::tests

@@ -217,6 +217,50 @@ class bplus_base_t {
         return propagate_split(meta_guard_opt, path, up_key, up_pid);
     }
 
+    // Updates 'key' with 'value', returns KEY_NOT_FOUND if absent.
+    // If the new value fits in the leaf page, updates in-place.
+    // Otherwise, falls back to remove + emplace.
+    [[nodiscard]] auto update(const Key& key, const Value& value) -> result<void> {
+        write_guard_t meta_guard{TRY(fetch_meta_write())};
+        auto          meta{meta_guard.template as<meta_node>()};
+        if (!meta->root.has_value()) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
+
+        path_stack                   path;
+        stdx::option<write_guard_t&> meta_guard_opt{meta_guard};
+        page_id_t                    cur{*meta->root};
+        {
+            write_guard_t root_guard{TRY(pool_->fetch_write(cur))};
+            path.emplace_back(std::move(root_guard));
+        }
+
+        while (kind_of(path.back()) == node_kind::INTERNAL) {
+            const page_id_t child{route(path.back(), key)};
+            write_guard_t   child_guard{TRY(pool_->fetch_write(child))};
+            path.emplace_back(std::move(child_guard));
+        }
+
+        const i32 idx{leaf_lower_bound(path.back(), key)};
+        if (idx >= LeafTrait::size(path.back().get()) ||
+            !equal_t{comp_}(LeafTrait::get_key(path.back().get(), idx), key)) {
+            return stdx::err{error_t::STORAGE_KEY_NOT_FOUND};
+        }
+
+        if (LeafTrait::can_update(path.back().get(), idx, value)) {
+            LeafTrait::update_at(path.back().get(), idx, value);
+            path.back().mark_dirty();
+            return {};
+        }
+
+        // If it doesn't fit, drop guards/path and fall back to remove + emplace
+        path.clear();
+        if (meta_guard_opt) {
+            meta_guard_opt->drop();
+            meta_guard_opt.reset();
+        }
+        TRY(remove(key));
+        return emplace(key, value);
+    }
+
     // Removes 'key' and returns KEY_NOT_FOUND if absent
     [[nodiscard]] auto remove(const Key& key) -> result<void> {
         write_guard_t meta_guard{TRY(fetch_meta_write())};
