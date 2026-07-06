@@ -50,8 +50,8 @@ class manager {
 
   private:
     const std::filesystem::path control_path_;
-    std::vector<dpt_entry> dpt_;
-    std::vector<att_entry> att_;
+    std::vector<dpt_entry>      dpt_;
+    std::vector<att_entry>      att_;
 };
 
 } // namespace cairn::wal::checkpoint

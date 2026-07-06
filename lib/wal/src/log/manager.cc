@@ -49,7 +49,7 @@ manager::~manager() {
 auto manager::append_record(record& record) -> result<seq_num> {
     PROFILE_FUNCTION();
 
-    // Staging is done locally to allow for lock-free operation
+    // Staging is done locally to allow for temporary releasing of lock
     thread_local std::vector<std::byte> staging;
     staging.clear();
 
