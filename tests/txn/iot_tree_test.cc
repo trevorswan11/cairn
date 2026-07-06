@@ -11,7 +11,7 @@
 #include "testhelpers/unwrap.hh"
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
-#include "txn/undo.hh"
+#include "txn/undo/manager.hh"
 
 namespace cairn::tests {
 
@@ -22,10 +22,10 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
     helpers::tempfile file{"txn_iot_tree_basic_test"};
 
     using txn_tree_t = iot_tree<i64, 128, 64>;
-    auto                  pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                  base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
-    undo_manager<i64, 64> undo_mgr{*pool};
-    txn_tree_t            tree{base_tree, undo_mgr};
+    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    undo::manager<i64, 64> undo_mgr{*pool};
+    txn_tree_t             tree{base_tree, undo_mgr};
 
     const std::string_view val1{"data_one"};
     const std::string_view val2{"data_two"};
@@ -48,7 +48,7 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
 
         auto undo_rec = unwrap(undo_mgr.read_record(unwrap(header.undo_ptr)));
         CHECK(undo_rec.record.txn_id == txn::id_t{1});
-        CHECK(undo_rec.record.op == undo_op_t::UPDATE);
+        CHECK(undo_rec.record.op == undo::op_t::UPDATE);
         CHECK(helpers::string_from_span(undo_rec.payload) == val1);
         CHECK_FALSE(undo_rec.record.prev_undo_ptr);
     }
@@ -62,7 +62,7 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
 
         auto undo_rec = unwrap(undo_mgr.read_record(unwrap(header.undo_ptr)));
         CHECK(undo_rec.record.txn_id == txn::id_t{2});
-        CHECK(undo_rec.record.op == undo_op_t::DELETE);
+        CHECK(undo_rec.record.op == undo::op_t::DELETE);
         CHECK(helpers::string_from_span(undo_rec.payload) == val2);
         CHECK(undo_rec.record.prev_undo_ptr);
     }
@@ -71,10 +71,10 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
 TEST_CASE("txn::iot_tree rollback transactions") {
     helpers::tempfile file{"txn_iot_tree_rollback_test"};
     using txn_tree_t = iot_tree<i64, 128, 64>;
-    auto                  pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                  base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
-    undo_manager<i64, 64> undo_mgr{*pool};
-    txn_tree_t            tree{base_tree, undo_mgr};
+    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    undo::manager<i64, 64> undo_mgr{*pool};
+    txn_tree_t             tree{base_tree, undo_mgr};
 
     // Scenario 1: Rollback insert (removes tuple)
     REQUIRE(tree.insert_txn(txn::id_t{10}, 1, helpers::span_from_string("hello")));

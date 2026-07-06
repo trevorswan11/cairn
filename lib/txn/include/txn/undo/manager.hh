@@ -18,21 +18,21 @@
 #include "support/error.hh"
 #include "txn/id.hh"
 
-namespace cairn::txn {
+namespace cairn::txn::undo {
 
-struct undo_ptr_t {
+struct ptr_t {
     storage::page_id_t page_id;
     u16                offset;
 
-    constexpr auto operator==(const undo_ptr_t&) const noexcept -> bool = default;
+    constexpr auto operator==(const ptr_t&) const noexcept -> bool = default;
 };
 
-} // namespace cairn::txn
+} // namespace cairn::txn::undo
 
 namespace stdx {
 
-template <> struct nullable<cairn::txn::undo_ptr_t> {
-    using undo_ptr_t = cairn::txn::undo_ptr_t;
+template <> struct nullable<cairn::txn::undo::ptr_t> {
+    using undo_ptr_t = cairn::txn::undo::ptr_t;
     [[nodiscard]] static constexpr auto invalid() noexcept -> undo_ptr_t {
         return {
             .page_id = cairn::storage::INVALID_PAGE_ID,
@@ -47,51 +47,51 @@ template <> struct nullable<cairn::txn::undo_ptr_t> {
 
 } // namespace stdx
 
-namespace cairn::txn {
+namespace cairn::txn::undo {
 
-enum class undo_op_t : u8 {
+enum class op_t : u8 {
     INSERT,
     UPDATE,
     DELETE,
 };
 
+template <typename Key> struct record_t {
+    txn::id_t           txn_id{INVALID_TXN_ID};
+    bool                is_timestamp{false};
+    bool                is_deleted{false};
+    stdx::option<ptr_t> prev_undo_ptr;
+    stdx::option<ptr_t> prev_txn_undo_ptr;
+    Key                 key;
+    op_t                op{op_t::INSERT};
+    u32                 payload_size{0};
+};
+
+struct page_header_t {
+    u16 free_space_ptr{sizeof(page_header_t)};
+};
+
 template <typename Key> struct undo_record_t {
-    txn::id_t                txn_id{INVALID_TXN_ID};
-    bool                     is_timestamp{false};
-    bool                     is_deleted{false};
-    stdx::option<undo_ptr_t> prev_undo_ptr;
-    stdx::option<undo_ptr_t> prev_txn_undo_ptr;
-    Key                      key;
-    undo_op_t                op{undo_op_t::INSERT};
-    u32                      payload_size{0};
-};
-
-struct undo_page_header_t {
-    u16 free_space_ptr{sizeof(undo_page_header_t)};
-};
-
-template <typename Key> struct read_undo_record_t {
-    undo_record_t<Key>     record;
+    record_t<Key>          record;
     std::vector<std::byte> payload;
 };
 
-template <typename Key, usize PoolSize> class undo_manager {
+template <typename Key, usize PoolSize> class manager {
   public:
-    explicit undo_manager(storage::buffer_pool<PoolSize>& pool) noexcept : pool_{pool} {}
-    ~undo_manager() = default;
+    explicit manager(storage::buffer_pool<PoolSize>& pool) noexcept : pool_{pool} {}
+    ~manager() = default;
 
     // Appends an undo record sequentially to the active undo page, allocating if needed
     [[nodiscard]] auto append_record(txn::id_t                  txn_id,
                                      const Key&                 key,
-                                     undo_op_t                  op,
+                                     op_t                       op,
                                      bool                       is_timestamp,
                                      bool                       is_deleted,
                                      txn::id_t                  version_txn_id,
-                                     stdx::option<undo_ptr_t>   prev_undo_ptr,
-                                     gsl::span<const std::byte> payload) -> result<undo_ptr_t> {
+                                     stdx::option<ptr_t>        prev_undo_ptr,
+                                     gsl::span<const std::byte> payload) -> result<ptr_t> {
         std::lock_guard lock{mutex_};
-        const usize     rec_size{sizeof(undo_record_t<Key>) + payload.size_bytes()};
-        if (rec_size > storage::DB_PAGE_SIZE - sizeof(undo_page_header_t)) {
+        const usize     rec_size{sizeof(record_t<Key>) + payload.size_bytes()};
+        if (rec_size > storage::DB_PAGE_SIZE - sizeof(page_header_t)) {
             return stdx::err{error_t::STORAGE_TREE_CORRUPT};
         }
 
@@ -100,14 +100,14 @@ template <typename Key, usize PoolSize> class undo_manager {
             need_new = true;
         } else {
             auto guard{TRY(pool_.fetch_write(*active_page_id_))};
-            auto header{guard.template as<undo_page_header_t>()};
+            auto header{guard.template as<page_header_t>()};
             if (header->free_space_ptr + rec_size > storage::DB_PAGE_SIZE) { need_new = true; }
         }
 
         if (need_new) {
             auto [pid, guard]{TRY(pool_.new_write())};
-            auto header{guard.template as<undo_page_header_t>()};
-            header->free_space_ptr = sizeof(undo_page_header_t);
+            auto header{guard.template as<page_header_t>()};
+            header->free_space_ptr = sizeof(page_header_t);
             guard.mark_dirty();
             active_page_id_.emplace(pid);
         }
@@ -115,14 +115,14 @@ template <typename Key, usize PoolSize> class undo_manager {
         // Fetch active page and append
         const auto pid{*active_page_id_};
         auto       guard{TRY(pool_.fetch_write(pid))};
-        auto       header{guard.template as<undo_page_header_t>()};
+        auto       header{guard.template as<page_header_t>()};
         const u16  offset{header->free_space_ptr};
 
-        stdx::option<undo_ptr_t> prev_txn_undo;
+        stdx::option<ptr_t> prev_txn_undo;
         auto [txn_id_it, inserted]{active_txn_undo_.try_emplace(txn_id)};
         if (!inserted) { prev_txn_undo.emplace(txn_id_it->second); }
 
-        undo_record_t<Key> rec{
+        record_t<Key> rec{
             .txn_id            = version_txn_id,
             .is_timestamp      = is_timestamp,
             .is_deleted        = is_deleted,
@@ -133,10 +133,10 @@ template <typename Key, usize PoolSize> class undo_manager {
             .payload_size      = static_cast<u32>(payload.size_bytes()),
         };
 
-        gsl::span dest{guard.get()->data() + offset, sizeof(undo_record_t<Key>)};
+        gsl::span dest{guard.get()->data() + offset, sizeof(record_t<Key>)};
         std::memcpy(dest.data(), &rec, dest.size_bytes());
         if (!payload.empty()) {
-            dest = {dest.data() + sizeof(undo_record_t<Key>), payload.size_bytes()};
+            dest = {dest.data() + sizeof(record_t<Key>), payload.size_bytes()};
             std::memcpy(dest.data(), payload.data(), dest.size_bytes());
         }
 
@@ -146,23 +146,23 @@ template <typename Key, usize PoolSize> class undo_manager {
     }
 
     // Reads an undo record from a specific pointer
-    [[nodiscard]] auto read_record(undo_ptr_t ptr) -> result<read_undo_record_t<Key>> {
+    [[nodiscard]] auto read_record(ptr_t ptr) -> result<undo_record_t<Key>> {
         std::lock_guard  lock{mutex_};
         auto             guard{TRY(pool_.fetch_read(ptr.page_id))};
         const std::byte* src{guard.get()->data() + ptr.offset};
 
-        undo_record_t<Key> rec;
-        std::memcpy(&rec, src, sizeof(undo_record_t<Key>));
+        record_t<Key> rec;
+        std::memcpy(&rec, src, sizeof(record_t<Key>));
 
         std::vector<std::byte> payload(rec.payload_size);
         if (rec.payload_size > 0) {
-            std::memcpy(payload.data(), src + sizeof(undo_record_t<Key>), rec.payload_size);
+            std::memcpy(payload.data(), src + sizeof(record_t<Key>), rec.payload_size);
         }
 
-        return read_undo_record_t<Key>{.record = rec, .payload = std::move(payload)};
+        return undo_record_t<Key>{.record = rec, .payload = std::move(payload)};
     }
 
-    [[nodiscard]] auto get_last_txn_undo(txn::id_t txn_id) const -> stdx::option<undo_ptr_t> {
+    [[nodiscard]] auto get_last_txn_undo(txn::id_t txn_id) const -> stdx::option<ptr_t> {
         std::lock_guard lock{mutex_};
         if (auto it = active_txn_undo_.find(txn_id); it != active_txn_undo_.end()) {
             return it->second;
@@ -179,8 +179,8 @@ template <typename Key, usize PoolSize> class undo_manager {
     storage::buffer_pool<PoolSize>&  pool_;
     stdx::option<storage::page_id_t> active_page_id_;
 
-    mutable std::mutex                                                  mutex_;
-    ankerl::unordered_dense::map<txn::id_t, undo_ptr_t, txn::id_hash_t> active_txn_undo_;
+    mutable std::mutex                                             mutex_;
+    ankerl::unordered_dense::map<txn::id_t, ptr_t, txn::id_hash_t> active_txn_undo_;
 };
 
-} // namespace cairn::txn
+} // namespace cairn::txn::undo

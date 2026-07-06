@@ -16,15 +16,15 @@
 #include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
-#include "txn/undo.hh"
+#include "txn/undo/manager.hh"
 
 namespace cairn::txn {
 
 struct tuple_version_header_t {
-    txn::id_t                txn_id;
-    bool                     is_timestamp;
-    bool                     is_deleted;
-    stdx::option<undo_ptr_t> undo_ptr;
+    txn::id_t                 txn_id;
+    bool                      is_timestamp;
+    bool                      is_deleted;
+    stdx::option<undo::ptr_t> undo_ptr;
 };
 
 auto read_version_header(gsl::span<const std::byte> val) -> tuple_version_header_t;
@@ -37,7 +37,7 @@ class iot_tree {
         storage::iot_tree<Key, MaxTupleSize + sizeof(tuple_version_header_t), PoolSize, Compare>;
 
   public:
-    iot_tree(tree_t& tree, undo_manager<Key, PoolSize>& undo_mgr) noexcept
+    iot_tree(tree_t& tree, undo::manager<Key, PoolSize>& undo_mgr) noexcept
         : tree_{tree}, undo_mgr_{undo_mgr} {}
 
     [[nodiscard]] auto insert_txn(txn::id_t id, const Key& key, gsl::span<const std::byte> payload)
@@ -68,7 +68,7 @@ class iot_tree {
 
         TRY(tree_.emplace(key, gsl::span<const std::byte>{buf}));
         TRY(undo_mgr_.append_record(
-            id, key, undo_op_t::INSERT, false, false, txn::INVALID_TXN_ID, stdx::none, {}));
+            id, key, undo::op_t::INSERT, false, false, txn::INVALID_TXN_ID, stdx::none, {}));
 
         return {};
     }
@@ -83,7 +83,7 @@ class iot_tree {
 
         auto undo_ptr{TRY(undo_mgr_.append_record(id,
                                                   key,
-                                                  undo_op_t::UPDATE,
+                                                  undo::op_t::UPDATE,
                                                   old_header.is_timestamp,
                                                   old_header.is_deleted,
                                                   old_header.txn_id,
@@ -119,7 +119,7 @@ class iot_tree {
 
         auto undo_ptr{TRY(undo_mgr_.append_record(id,
                                                   key,
-                                                  undo_op_t::DELETE,
+                                                  undo::op_t::DELETE,
                                                   old_header.is_timestamp,
                                                   old_header.is_deleted,
                                                   old_header.txn_id,
@@ -149,12 +149,12 @@ class iot_tree {
             const auto& payload{read_res.payload};
 
             switch (rec.op) {
-            case undo_op_t::INSERT: {
+            case undo::op_t::INSERT: {
                 TRY(tree_.remove(rec.key));
                 break;
             }
-            case undo_op_t::UPDATE:
-            case undo_op_t::DELETE: {
+            case undo::op_t::UPDATE:
+            case undo::op_t::DELETE: {
                 tuple_version_header_t old_header{
                     .txn_id       = rec.txn_id,
                     .is_timestamp = rec.is_timestamp,
@@ -191,8 +191,8 @@ class iot_tree {
     }
 
   private:
-    tree_t&                      tree_;
-    undo_manager<Key, PoolSize>& undo_mgr_;
+    tree_t&                       tree_;
+    undo::manager<Key, PoolSize>& undo_mgr_;
 };
 
 } // namespace cairn::txn
