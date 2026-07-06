@@ -70,11 +70,6 @@ struct page_header_t {
     u16 free_space_ptr{sizeof(page_header_t)};
 };
 
-template <typename Key> struct undo_record_t {
-    record_t<Key>          record;
-    std::vector<std::byte> payload;
-};
-
 template <typename Key, usize PoolSize> class manager {
   public:
     explicit manager(storage::buffer_pool<PoolSize>& pool) noexcept : pool_{pool} {}
@@ -146,7 +141,8 @@ template <typename Key, usize PoolSize> class manager {
     }
 
     // Reads an undo record from a specific pointer
-    [[nodiscard]] auto read_record(ptr_t ptr) -> result<undo_record_t<Key>> {
+    [[nodiscard]] auto read_record(ptr_t ptr, std::vector<std::byte>& buf)
+        -> result<record_t<Key>> {
         std::lock_guard  lock{mutex_};
         auto             guard{TRY(pool_.fetch_read(ptr.page_id))};
         const std::byte* src{guard.get()->data() + ptr.offset};
@@ -154,12 +150,11 @@ template <typename Key, usize PoolSize> class manager {
         record_t<Key> rec;
         std::memcpy(&rec, src, sizeof(record_t<Key>));
 
-        std::vector<std::byte> payload(rec.payload_size);
+        buf.resize(rec.payload_size);
         if (rec.payload_size > 0) {
-            std::memcpy(payload.data(), src + sizeof(record_t<Key>), rec.payload_size);
+            std::memcpy(buf.data(), src + sizeof(record_t<Key>), buf.size());
         }
-
-        return undo_record_t<Key>{.record = rec, .payload = std::move(payload)};
+        return rec;
     }
 
     [[nodiscard]] auto get_last_txn_undo(txn::id_t txn_id) const -> stdx::option<ptr_t> {
