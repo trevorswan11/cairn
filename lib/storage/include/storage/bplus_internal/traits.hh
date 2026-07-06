@@ -41,8 +41,10 @@ concept BPlusLeafTrait = requires(page_ptr_t       p,
     { T::next(const_p) } -> std::same_as<stdx::option<page_id_t>>;
     { T::can_emplace(const_p, key, value) } -> std::same_as<bool>;
     { T::can_remove(const_p) } -> std::same_as<bool>;
+    { T::can_update(const_p, idx, value) } -> std::same_as<bool>;
     { T::emplace_at(p, idx, key, value) } -> std::same_as<void>;
     { T::remove_at(p, idx) } -> std::same_as<void>;
+    { T::update_at(p, idx, value) } -> std::same_as<void>;
     { T::split(p, p, pid, idx, key, value) } -> std::same_as<Key>;
     { T::merge_into_left(p, p, sep) } -> std::same_as<void>;
     { T::borrow_from_left(p, p, sep) } -> std::same_as<void>;
