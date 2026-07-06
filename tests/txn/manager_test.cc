@@ -78,6 +78,33 @@ TEST_CASE("txn::manager basics") {
         CHECK(id == id_t{100});
     }
 
+    SECTION("transaction and commit timestamps") {
+        const auto id1{tm.begin_txn()};
+        CHECK(unwrap(tm.get_read_timestamp(id1)) == timestamp_t{0});
+        CHECK(tm.snapshot_horizon() == timestamp_t{0});
+
+        const auto id2{tm.begin_txn()};
+        CHECK(unwrap(tm.get_read_timestamp(id2)) == timestamp_t{0});
+
+        REQUIRE(tm.update_txn_lsn(id1, wal::log::seq_num{10}));
+        REQUIRE(tm.commit_txn(id1, lm)); // clock -> 1
+
+        CHECK(unwrap(tm.get_commit_timestamp(id1)) == timestamp_t{1});
+        CHECK(tm.snapshot_horizon() == timestamp_t{0}); // limited by active id2
+        CHECK(unwrap(tm.get_commit_timestamp(id1)) == timestamp_t{1});
+
+        REQUIRE(tm.update_txn_lsn(id2, wal::log::seq_num{20}));
+        REQUIRE(tm.commit_txn(id2, lm)); // clock -> 2
+
+        CHECK(unwrap(tm.get_commit_timestamp(id2)) == timestamp_t{2});
+        CHECK(tm.snapshot_horizon() == timestamp_t{2}); // no active txns
+
+        CHECK(unwrap(tm.get_commit_timestamp(id1)) == INVALID_TIMESTAMP); // pruned
+        CHECK(unwrap(tm.get_commit_timestamp(id2)) == timestamp_t{2});    // not pruned
+
+        CHECK(helpers::unwrap_err(tm.get_read_timestamp(id1)) == error_t::TXN_NOT_FOUND);
+    }
+
     SECTION("not found / error cases") {
         CHECK(helpers::unwrap_err(tm.commit_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);
         CHECK(helpers::unwrap_err(tm.abort_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);

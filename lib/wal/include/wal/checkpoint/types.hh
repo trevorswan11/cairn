@@ -23,9 +23,10 @@ struct att_entry {
         ABORTED,
     };
 
-    txn::id_t                  txn_id;
-    state_t                    state;
-    stdx::option<log::seq_num> last_lsn;
+    txn::id_t                      txn_id;
+    state_t                        state;
+    stdx::option<log::seq_num>     last_lsn;
+    stdx::option<txn::timestamp_t> read_ts;
 };
 
 } // namespace cairn::wal::checkpoint
