@@ -113,6 +113,7 @@ template <usize PoolSize> class manager {
                                             .txn_id   = rec->txn_id,
                                             .state    = checkpoint::att_entry::state_t::ACTIVE,
                                             .last_lsn = rec->lsn,
+                                            .read_ts  = stdx::none,
                                         });
                 break;
             case log::record_type::UPDATE:
@@ -123,6 +124,7 @@ template <usize PoolSize> class manager {
                                                     .txn_id = rec->txn_id,
                                                     .state = checkpoint::att_entry::state_t::ACTIVE,
                                                     .last_lsn = rec->lsn,
+                                                    .read_ts  = stdx::none,
                                                 })};
 
                 if (!emplace.second) { emplace.first->second.last_lsn = rec->lsn; }
