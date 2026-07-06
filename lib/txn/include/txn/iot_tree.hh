@@ -45,7 +45,7 @@ class iot_tree {
         if (auto get{tree_.get(key)}) {
             std::vector<std::byte>     old_val_buf((*get).begin(), (*get).end());
             gsl::span<const std::byte> old_val{old_val_buf};
-            auto                       header = read_version_header(old_val);
+            auto                       header{read_version_header(old_val)};
             if (!header.is_deleted) { return stdx::err{error_t::STORAGE_DUPLICATE_KEY}; }
             return update_txn(id, key, payload);
         } else if (get.error() != error_t::STORAGE_KEY_NOT_FOUND) {

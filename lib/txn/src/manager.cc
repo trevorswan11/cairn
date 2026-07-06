@@ -89,12 +89,11 @@ auto manager::update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void> {
     return {};
 }
 
-auto manager::snapshot_att() -> std::vector<att_entry> {
-    std::unique_lock       lock{mutex_};
-    std::vector<att_entry> att;
-    att.reserve(active_txns_.size());
-    for (const auto& [_, entry] : active_txns_) { att.emplace_back(entry); }
-    return att;
+auto manager::snapshot_att(std::vector<att_entry>& buf) -> void {
+    std::unique_lock lock{mutex_};
+    buf.clear();
+    buf.reserve(active_txns_.size());
+    for (const auto& [_, entry] : active_txns_) { buf.emplace_back(entry); }
 }
 
 auto manager::set_next_txn_id(id_t id) noexcept -> void {

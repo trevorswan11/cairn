@@ -29,7 +29,8 @@ TEST_CASE("txn::manager begin, update LSN, commit") {
     const auto id1{tm.begin_txn()};
     CHECK(id1 == id_t{1});
 
-    auto att{tm.snapshot_att()};
+    std::vector<wal::checkpoint::att_entry> att;
+    tm.snapshot_att(att);
     REQUIRE(att.size() == 1);
     CHECK(att[0].txn_id == id1);
     CHECK(att[0].state == wal::checkpoint::att_entry::state_t::ACTIVE);
@@ -37,13 +38,14 @@ TEST_CASE("txn::manager begin, update LSN, commit") {
 
     // Update LSN
     REQUIRE(tm.update_txn_lsn(id1, wal::log::seq_num{42}));
-    att = tm.snapshot_att();
+    tm.snapshot_att(att);
     REQUIRE(att.size() == 1);
     CHECK(att[0].last_lsn == wal::log::seq_num{42});
 
     // Commit transaction
     REQUIRE(tm.commit_txn(id1, lm));
-    CHECK(tm.snapshot_att().empty());
+    tm.snapshot_att(att);
+    CHECK(att.empty());
 
     // Verify the commit record is in WAL
     auto reader{unwrap(wal::log::reader::open(file.path))};
@@ -65,7 +67,9 @@ TEST_CASE("txn::manager abort transaction") {
 
     // Abort transaction
     REQUIRE(tm.abort_txn(id2, lm));
-    CHECK(tm.snapshot_att().empty());
+    std::vector<wal::checkpoint::att_entry> att;
+    tm.snapshot_att(att);
+    CHECK(att.empty());
 
     // Verify the abort record is in WAL
     auto reader{unwrap(wal::log::reader::open(file.path))};

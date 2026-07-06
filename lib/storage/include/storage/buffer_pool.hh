@@ -162,14 +162,15 @@ template <usize PoolSize> class buffer_pool {
 
     auto set_log_manager(stdx::option<wal::log::manager&> log) noexcept -> void { log_ = log; }
 
-    auto snapshot_dpt() noexcept -> std::vector<wal::checkpoint::dpt_entry> {
-        std::scoped_lock                        lock{mutex_};
-        std::vector<wal::checkpoint::dpt_entry> buf;
+    auto snapshot_dpt(std::vector<wal::checkpoint::dpt_entry>& buf) noexcept -> void {
+        std::scoped_lock lock{mutex_};
+        buf.clear();
+        buf.reserve(PoolSize);
+
         for (usize i{0}; i < PoolSize; ++i) {
-            auto& f{frame_at(static_cast<frame_id_t>(i))};
+            const auto& f{frame_at(static_cast<frame_id_t>(i))};
             if (f.is_dirty() && f.rec_lsn()) { buf.emplace_back(f.page_id(), *f.rec_lsn()); }
         }
-        return buf;
     }
 
     [[nodiscard]] auto num_pages() const noexcept { return disk_->num_pages(); }

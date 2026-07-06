@@ -30,7 +30,7 @@ class manager {
     [[nodiscard]] auto commit_txn(id_t id, wal::log::manager& manager) -> result<void>;
     [[nodiscard]] auto abort_txn(id_t id, wal::log::manager& manager) -> result<void>;
     [[nodiscard]] auto update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void>;
-    [[nodiscard]] auto snapshot_att() -> std::vector<att_entry>;
+    auto               snapshot_att(std::vector<att_entry>& buf) -> void;
     auto               set_next_txn_id(id_t id) noexcept -> void;
 
     // Retrieve the read timestamp of an active transaction
