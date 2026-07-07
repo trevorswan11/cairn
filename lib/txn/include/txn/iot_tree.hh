@@ -16,6 +16,8 @@
 #include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/manager.hh"
+#include "txn/snapshot.hh"
 #include "txn/undo/manager.hh"
 
 namespace cairn::txn {
@@ -164,6 +166,57 @@ class iot_tree {
         const auto header{read_version_header(val)};
         const auto payload{read_payload(val)};
         return std::make_pair(header, payload);
+    }
+
+    [[nodiscard]] auto tree(this auto&& self) noexcept -> auto& { return self.tree_; }
+    [[nodiscard]] auto undo_manager(this auto&& self) noexcept -> auto& { return self.undo_mgr_; }
+
+    [[nodiscard]] auto resolve_version(txn::id_t                     reader_txn_id,
+                                       const snapshot_t&             snap,
+                                       const manager&                txn_mgr,
+                                       const tuple_version_header_t& latest_header,
+                                       gsl::span<const std::byte>    latest_payload,
+                                       std::vector<std::byte>&       payload_buf) const
+        -> result<stdx::option<gsl::span<const std::byte>>> {
+        if (txn_mgr.is_visible(
+                snap, reader_txn_id, latest_header.txn_id, latest_header.is_timestamp)) {
+            if (latest_header.is_deleted) { return stdx::none; }
+            payload_buf.resize(latest_payload.size_bytes());
+            if (!latest_payload.empty()) {
+                std::memcpy(payload_buf.data(), latest_payload.data(), latest_payload.size_bytes());
+            }
+            return gsl::span{payload_buf.data(), payload_buf.size()};
+        }
+
+        stdx::option<undo::ptr_t> cur_ptr{latest_header.undo_ptr};
+        while (cur_ptr) {
+            const auto rec{TRY(undo_mgr_.read_record(*cur_ptr, payload_buf))};
+            if (txn_mgr.is_visible(snap, reader_txn_id, rec.txn_id, rec.is_timestamp)) {
+                if (rec.is_deleted) { return stdx::none; }
+                return gsl::span{payload_buf.data(), payload_buf.size()};
+            }
+            cur_ptr = rec.prev_undo_ptr;
+        }
+
+        return stdx::none;
+    }
+
+    [[nodiscard]] auto get_txn(txn::id_t               reader_txn_id,
+                               const snapshot_t&       snap,
+                               const manager&          txn_mgr,
+                               const Key&              key,
+                               std::vector<std::byte>& payload_buf) const
+        -> result<stdx::option<gsl::span<const std::byte>>> {
+        const auto get_res{tree_.get(key)};
+        if (!get_res) {
+            if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return stdx::none; }
+            return stdx::err{get_res.error()};
+        }
+
+        const auto val{*get_res};
+        const auto header{read_version_header(val)};
+        const auto payload{read_payload(val)};
+        return resolve_version(reader_txn_id, snap, txn_mgr, header, payload, payload_buf);
     }
 
   private:
