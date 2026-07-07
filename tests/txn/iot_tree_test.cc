@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
+#include <stdx/memory.hh>
 #include <stdx/types.hh>
 
 #include "support/error.hh"
@@ -12,7 +13,10 @@
 #include "testhelpers/unwrap.hh"
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
+#include "txn/manager.hh"
 #include "txn/undo/manager.hh"
+#include "wal/log/manager.hh"
+#include "wal/log/seq_num.hh"
 
 namespace cairn::tests {
 
@@ -136,6 +140,54 @@ TEST_CASE("txn::iot_tree rollback transactions") {
         CHECK(header.txn_id == txn::id_t{1});
         CHECK(helpers::string_from_span(payload) == original);
     }
+}
+
+TEST_CASE("txn::iot_tree snapshot isolation and visibility reads") {
+    using namespace stdx::size_literals;
+
+    helpers::tempfile file{"txn_iot_tree_snapshot_test"};
+    using txn_tree_t = iot_tree<i64, 128, 64>;
+    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    undo::manager<i64, 64> undo_mgr{*pool};
+    txn_tree_t             tree{base_tree, undo_mgr};
+    manager                tm;
+    helpers::tempfile      wal_file{"txn_iot_tree_snapshot_test_wal"};
+    wal::log::manager      lm{wal_file.path, 1_MiB};
+
+    // Transaction 1 starts and inserts a key
+    const auto             t1{tm.begin_txn()};
+    const std::string_view v1_data{"v1"};
+    REQUIRE(tree.insert_txn(t1, 1, helpers::span_from_string(v1_data)));
+
+    // Transaction 2 starts. It shouldn't see v1 because T1 is active
+    const auto             t2{tm.begin_txn()};
+    const auto             snap2{unwrap(tm.acquire_snapshot(t2))};
+    std::vector<std::byte> buf;
+
+    auto get2{unwrap(tree.get_txn(t2, snap2, tm, 1, buf))};
+    CHECK_FALSE(get2.has_value());
+
+    // Transaction 1 commits
+    REQUIRE(tm.update_txn_lsn(t1, wal::log::seq_num{1}));
+    REQUIRE(tm.commit_txn(t1, lm));
+
+    // Transaction 2 reads again. It STILL shouldn't see it (Repeatable Read)
+    get2 = unwrap(tree.get_txn(t2, snap2, tm, 1, buf));
+    CHECK_FALSE(get2.has_value());
+
+    // Transaction 3 starts. It SHOULD see v1
+    const auto t3{tm.begin_txn()};
+    const auto snap3{unwrap(tm.acquire_snapshot(t3))};
+    const auto get3{unwrap(unwrap(tree.get_txn(t3, snap3, tm, 1, buf)))};
+    CHECK(helpers::string_from_span(get3) == v1_data);
+    REQUIRE(tree.update_txn(t3, 1, helpers::span_from_string("v2")));
+
+    // Transaction 4 starts. It should see "v1" because T3 is active
+    const auto t4{tm.begin_txn()};
+    const auto snap4{unwrap(tm.acquire_snapshot(t4))};
+    auto       get4{unwrap(unwrap(tree.get_txn(t4, snap4, tm, 1, buf)))};
+    CHECK(helpers::string_from_span(get4) == v1_data);
 }
 
 } // namespace cairn::tests
