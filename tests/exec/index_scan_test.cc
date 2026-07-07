@@ -55,7 +55,7 @@ TEST_CASE("exec::index_scan range scans over secondary index") {
     index_scan<i64, i64, 128, 64> scanner{secondary_index, primary_tree, t2, snap2, tm};
 
     std::vector<std::pair<i64, std::string>> results;
-    CHECK(unwrap(scanner.scan(0, 50, [&](const i64& pk, gsl::span<const std::byte> val) {
+    CHECK(unwrap(scanner(0, 50, [&](const i64& pk, gsl::span<const std::byte> val) {
               results.emplace_back(pk, helpers::string_from_span(val));
           })) == 1);
 
