@@ -569,7 +569,12 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{ libsql.artifact, libstorage.artifact, libwal.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
-            .link_libraries = &.{libexec.artifact},
+            .link_libraries = &.{
+                libexec.artifact,
+                libtxn.artifact,
+                libwal.artifact,
+                libstorage.artifact,
+            },
         })));
         unit_suites.append(.init(b, base_test_config.with("opt", .{
             .link_libraries = &.{libopt.artifact},
