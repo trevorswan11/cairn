@@ -60,7 +60,6 @@ class manager {
     [[nodiscard]] auto find_id_locked(id_t id) noexcept -> found_id_res_t;
     auto               prune_committed_txns_locked(timestamp_t horizon) noexcept -> void;
     [[nodiscard]] auto snapshot_horizon_locked() const noexcept -> timestamp_t;
-    
 
   private:
     mutable std::mutex mutex_;
