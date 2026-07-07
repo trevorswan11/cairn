@@ -7,10 +7,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <stdx/fixed/vector.hh>
+#include <stdx/memory.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
-#include <stdx/memory.hh>
 
 #include "storage/bplus.hh"
 #include "storage/page.hh"
