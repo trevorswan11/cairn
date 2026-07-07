@@ -31,7 +31,7 @@ class table_scan {
         : tree_{tree}, reader_txn_id_{reader_txn_id}, snap_{snap}, txn_mgr_{txn_mgr} {}
 
     template <typename Fn>
-    auto scan(const Key& low, const Key& high, Fn&& visitor, bool inclusive = true)
+    auto operator()(const Key& low, const Key& high, Fn&& visitor, bool inclusive = true)
         -> result<usize> {
         using fn_result_t = std::invoke_result_t<Fn, const Key&, gsl::span<const std::byte>>;
         std::vector<std::byte> payload_buf;

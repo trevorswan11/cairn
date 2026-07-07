@@ -54,7 +54,7 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
         const auto               snap{unwrap(tm.acquire_snapshot(t2))};
         table_scan<i64, 128, 64> scanner{tree, t2, snap, tm};
 
-        CHECK(unwrap(scanner.scan(0, 100, visitor)) == 0);
+        CHECK(unwrap(scanner(0, 100, visitor)) == 0);
         CHECK(results.empty());
     }
 
@@ -69,7 +69,7 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
         const auto               snap{unwrap(tm.acquire_snapshot(t3))};
         table_scan<i64, 128, 64> scanner{tree, t3, snap, tm};
 
-        CHECK(unwrap(scanner.scan(0, 100, visitor)) == 2);
+        CHECK(unwrap(scanner(0, 100, visitor)) == 2);
         REQUIRE(results.size() == 2);
         CHECK(results[0] == record1);
         CHECK(results[1] == record2);
@@ -84,7 +84,7 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
         const auto               snap{unwrap(tm.acquire_snapshot(t4))};
         table_scan<i64, 128, 64> scanner{tree, t4, snap, tm};
 
-        CHECK(unwrap(scanner.scan(0, 100, visitor)) == 2);
+        CHECK(unwrap(scanner(0, 100, visitor)) == 2);
         REQUIRE(results.size() == 2);
         CHECK(results[0] == record1);
         CHECK(results[1] == record2);

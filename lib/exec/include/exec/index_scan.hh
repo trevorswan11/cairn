@@ -40,7 +40,7 @@ class index_scan {
           txn_mgr_{txn_mgr} {}
 
     template <typename Fn>
-    auto scan(const IndexKey& low, const IndexKey& high, Fn&& visitor, bool inclusive = true)
+    auto operator()(const IndexKey& low, const IndexKey& high, Fn&& visitor, bool inclusive = true)
         -> result<usize> {
         using fn_result_t = std::invoke_result_t<Fn, const PrimaryKey&, gsl::span<const std::byte>>;
         usize count{0};
