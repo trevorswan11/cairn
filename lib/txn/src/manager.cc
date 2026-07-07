@@ -1,6 +1,8 @@
 #include "txn/manager.hh"
 
+#include <algorithm>
 #include <mutex>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -13,6 +15,7 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
 #include "wal/log/record.hh"
@@ -26,6 +29,25 @@ auto manager::begin_txn() -> id_t {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     const id_t       id{next_txn_id_++};
+
+    {
+        PROFILE_SCOPE("capture currently active txns");
+        bool  added_new{false};
+        auto& active{active_txns_at_start_[id]};
+
+        for (const auto& [tid, _] : active_txns_) {
+            if (active.size() < active.capacity()) {
+                active.emplace_back(tid);
+                added_new = true;
+            } else {
+                break;
+            }
+        }
+
+        // Only sort if there was an addition to save compute
+        if (added_new) { std::ranges::sort(active); }
+    }
+
     active_txns_.emplace(id,
                          att_entry{
                              .txn_id   = id,
@@ -54,6 +76,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     const timestamp_t commit_ts{++global_ts_};
     committed_txns_.emplace(id, commit_ts);
     active_txns_.erase(it);
+    active_txns_at_start_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -75,6 +98,7 @@ auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
         TRY(manager.flush(lsn));
     }
     active_txns_.erase(it);
+    active_txns_at_start_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -125,6 +149,56 @@ auto manager::snapshot_horizon() const noexcept -> timestamp_t {
 auto manager::prune_committed_txns(timestamp_t horizon) noexcept -> void {
     std::unique_lock lock{mutex_};
     prune_committed_txns_locked(horizon);
+}
+
+auto manager::acquire_snapshot(id_t id) const -> result<snapshot_t> {
+    PROFILE_FUNCTION();
+    std::unique_lock lock{mutex_};
+
+    auto txn_it{active_txns_.find(id)};
+    if (txn_it == active_txns_.end()) { return stdx::err{error_t::TXN_NOT_FOUND}; }
+    const auto read_ts{txn_it->second.read_ts.value_or(global_ts_)};
+
+    snapshot_t::txn_buf_t active;
+    if (auto buf_it{active_txns_at_start_.find(id)}; buf_it != active_txns_at_start_.end()) {
+        active = buf_it->second;
+    }
+
+    return snapshot_t{
+        .read_ts     = read_ts,
+        .xmin        = active.empty() ? id : active.front(),
+        .xmax        = id,
+        .active_txns = active,
+    };
+}
+
+auto manager::acquire_snapshot() const -> snapshot_t {
+    PROFILE_FUNCTION();
+    std::unique_lock lock{mutex_};
+
+    snapshot_t::txn_buf_t active;
+    for (const auto& [tid, _] : active_txns_ | std::views::take(active.capacity() - 1)) {
+        active.emplace_back(tid);
+    }
+    std::ranges::sort(active);
+
+    return snapshot_t{
+        .read_ts     = global_ts_,
+        .xmin        = active.empty() ? next_txn_id_ : active.front(),
+        .xmax        = next_txn_id_,
+        .active_txns = active,
+    };
+}
+
+auto manager::is_visible(const snapshot_t& snap,
+                         id_t              reader_id,
+                         id_t              version_id,
+                         bool              is_timestamp) const -> bool {
+    // Transactions can always see their own writes
+    if (version_id == reader_id) { return true; }
+    if (is_timestamp) { return static_cast<timestamp_t>(version_id) <= snap.read_ts; }
+    if (version_id >= snap.xmax) { return false; }
+    return !snap.is_active(version_id);
 }
 
 auto manager::find_id_locked(id_t id) noexcept -> found_id_res_t {

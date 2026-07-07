@@ -12,6 +12,7 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
 #include "wal/log/seq_num.hh"
@@ -24,6 +25,7 @@ class manager {
     using active_txn_map_t   = ankerl::unordered_dense::map<id_t, att_entry, id_hash_t>;
     using commited_txn_map_t = ankerl::unordered_dense::map<id_t, timestamp_t, id_hash_t>;
     using found_id_res_t = result<std::pair<gsl::not_null<att_entry*>, active_txn_map_t::iterator>>;
+    using snapshot_txn_map_t = ankerl::unordered_dense::map<id_t, snapshot_t::txn_buf_t, id_hash_t>;
 
   public:
     [[nodiscard]] auto begin_txn() -> id_t;
@@ -45,10 +47,20 @@ class manager {
     // Clean up committed transaction history older than the horizon
     auto prune_committed_txns(timestamp_t horizon) noexcept -> void;
 
+    // Attempts to retrieve the snapshot of the provided transaction
+    [[nodiscard]] auto acquire_snapshot(id_t id) const -> result<snapshot_t>;
+
+    // Creates a snapshot of the current active transactions
+    [[nodiscard]] auto acquire_snapshot() const -> snapshot_t;
+    [[nodiscard]] auto
+    is_visible(const snapshot_t& snap, id_t reader_id, id_t version_id, bool is_timestamp) const
+        -> bool;
+
   private:
     [[nodiscard]] auto find_id_locked(id_t id) noexcept -> found_id_res_t;
     auto               prune_committed_txns_locked(timestamp_t horizon) noexcept -> void;
     [[nodiscard]] auto snapshot_horizon_locked() const noexcept -> timestamp_t;
+    
 
   private:
     mutable std::mutex mutex_;
@@ -57,6 +69,7 @@ class manager {
 
     active_txn_map_t   active_txns_;
     commited_txn_map_t committed_txns_;
+    snapshot_txn_map_t active_txns_at_start_;
 };
 
 } // namespace cairn::txn
