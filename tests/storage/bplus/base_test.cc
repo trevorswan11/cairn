@@ -10,6 +10,7 @@
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
+#include <stdx/memory.hh>
 
 #include "storage/bplus.hh"
 #include "storage/page.hh"
@@ -20,6 +21,7 @@
 namespace cairn::tests {
 
 using namespace cairn::storage;
+using namespace stdx::size_literals;
 
 namespace {
 
@@ -35,7 +37,7 @@ class fat_key {
 
   private:
     i64                                    v_;
-    [[maybe_unused]] std::array<u8, 1'024> _;
+    [[maybe_unused]] std::array<u8, 1_KiB> _;
 };
 
 } // namespace

@@ -6,6 +6,7 @@
 #include <catch2/catch_get_random_seed.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/fixed/vector.hh>
+#include <stdx/memory.hh>
 #include <stdx/type_traits.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
@@ -17,7 +18,9 @@
 namespace cairn::tests {
 
 using namespace cairn::storage;
-using tree_t = bplus_tree<i64, u64, 1'024>;
+using namespace stdx::size_literals;
+
+using tree_t = bplus_tree<i64, u64, 1_KiB>;
 
 TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
     helpers::tempfile file{"bpt_cc_insert"};
