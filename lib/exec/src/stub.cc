@@ -1,5 +1,3 @@
-#include "exec/stub.hh"
-
 #include <stdx/types.hh>
 
 namespace cairn::exec {

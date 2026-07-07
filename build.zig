@@ -466,7 +466,6 @@ fn addArtifacts(b: *std.Build, config: struct {
         .include_paths = &.{ArtifactConfig.libraryInclude(b, "txn").@"1"},
         .link_libraries = &.{libstorage.artifact},
     }));
-    const libexec: Library = .init(b, base_lib_config.with("exec", .{}));
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
     const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
@@ -475,6 +474,9 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{
         .include_paths = &.{ArtifactConfig.libraryInclude(b, "wal").@"1"},
         .link_libraries = &.{libstorage.artifact},
+    }));
+    const libexec: Library = .init(b, base_lib_config.with("exec", .{
+        .link_libraries = &.{ libstorage.artifact, libwal.artifact, libtxn.artifact },
     }));
 
     const all_cairn_libraries = [_]*std.Build.Step.Compile{
