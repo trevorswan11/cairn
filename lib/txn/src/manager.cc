@@ -15,6 +15,7 @@
 
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/lock/manager.hh"
 #include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
@@ -61,6 +62,10 @@ auto manager::begin_txn() -> id_t {
 auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
+    if (lock_manager_ && lock_manager_->is_wounded(id)) {
+        return stdx::err{error_t::TXN_DEADLOCK_DETECTED};
+    }
+
     auto [found, it]{TRY(find_id_locked(id))};
 
     if (found->last_lsn) {
@@ -75,6 +80,8 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
 
     const timestamp_t commit_ts{++global_ts_};
     committed_txns_.emplace(id, commit_ts);
+
+    if (lock_manager_) { lock_manager_->release_all_locks(id); }
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
 
@@ -97,6 +104,8 @@ auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
         auto lsn{TRY(manager.append_record(rec))};
         TRY(manager.flush(lsn));
     }
+
+    if (lock_manager_) { lock_manager_->release_all_locks(id); }
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
 
@@ -123,6 +132,11 @@ auto manager::snapshot_att(std::vector<att_entry>& buf) -> void {
 auto manager::set_next_txn_id(id_t id) noexcept -> void {
     std::scoped_lock lock{mutex_};
     next_txn_id_ = id;
+}
+
+auto manager::set_lock_manager(stdx::option<lock::manager&> lock_manager) noexcept -> void {
+    std::scoped_lock lock{mutex_};
+    lock_manager_ = lock_manager;
 }
 
 auto manager::get_read_timestamp(id_t id) const -> result<timestamp_t> {

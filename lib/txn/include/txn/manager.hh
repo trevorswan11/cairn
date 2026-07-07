@@ -19,6 +19,8 @@
 
 namespace cairn::txn {
 
+namespace lock { class manager; } // namespace lock
+
 class manager {
   public:
     using att_entry          = wal::checkpoint::att_entry;
@@ -33,7 +35,9 @@ class manager {
     [[nodiscard]] auto abort_txn(id_t id, wal::log::manager& manager) -> result<void>;
     [[nodiscard]] auto update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void>;
     auto               snapshot_att(std::vector<att_entry>& buf) -> void;
-    auto               set_next_txn_id(id_t id) noexcept -> void;
+
+    auto set_next_txn_id(id_t id) noexcept -> void;
+    auto set_lock_manager(stdx::option<lock::manager&> lock_manager) noexcept -> void;
 
     // Retrieve the read timestamp of an active transaction
     [[nodiscard]] auto get_read_timestamp(id_t id) const -> result<timestamp_t>;
@@ -69,6 +73,8 @@ class manager {
     active_txn_map_t   active_txns_;
     commited_txn_map_t committed_txns_;
     snapshot_txn_map_t active_txns_at_start_;
+
+    stdx::option<lock::manager&> lock_manager_;
 };
 
 } // namespace cairn::txn

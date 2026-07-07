@@ -39,7 +39,9 @@ enum class error_t : u8 {
     WAL_EOF, // a prev or next read could not succeed as the file is at the start or end
     WAL_CONTROL_PATH_NOT_FOUND, // the provided checkpoint control path does not exist
 
-    TXN_NOT_FOUND, // the requested transaction id is not active
+    TXN_NOT_FOUND,               // the requested transaction id is not active
+    TXN_DEADLOCK_DETECTED,       // Transaction was aborted to prevent or resolve a deadlock
+    TXN_LOCK_ACQUISITION_FAILED, // Lock manager limits exceeded
 };
 
 template <typename T> using result = stdx::result<T, error_t>;
