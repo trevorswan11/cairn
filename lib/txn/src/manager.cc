@@ -13,9 +13,11 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
+#include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
 #include "txn/lock/manager.hh"
+#include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
@@ -26,7 +28,7 @@ namespace cairn::txn {
 
 using namespace stdx::enum_ops;
 
-auto manager::begin_txn() -> id_t {
+auto manager::begin_txn(isolation_level_t level) -> id_t {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     const id_t       id{next_txn_id_++};
@@ -56,6 +58,8 @@ auto manager::begin_txn() -> id_t {
                              .last_lsn = stdx::none,
                              .read_ts  = global_ts_,
                          });
+    if (level == isolation_level_t::SERIALIZABLE) { read_sets_.emplace(id, tree_read_set_map_t{}); }
+
     return id;
 }
 
@@ -67,6 +71,29 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     }
 
     auto [found, it]{TRY(find_id_locked(id))};
+    if (auto rs_it{read_sets_.find(id)}; rs_it != read_sets_.end()) {
+        const auto read_ts{found->read_ts.value_or(timestamp_t{global_ts_})};
+        const auto get_commit_ts = [&](id_t writer_id) -> stdx::option<timestamp_t> {
+            if (auto ct_it{committed_txns_.find(writer_id)}; ct_it != committed_txns_.end()) {
+                return ct_it->second;
+            }
+            return stdx::none;
+        };
+
+        bool conflict{false};
+        for (const auto& [_, read_set] : rs_it->second) {
+            if (TRY(read_set->check_conflict(id, read_ts, get_commit_ts))) {
+                conflict = true;
+                break;
+            }
+        }
+
+        if (conflict) {
+            lock.unlock();
+            TRY(abort_txn(id, manager));
+            return stdx::err{error_t::TXN_SERIALIZATION_FAILURE};
+        }
+    }
 
     if (found->last_lsn) {
         wal::log::record rec;
@@ -84,6 +111,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     if (lock_manager_) { lock_manager_->release_all_locks(id); }
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
+    read_sets_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -108,6 +136,7 @@ auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
     if (lock_manager_) { lock_manager_->release_all_locks(id); }
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
+    read_sets_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -213,6 +242,23 @@ auto manager::is_visible(const snapshot_t& snap,
     if (is_timestamp) { return static_cast<timestamp_t>(version_id) <= snap.read_ts; }
     if (version_id >= snap.xmax) { return false; }
     return !snap.is_active(version_id);
+}
+
+auto manager::get_or_create_read_set(id_t                      id,
+                                     storage::tree_id_t        tree_id,
+                                     const read_set_factory_t& factory) const
+    -> stdx::option<read_set_t&> {
+    std::unique_lock lock{mutex_};
+    auto             it{read_sets_.find(id)};
+    if (it == read_sets_.end()) { return stdx::none; }
+
+    auto& map{it->second};
+    auto  map_it{map.find(tree_id)};
+    if (map_it == map.end()) {
+        auto [inserted_it, _]{map.emplace(tree_id, factory())};
+        return inserted_it->second.get();
+    }
+    return map_it->second.get();
 }
 
 auto manager::find_id_locked(id_t id) noexcept -> found_id_res_t {
