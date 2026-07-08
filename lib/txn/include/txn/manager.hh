@@ -1,17 +1,21 @@
 #pragma once
 
+#include <functional>
 #include <mutex>
 #include <utility>
 #include <vector>
 
 #include <ankerl/unordered_dense.h>
 #include <gsl/pointers>
+#include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
+#include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
@@ -28,9 +32,12 @@ class manager {
     using commited_txn_map_t = ankerl::unordered_dense::map<id_t, timestamp_t, id_hash_t>;
     using found_id_res_t = result<std::pair<gsl::not_null<att_entry*>, active_txn_map_t::iterator>>;
     using snapshot_txn_map_t = ankerl::unordered_dense::map<id_t, snapshot_t::txn_buf_t, id_hash_t>;
+    using tree_read_set_map_t =
+        ankerl::unordered_dense::map<storage::tree_id_t, stdx::box<read_set_t>>;
+    using read_set_factory_t = std::function<stdx::box<read_set_t>()>;
 
   public:
-    [[nodiscard]] auto begin_txn() -> id_t;
+    [[nodiscard]] auto begin_txn(isolation_level_t level = isolation_level_t::SNAPSHOT) -> id_t;
     [[nodiscard]] auto commit_txn(id_t id, wal::log::manager& manager) -> result<void>;
     [[nodiscard]] auto abort_txn(id_t id, wal::log::manager& manager) -> result<void>;
     [[nodiscard]] auto update_txn_lsn(id_t id, wal::log::seq_num lsn) -> result<void>;
@@ -60,6 +67,11 @@ class manager {
     is_visible(const snapshot_t& snap, id_t reader_id, id_t version_id, bool is_timestamp) const
         -> bool;
 
+    [[nodiscard]] auto get_or_create_read_set(id_t                      id,
+                                              storage::tree_id_t        tree_id,
+                                              const read_set_factory_t& factory) const
+        -> stdx::option<read_set_t&>;
+
   private:
     [[nodiscard]] auto find_id_locked(id_t id) noexcept -> found_id_res_t;
     auto               prune_committed_txns_locked(timestamp_t horizon) noexcept -> void;
@@ -75,6 +87,8 @@ class manager {
     snapshot_txn_map_t active_txns_at_start_;
 
     stdx::option<lock::manager&> lock_manager_;
+
+    mutable ankerl::unordered_dense::map<id_t, tree_read_set_map_t, id_hash_t> read_sets_;
 };
 
 } // namespace cairn::txn
