@@ -86,11 +86,9 @@ class frame_replacer {
                     inf_oldest = oldest;
                     inf_victim.emplace(static_cast<frame_id_t>(i));
                 }
-            } else {
-                if (oldest < fin_oldest) {
-                    fin_oldest = oldest;
-                    fin_victim.emplace(static_cast<frame_id_t>(i));
-                }
+            } else if (oldest < fin_oldest) {
+                fin_oldest = oldest;
+                fin_victim.emplace(static_cast<frame_id_t>(i));
             }
         }
 
