@@ -13,6 +13,11 @@ using id_hash_t = stdx::hash<txn::id_t>;
 enum class timestamp_t : u64 {};
 constexpr timestamp_t INVALID_TIMESTAMP{stdx::nullable<timestamp_t>::invalid()};
 
+enum class isolation_level_t : u8 {
+    SNAPSHOT,
+    SERIALIZABLE,
+};
+
 } // namespace cairn::txn
 
 namespace stdx {

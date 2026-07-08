@@ -40,8 +40,9 @@ enum class error_t : u8 {
     WAL_CONTROL_PATH_NOT_FOUND, // the provided checkpoint control path does not exist
 
     TXN_NOT_FOUND,               // the requested transaction id is not active
-    TXN_DEADLOCK_DETECTED,       // Transaction was aborted to prevent or resolve a deadlock
-    TXN_LOCK_ACQUISITION_FAILED, // Lock manager limits exceeded
+    TXN_DEADLOCK_DETECTED,       // transaction was aborted to prevent or resolve a deadlock
+    TXN_LOCK_ACQUISITION_FAILED, // lock manager limits exceeded
+    TXN_SERIALIZATION_FAILURE,   // validation failure
 };
 
 template <typename T> using result = stdx::result<T, error_t>;
