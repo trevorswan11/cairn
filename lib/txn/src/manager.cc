@@ -211,7 +211,7 @@ auto manager::acquire_snapshot(id_t id) const -> result<snapshot_t> {
         .read_ts     = read_ts,
         .xmin        = active.empty() ? id : active.front(),
         .xmax        = id,
-        .active_txns = active,
+        .active_txns = std::move(active),
     };
 }
 
@@ -229,19 +229,20 @@ auto manager::acquire_snapshot() const -> snapshot_t {
         .read_ts     = global_ts_,
         .xmin        = active.empty() ? next_txn_id_ : active.front(),
         .xmax        = next_txn_id_,
-        .active_txns = active,
+        .active_txns = std::move(active),
     };
 }
 
-auto manager::is_visible(const snapshot_t& snap,
-                         id_t              reader_id,
-                         id_t              version_id,
-                         bool              is_timestamp) const -> bool {
+auto manager::is_visible(const snapshot_t&  snap,
+                         id_t               reader_id,
+                         stdx::option<id_t> version_id,
+                         bool               is_timestamp) const -> bool {
     // Transactions can always see their own writes
-    if (version_id == reader_id) { return true; }
-    if (is_timestamp) { return static_cast<timestamp_t>(version_id) <= snap.read_ts; }
-    if (version_id >= snap.xmax) { return false; }
-    return !snap.is_active(version_id);
+    const auto vid{version_id.value_or(INVALID_TXN_ID)};
+    if (vid == reader_id) { return true; }
+    if (is_timestamp) { return static_cast<timestamp_t>(vid) <= snap.read_ts; }
+    if (vid >= snap.xmax) { return false; }
+    return !snap.is_active(vid);
 }
 
 auto manager::get_or_create_read_set(id_t                      id,

@@ -56,14 +56,14 @@ enum class op_t : u8 {
 };
 
 template <typename Key> struct record_t {
-    txn::id_t           txn_id{INVALID_TXN_ID};
-    bool                is_timestamp{false};
-    bool                is_deleted{false};
-    stdx::option<ptr_t> prev_undo_ptr;
-    stdx::option<ptr_t> prev_txn_undo_ptr;
-    Key                 key;
-    op_t                op{op_t::INSERT};
-    u32                 payload_size{0};
+    stdx::option<txn::id_t> txn_id;
+    bool                    is_timestamp{false};
+    bool                    is_deleted{false};
+    stdx::option<ptr_t>     prev_undo_ptr;
+    stdx::option<ptr_t>     prev_txn_undo_ptr;
+    Key                     key;
+    op_t                    op{op_t::INSERT};
+    u32                     payload_size{0};
 };
 
 struct page_header_t {
@@ -81,7 +81,7 @@ template <typename Key, usize PoolSize> class manager {
                                      op_t                       op,
                                      bool                       is_timestamp,
                                      bool                       is_deleted,
-                                     txn::id_t                  version_txn_id,
+                                     stdx::option<txn::id_t>    version_txn_id,
                                      stdx::option<ptr_t>        prev_undo_ptr,
                                      gsl::span<const std::byte> payload) -> result<ptr_t> {
         std::lock_guard lock{mutex_};

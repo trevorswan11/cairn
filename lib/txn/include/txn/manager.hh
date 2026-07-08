@@ -63,9 +63,10 @@ class manager {
 
     // Creates a snapshot of the current active transactions
     [[nodiscard]] auto acquire_snapshot() const -> snapshot_t;
-    [[nodiscard]] auto
-    is_visible(const snapshot_t& snap, id_t reader_id, id_t version_id, bool is_timestamp) const
-        -> bool;
+    [[nodiscard]] auto is_visible(const snapshot_t&  snap,
+                                  id_t               reader_id,
+                                  stdx::option<id_t> version_id,
+                                  bool               is_timestamp) const -> bool;
 
     [[nodiscard]] auto get_or_create_read_set(id_t                      id,
                                               storage::tree_id_t        tree_id,

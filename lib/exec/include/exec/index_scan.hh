@@ -56,10 +56,9 @@ class index_scan_read_set : public txn::read_set_t {
                 range.first, range.second, [&](const IndexKey&, const PrimaryKey& pk) -> bool {
                     if (auto get{primary_tree_.get_raw(pk)}) {
                         const auto header{get->first};
-                        if (header.txn_id != txn::INVALID_TXN_ID &&
-                            header.txn_id != reader_txn_id) {
+                        if (header.txn_id && *header.txn_id != reader_txn_id) {
                             // Stop the scan once a conflict is detected
-                            auto commit_ts_opt{get_commit_ts(header.txn_id)};
+                            auto commit_ts_opt{get_commit_ts(*header.txn_id)};
                             if (commit_ts_opt && *commit_ts_opt > read_ts) {
                                 conflict_detected = true;
                                 return false;
@@ -106,10 +105,9 @@ class index_scan {
         -> result<usize> {
         using fn_result_t = std::invoke_result_t<Fn, const PrimaryKey&, gsl::span<const std::byte>>;
 
-        if (auto rs{txn_mgr_.get_or_create_read_set(
-                reader_txn_id_, index_.tree_id(), [&] -> stdx::box<txn::read_set_t> {
-                    return stdx::make_box<index_scan_read_set_t>(index_, primary_tree_);
-                })}) {
+        if (auto rs{txn_mgr_.get_or_create_read_set(reader_txn_id_, index_.tree_id(), [&] {
+                return stdx::make_box<index_scan_read_set_t>(index_, primary_tree_);
+            })}) {
             static_cast<index_scan_read_set_t&>(*rs).add_range(low, high);
         }
 
