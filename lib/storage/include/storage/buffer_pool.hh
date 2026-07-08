@@ -272,7 +272,6 @@ template <usize PoolSize> class buffer_pool {
         if (f.pin_count() > 0) { return stdx::err{error_t::STORAGE_TREE_CORRUPT}; }
 
         page_table_.remove(pid);
-        note_table_removal();
         replacer_.remove(fid);
         f.reset(INVALID_PAGE_ID);
         free_list_.emplace_back(fid);
@@ -317,7 +316,6 @@ template <usize PoolSize> class buffer_pool {
 
   private:
     static constexpr usize TABLE_CAPACITY{PoolSize * 2};
-    static constexpr usize REHASH_CHURN_LIMIT{PoolSize / 2 == 0 ? 1UZ : PoolSize / 2};
 
   private:
     [[nodiscard]] auto frame_at(frame_id_t fid) noexcept -> page& {
@@ -356,16 +354,7 @@ template <usize PoolSize> class buffer_pool {
             f.clear_rec_lsn();
         }
         page_table_.remove(f.page_id());
-        note_table_removal();
         return fid;
-    }
-
-    // Caller needs to hold the mutex as this manages manual rehashing
-    auto note_table_removal() -> void {
-        if (++page_table_churn_ >= REHASH_CHURN_LIMIT) {
-            page_table_.rehash();
-            page_table_churn_ = 0;
-        }
     }
 
     [[nodiscard]] auto flush_locked(frame_id_t fid) -> result<void> {
@@ -380,14 +369,14 @@ template <usize PoolSize> class buffer_pool {
     }
 
   private:
-    std::mutex                                                   mutex_;
-    stdx::box<disk_manager>                                      disk_;
-    stdx::box<page[]>                                            frames_;
-    frame_replacer<PoolSize>                                     replacer_;
-    stdx::fixed::vector<frame_id_t, PoolSize>                    free_list_;
-    std::vector<page_id_t>                                       free_pages_;
-    usize                                                        page_table_churn_{0};
-    stdx::fixed::hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
+    std::mutex                                                        mutex_;
+    stdx::box<disk_manager>                                           disk_;
+    stdx::box<page[]>                                                 frames_;
+    frame_replacer<PoolSize>                                          replacer_;
+    stdx::fixed::vector<frame_id_t, PoolSize>                         free_list_;
+    std::vector<page_id_t>                                            free_pages_;
+    usize                                                             page_table_churn_{0};
+    stdx::fixed::auto_hash_map<page_id_t, frame_id_t, TABLE_CAPACITY> page_table_;
 
     stdx::option<wal::log::manager&> log_;
 };
