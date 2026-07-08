@@ -30,6 +30,8 @@ struct resource_id_t {
     index_id_t      index_id;
     u64             key_hash;
     resource_type_t type;
+
+    [[nodiscard]] auto operator==(const resource_id_t&) const noexcept -> bool = default;
 };
 
 struct resource_id_hash {
@@ -64,12 +66,12 @@ struct bucket_t {
 
 // Global lock table mapping resource to its lock bucket
 using bucket_table_t =
-    stdx::fixed::hash_map<resource_id_t, bucket_t, stdx::sizes::kib(1UZ), resource_id_hash>;
+    stdx::fixed::auto_hash_map<resource_id_t, bucket_t, stdx::sizes::kib(1UZ), resource_id_hash>;
 
 // Tracks resources locked by each transaction to enable automatic release
-using tracked_txn_resources_t = stdx::fixed::hash_map<id_t, txn_resources_t, 128, id_hash_t>;
+using tracked_txn_resources_t = stdx::fixed::auto_hash_map<id_t, txn_resources_t, 128, id_hash_t>;
 
 // Set of currently wounded transactions
-using wounded_txns_t = stdx::fixed::hash_set<id_t, 128, id_hash_t>;
+using wounded_txns_t = stdx::fixed::auto_hash_set<id_t, 128, id_hash_t>;
 
 } // namespace cairn::txn::lock
