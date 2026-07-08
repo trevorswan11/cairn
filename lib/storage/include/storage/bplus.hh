@@ -13,6 +13,8 @@
 
 namespace cairn::storage {
 
+using detail::tree_id_t;
+
 // A general purpose b+ tree supporting trivially copyable and constructible types
 template <detail::BPlusNodePayload Key,
           detail::BPlusNodePayload Value,

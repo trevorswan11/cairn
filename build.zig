@@ -460,10 +460,14 @@ fn addArtifacts(b: *std.Build, config: struct {
         .include_paths = &.{
             ArtifactConfig.libraryInclude(b, "wal").@"1",
             ArtifactConfig.libraryInclude(b, "txn").@"1",
+            ArtifactConfig.libraryInclude(b, "exec").@"1",
         },
     }));
     const libwal: Library = .init(b, base_lib_config.with("wal", .{
-        .include_paths = &.{ArtifactConfig.libraryInclude(b, "txn").@"1"},
+        .include_paths = &.{
+            ArtifactConfig.libraryInclude(b, "txn").@"1",
+            ArtifactConfig.libraryInclude(b, "exec").@"1",
+        },
         .link_libraries = &.{libstorage.artifact},
     }));
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
@@ -472,7 +476,10 @@ fn addArtifacts(b: *std.Build, config: struct {
         .link_libraries = &.{ libstorage.artifact, libwal.artifact },
     }));
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{
-        .include_paths = &.{ArtifactConfig.libraryInclude(b, "wal").@"1"},
+        .include_paths = &.{
+            ArtifactConfig.libraryInclude(b, "wal").@"1",
+            ArtifactConfig.libraryInclude(b, "exec").@"1",
+        },
         .link_libraries = &.{libstorage.artifact},
     }));
     const libexec: Library = .init(b, base_lib_config.with("exec", .{
@@ -563,7 +570,12 @@ fn addArtifacts(b: *std.Build, config: struct {
             .link_libraries = &.{ libwal.artifact, libstorage.artifact, libtxn.artifact },
         })));
         unit_suites.append(.init(b, base_test_config.with("txn", .{
-            .link_libraries = &.{ libtxn.artifact, libwal.artifact, libstorage.artifact },
+            .link_libraries = &.{
+                libtxn.artifact,
+                libwal.artifact,
+                libstorage.artifact,
+                libexec.artifact,
+            },
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
             .link_libraries = &.{ libsql.artifact, libstorage.artifact, libwal.artifact },
