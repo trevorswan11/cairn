@@ -38,8 +38,8 @@ class page {
     }
 
     // Rebinds the page to a fresh id and clears its state
-    constexpr auto reset(page_id_t pid) noexcept -> void {
-        std::fill_n(data_, DB_PAGE_SIZE, std::byte{0});
+    constexpr auto reset(page_id_t pid, bool zero = true) noexcept -> void {
+        if (zero) { std::fill_n(data_, DB_PAGE_SIZE, std::byte{0}); }
         page_id_   = pid;
         pin_count_ = 0;
         is_dirty_  = false;

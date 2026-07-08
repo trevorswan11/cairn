@@ -29,7 +29,7 @@ auto rw_latch::unlock() -> void {
 
 auto rw_latch::lock_shared() -> void {
     {
-        PROFILE_SCOPE("rw_latch::try_lock");
+        PROFILE_SCOPE("rw_latch::lock_shared");
         mutex_.lock_shared();
     }
     note_shared_acquired();
