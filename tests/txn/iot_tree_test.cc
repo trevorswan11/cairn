@@ -38,7 +38,7 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
     REQUIRE(tree.insert_txn(txn::id_t{1}, 10, helpers::span_from_string(val1)));
     {
         auto [header, payload]{unwrap(tree.get_raw(10))};
-        CHECK(header.txn_id == txn::id_t{1});
+        CHECK(unwrap(header.txn_id) == txn::id_t{1});
         CHECK_FALSE(header.is_timestamp);
         CHECK_FALSE(header.is_deleted);
         CHECK_FALSE(header.undo_ptr);
@@ -48,12 +48,12 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
     REQUIRE(tree.update_txn(txn::id_t{2}, 10, helpers::span_from_string(val2)));
     {
         auto [header, payload]{unwrap(tree.get_raw(10))};
-        CHECK(header.txn_id == txn::id_t{2});
+        CHECK(unwrap(header.txn_id) == txn::id_t{2});
         CHECK_FALSE(header.is_deleted);
 
         std::vector<std::byte> rec_payload;
         const auto undo_rec{unwrap(undo_mgr.read_record(unwrap(header.undo_ptr), rec_payload))};
-        CHECK(undo_rec.txn_id == txn::id_t{1});
+        CHECK(unwrap(undo_rec.txn_id) == txn::id_t{1});
         CHECK(undo_rec.op == undo::op_t::UPDATE);
         CHECK(helpers::string_from_span(rec_payload) == val1);
         CHECK_FALSE(undo_rec.prev_undo_ptr);
@@ -62,13 +62,13 @@ TEST_CASE("txn::iot_tree basic transactional insert, update, delete") {
     REQUIRE(tree.delete_txn(txn::id_t{3}, 10));
     {
         auto [header, payload]{unwrap(tree.get_raw(10))};
-        CHECK(header.txn_id == txn::id_t{3});
+        CHECK(unwrap(header.txn_id) == txn::id_t{3});
         CHECK(header.is_deleted);
         CHECK(payload.empty());
 
         std::vector<std::byte> rec_payload;
         const auto undo_rec{unwrap(undo_mgr.read_record(unwrap(header.undo_ptr), rec_payload))};
-        CHECK(undo_rec.txn_id == txn::id_t{2});
+        CHECK(unwrap(undo_rec.txn_id) == txn::id_t{2});
         CHECK(undo_rec.op == undo::op_t::DELETE);
         CHECK(helpers::string_from_span(rec_payload) == val2);
         CHECK(undo_rec.prev_undo_ptr);
@@ -96,14 +96,14 @@ TEST_CASE("txn::iot_tree rollback transactions") {
 
     {
         auto [header, payload]{unwrap(tree.get_raw(2))};
-        CHECK(header.txn_id == txn::id_t{20});
+        CHECK(unwrap(header.txn_id) == txn::id_t{20});
         CHECK(helpers::string_from_span(payload) == modified);
     }
 
     REQUIRE(tree.rollback_txn(txn::id_t{20}));
     {
         auto [header, payload]{unwrap(tree.get_raw(2))};
-        CHECK(header.txn_id == txn::id_t{1});
+        CHECK(unwrap(header.txn_id) == txn::id_t{1});
         CHECK_FALSE(header.undo_ptr);
         CHECK(helpers::string_from_span(payload) == original);
     }
@@ -119,7 +119,7 @@ TEST_CASE("txn::iot_tree rollback transactions") {
     {
         auto [header, payload]{unwrap(tree.get_raw(2))};
         CHECK_FALSE(header.is_deleted);
-        CHECK(header.txn_id == txn::id_t{1});
+        CHECK(unwrap(header.txn_id) == txn::id_t{1});
         CHECK(helpers::string_from_span(payload) == original);
     }
 
@@ -130,14 +130,14 @@ TEST_CASE("txn::iot_tree rollback transactions") {
 
     {
         auto [header, payload]{unwrap(tree.get_raw(2))};
-        CHECK(header.txn_id == txn::id_t{40});
+        CHECK(unwrap(header.txn_id) == txn::id_t{40});
         CHECK(helpers::string_from_span(payload) == second_up);
     }
 
     REQUIRE(tree.rollback_txn(txn::id_t{40}));
     {
         auto [header, payload]{unwrap(tree.get_raw(2))};
-        CHECK(header.txn_id == txn::id_t{1});
+        CHECK(unwrap(header.txn_id) == txn::id_t{1});
         CHECK(helpers::string_from_span(payload) == original);
     }
 }

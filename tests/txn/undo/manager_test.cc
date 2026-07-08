@@ -7,6 +7,7 @@
 #include <gsl/span>
 #include <stdx/types.hh>
 
+#include "stdx/option.hh"
 #include "storage/buffer_pool.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
@@ -33,7 +34,7 @@ TEST_CASE("undo::manager read/write records") {
                                             undo::op_t::INSERT,
                                             false,
                                             false,
-                                            txn::INVALID_TXN_ID,
+                                            stdx::none,
                                             stdx::none,
                                             helpers::span_from_string(payload1)))};
 
@@ -49,13 +50,13 @@ TEST_CASE("undo::manager read/write records") {
 
     std::vector<std::byte> rec_payload;
     const auto             rec1{unwrap(undo_mgr.read_record(ptr1, rec_payload))};
-    CHECK(rec1.txn_id == txn::INVALID_TXN_ID);
+    CHECK_FALSE(rec1.txn_id);
     CHECK(rec1.key == 100);
     CHECK(rec1.op == undo::op_t::INSERT);
     CHECK(helpers::string_from_span(rec_payload) == payload1);
 
     const auto rec2{unwrap(undo_mgr.read_record(ptr2, rec_payload))};
-    CHECK(rec2.txn_id == txn::id_t{10});
+    CHECK(unwrap(rec2.txn_id) == txn::id_t{10});
     CHECK(rec2.key == 100);
     CHECK(rec2.op == undo::op_t::UPDATE);
     CHECK(rec2.prev_undo_ptr == ptr1);

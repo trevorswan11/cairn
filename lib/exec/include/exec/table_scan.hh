@@ -16,7 +16,6 @@
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
 #include "txn/manager.hh"
-#include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 
 namespace cairn::exec {
@@ -39,10 +38,9 @@ class table_scan {
         using fn_result_t = std::invoke_result_t<Fn, const Key&, gsl::span<const std::byte>>;
         std::vector<std::byte> payload_buf;
 
-        if (auto rs{txn_mgr_.get_or_create_read_set(
-                reader_txn_id_, tree_.tree_id(), [&] -> stdx::box<txn::read_set_t> {
-                    return stdx::make_box<iot_tree_read_set_t>(tree_);
-                })}) {
+        if (auto rs{txn_mgr_.get_or_create_read_set(reader_txn_id_, tree_.tree_id(), [&] {
+                return stdx::make_box<iot_tree_read_set_t>(tree_);
+            })}) {
             static_cast<iot_tree_read_set_t&>(*rs).add_range(low, high);
         }
 
