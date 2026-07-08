@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <gsl/span>
+#include <stdx/memory.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
@@ -15,6 +16,7 @@
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
 #include "txn/manager.hh"
+#include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 
 namespace cairn::exec {
@@ -22,7 +24,8 @@ namespace cairn::exec {
 template <typename Key, usize MaxTupleSize, usize PoolSize, typename Compare = std::less<Key>>
 class table_scan {
   public:
-    using txn_tree_t = txn::iot_tree<Key, MaxTupleSize, PoolSize, Compare>;
+    using txn_tree_t          = txn::iot_tree<Key, MaxTupleSize, PoolSize, Compare>;
+    using iot_tree_read_set_t = txn::iot_tree_read_set<Key, MaxTupleSize, PoolSize, Compare>;
 
     table_scan(txn_tree_t&            tree,
                txn::id_t              reader_txn_id,
@@ -35,6 +38,13 @@ class table_scan {
         -> result<usize> {
         using fn_result_t = std::invoke_result_t<Fn, const Key&, gsl::span<const std::byte>>;
         std::vector<std::byte> payload_buf;
+
+        if (auto rs{txn_mgr_.get_or_create_read_set(
+                reader_txn_id_, tree_.tree_id(), [&] -> stdx::box<txn::read_set_t> {
+                    return stdx::make_box<iot_tree_read_set_t>(tree_);
+                })}) {
+            static_cast<iot_tree_read_set_t&>(*rs).add_range(low, high);
+        }
 
         usize count{0};
         TRY(tree_.tree().range_scan(
