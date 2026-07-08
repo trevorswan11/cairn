@@ -102,7 +102,7 @@ auto slotted_page::update(slot_id_t                  id,
 
     const auto [header, slot]{TRY(get_raw(id))};
     const auto slot_size{std::to_underlying(*slot->size)};
-    if (tuple.size() < slot_size) {
+    if (tuple.size() <= slot_size) {
         std::copy_n(tuple.data(), tuple.size(), page_->data() + slot->offset);
         slot->size.emplace(static_cast<slot_size_t>(tuple.size()));
     } else {

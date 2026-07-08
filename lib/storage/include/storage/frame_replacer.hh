@@ -81,12 +81,16 @@ class frame_replacer {
             if (!node.present || !node.evictable) { continue; }
 
             const auto oldest{node.oldest()};
-            if (node.count < K && oldest < inf_oldest) {
-                inf_oldest = oldest;
-                inf_victim.emplace(static_cast<frame_id_t>(i));
-            } else if (oldest < fin_oldest) {
-                fin_oldest = oldest;
-                fin_victim.emplace(static_cast<frame_id_t>(i));
+            if (node.count < K) {
+                if (oldest < inf_oldest) {
+                    inf_oldest = oldest;
+                    inf_victim.emplace(static_cast<frame_id_t>(i));
+                }
+            } else {
+                if (oldest < fin_oldest) {
+                    fin_oldest = oldest;
+                    fin_victim.emplace(static_cast<frame_id_t>(i));
+                }
             }
         }
 

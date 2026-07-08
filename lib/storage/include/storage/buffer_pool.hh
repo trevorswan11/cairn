@@ -190,7 +190,7 @@ template <usize PoolSize> class buffer_pool {
 
         const auto fid{TRY(grab_victim_frame())};
         auto&      f{frame_at(fid)};
-        f.reset(pid);
+        f.reset(pid, false);
 
         if (auto r{disk_->read_page(pid, f.data())}; !r) {
             free_list_.emplace_back(fid);
@@ -273,7 +273,7 @@ template <usize PoolSize> class buffer_pool {
 
         page_table_.remove(pid);
         replacer_.remove(fid);
-        f.reset(INVALID_PAGE_ID);
+        f.reset(INVALID_PAGE_ID, true);
         free_list_.emplace_back(fid);
         free_pages_.emplace_back(pid);
         return {};

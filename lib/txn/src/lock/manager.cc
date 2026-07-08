@@ -110,6 +110,8 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
             } else {
                 must_wait = true;
             }
+        } else if (!req.granted && conflicts(req.mode, mode)) {
+            must_wait = true;
         }
     }
 
