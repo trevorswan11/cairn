@@ -5,6 +5,7 @@
 #include <stdx/option.hh>
 
 #include "txn/id.hh"
+#include "support/error.hh"
 
 namespace cairn::txn {
 
@@ -15,7 +16,7 @@ class read_set_t {
     check_conflict(id_t                                                  reader_id,
                    timestamp_t                                           read_ts,
                    const std::function<stdx::option<timestamp_t>(id_t)>& get_commit_ts) const
-        -> bool = 0;
+        -> result<bool> = 0;
 };
 
 } // namespace cairn::txn

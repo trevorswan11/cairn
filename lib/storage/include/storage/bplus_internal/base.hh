@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <concepts>
 #include <functional>
 #include <ranges>
@@ -24,6 +25,13 @@
 #include "support/error.hh"
 
 namespace cairn::storage::detail {
+
+enum class tree_id_t : u64 {};
+
+inline auto next_tree_id() -> tree_id_t {
+    static std::atomic<u64> counter{0};
+    return tree_id_t{counter.fetch_add(1, std::memory_order_relaxed)};
+}
 
 // A concurrent B+tree index over the buffer pool
 //
@@ -60,6 +68,7 @@ class bplus_base_t {
     }
 
     [[nodiscard]] auto meta_page() const noexcept -> page_id_t { return meta_page_; }
+    [[nodiscard]] auto tree_id() const noexcept -> tree_id_t { return tree_id_; }
     [[nodiscard]] auto empty() -> result<bool> {
         read_guard_t guard{TRY(pool_->fetch_read(meta_page_))};
         return !guard.template as<meta_node>()->root.has_value();
@@ -581,6 +590,7 @@ class bplus_base_t {
     stdx::option<pool_t&>         pool_;
     page_id_t                     meta_page_;
     [[no_unique_address]] Compare comp_;
+    tree_id_t                     tree_id_{next_tree_id()};
 };
 
 } // namespace cairn::storage::detail
