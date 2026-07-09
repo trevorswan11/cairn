@@ -35,6 +35,7 @@ class manager {
     using tree_read_set_map_t =
         ankerl::unordered_dense::map<storage::tree_id_t, stdx::box<read_set_t>>;
     using read_set_factory_t = std::function<stdx::box<read_set_t>()>;
+    using read_set_map_t     = ankerl::unordered_dense::map<id_t, tree_read_set_map_t, id_hash_t>;
 
   public:
     [[nodiscard]] auto begin_txn(isolation_level_t level = isolation_level_t::SNAPSHOT) -> id_t;
@@ -89,7 +90,7 @@ class manager {
 
     stdx::option<lock::manager&> lock_manager_;
 
-    mutable ankerl::unordered_dense::map<id_t, tree_read_set_map_t, id_hash_t> read_sets_;
+    mutable read_set_map_t read_sets_;
 };
 
 } // namespace cairn::txn
