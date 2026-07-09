@@ -18,6 +18,7 @@
 #include "storage/page.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
+#include "txn/manager.hh"
 
 namespace cairn::txn::undo {
 
@@ -81,6 +82,10 @@ template <typename Key, usize PoolSize> class manager {
     explicit manager(storage::buffer_pool<PoolSize>& pool) noexcept : pool_{pool} {}
     ~manager() = default;
 
+    auto set_txn_manager(stdx::option<const txn::manager&> txn_mgr) noexcept -> void {
+        txn_mgr_ = txn_mgr;
+    }
+
     // Appends an undo record sequentially to the active undo page, allocating if needed
     [[nodiscard]] auto append_record(txn::id_t                  txn_id,
                                      const Key&                 key,
@@ -90,8 +95,42 @@ template <typename Key, usize PoolSize> class manager {
                                      stdx::option<txn::id_t>    version_txn_id,
                                      stdx::option<ptr_t>        prev_undo_ptr,
                                      gsl::span<const std::byte> payload) -> result<ptr_t> {
+        bool                           reclaim_old_chain{false};
+        stdx::option<txn::timestamp_t> horizon_opt;
+        if (txn_mgr_) {
+            const auto horizon{txn_mgr_->snapshot_horizon()};
+            horizon_opt.emplace(horizon);
+            if (version_txn_id) {
+                if (txn_mgr_->committed_before_horizon(*version_txn_id, horizon)) {
+                    reclaim_old_chain = true;
+                }
+            }
+        }
+
         std::lock_guard lock{mutex_};
-        const usize     rec_size{sizeof(record_t<Key>) + payload.size_bytes()};
+
+        // Perform transaction-level garbage collection
+        if (txn_mgr_ && horizon_opt) {
+            const auto             horizon{*horizon_opt};
+            std::vector<txn::id_t> txns_to_reclaim;
+            for (const auto& [tid, _] : active_txn_undo_) {
+                if (txn_mgr_->committed_before_horizon(tid, horizon)) {
+                    txns_to_reclaim.emplace_back(tid);
+                }
+            }
+
+            for (auto tid : txns_to_reclaim) {
+                if (auto it{active_txn_undo_.find(tid)}; it != active_txn_undo_.end()) {
+                    reclaim_undo_chain_locked(it->second, &record_t<Key>::prev_txn_undo_ptr);
+                    active_txn_undo_.erase(it);
+                }
+            }
+        }
+
+        stdx::option<ptr_t> actual_prev{prev_undo_ptr};
+        if (reclaim_old_chain) { actual_prev = stdx::none; }
+
+        const usize rec_size{sizeof(record_t<Key>) + payload.size_bytes()};
         if (rec_size > storage::DB_PAGE_SIZE - sizeof(page_header_t)) {
             return stdx::err{error_t::STORAGE_TREE_CORRUPT};
         }
@@ -128,7 +167,7 @@ template <typename Key, usize PoolSize> class manager {
             .txn_id            = version_txn_id,
             .is_timestamp      = is_timestamp,
             .is_deleted        = is_deleted,
-            .prev_undo_ptr     = prev_undo_ptr,
+            .prev_undo_ptr     = actual_prev,
             .prev_txn_undo_ptr = prev_txn_undo,
             .key               = key,
             .op                = op,
@@ -206,46 +245,49 @@ template <typename Key, usize PoolSize> class manager {
         std::memcpy(src.data(), &rec, src.size_bytes());
         guard.mark_dirty();
 
-        reclaim_undo_chain_locked(*old_prev);
+        if (old_prev) { reclaim_undo_chain_locked(*old_prev, &record_t<Key>::prev_undo_ptr); }
         return {};
     }
 
     auto reclaim_undo_chain(ptr_t start_ptr) -> void {
         std::lock_guard lock{mutex_};
-        reclaim_undo_chain_locked(start_ptr);
+        reclaim_undo_chain_locked(start_ptr, &record_t<Key>::prev_undo_ptr);
     }
 
   private:
-    auto reclaim_undo_chain_locked(ptr_t start_ptr) -> void {
+    template <typename Proj> auto reclaim_undo_chain_locked(ptr_t start_ptr, Proj proj) -> void {
         stdx::option<ptr_t> cur{start_ptr};
         while (cur) {
-            auto bucket_res = pool_.fetch_read(cur->page_id);
-            if (!bucket_res) { break; }
+            stdx::option<ptr_t> next;
+            auto                page_id{cur->page_id};
+            {
+                // Scope to drop page automatically
+                auto bucket_res{pool_.fetch_read(page_id)};
+                if (!bucket_res) { break; }
 
-            const gsl::span rec_span{bucket_res.value().get()->data() + cur->offset,
-                                     sizeof(record_t<Key>)};
-            record_t<Key>   rec;
-            std::memcpy(&rec, rec_span.data(), rec_span.size_bytes());
+                record_t<Key>   rec;
+                const gsl::span src{bucket_res.value().get()->data() + cur->offset,
+                                    sizeof(record_t<Key>)};
+                std::memcpy(&rec, src.data(), src.size_bytes());
+                next = std::invoke(proj, rec);
+            }
 
-            auto next{rec.prev_undo_ptr};
-            auto page_id{cur->page_id};
-
-            if (auto it = page_active_records_.find(page_id); it != page_active_records_.end()) {
+            if (auto it{page_active_records_.find(page_id)}; it != page_active_records_.end()) {
                 if (--it->second == 0) {
                     page_active_records_.erase(it);
                     if (active_page_id_ && *active_page_id_ == page_id) { active_page_id_.reset(); }
                     DISCARD(pool_.delete_page(page_id));
                 }
             }
-
             cur = next;
         }
     }
 
   private:
-    mutable std::mutex               mutex_;
-    storage::buffer_pool<PoolSize>&  pool_;
-    stdx::option<storage::page_id_t> active_page_id_;
+    mutable std::mutex                mutex_;
+    storage::buffer_pool<PoolSize>&   pool_;
+    stdx::option<storage::page_id_t>  active_page_id_;
+    stdx::option<const txn::manager&> txn_mgr_;
 
     active_txn_undo_map_t     active_txn_undo_;
     page_active_records_map_t page_active_records_;
