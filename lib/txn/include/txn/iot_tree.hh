@@ -10,6 +10,7 @@
 #include <gsl/pointers>
 #include <gsl/span>
 #include <stdx/fixed/vector.hh>
+#include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
@@ -274,14 +275,35 @@ class iot_tree {
                                const Key&              key,
                                std::vector<std::byte>& payload_buf) const
         -> result<stdx::option<gsl::span<const std::byte>>> {
+        const auto level{TRY(txn_mgr.get_isolation_level(reader_txn_id))};
         if (auto rs{txn_mgr.get_or_create_read_set(reader_txn_id, tree_id(), [&] {
                 return stdx::make_box<iot_tree_read_set_t>(*this);
             })}) {
             static_cast<iot_tree_read_set_t&>(*rs).add_key(key);
         }
 
+        snapshot_t active_snap{snap};
+        switch (level) {
+        case isolation_level_t::SNAPSHOT:
+        case isolation_level_t::SERIALIZABLE: break;
+        case isolation_level_t::READ_COMMITTED:
+            // Acquire a fresh snapshot dynamically for this statement
+            active_snap = TRY(txn_mgr.acquire_snapshot(reader_txn_id));
+        case isolation_level_t::REPEATABLE_READ:
+            // Acquire S-lock if transaction runs under certain isolation levels
+            TRY(txn_mgr.lock_row_shared(reader_txn_id, tree_id(), hash_key(key)));
+            break;
+        }
+
+        const auto cleanup = [&] {
+            if (level == isolation_level_t::READ_COMMITTED) {
+                txn_mgr.release_shared_locks(reader_txn_id);
+            }
+        };
+
         const auto get_res{tree_.get(key)};
         if (!get_res) {
+            cleanup();
             if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return stdx::none; }
             return stdx::err{get_res.error()};
         }
@@ -289,7 +311,11 @@ class iot_tree {
         const auto val{*get_res};
         const auto header{read_version_header(val)};
         const auto payload{read_payload(val)};
-        return resolve_version(reader_txn_id, snap, txn_mgr, header, payload, payload_buf);
+        auto resolved{resolve_version(reader_txn_id, snap, txn_mgr, header, payload, payload_buf)};
+
+        // Release the shared locks ONLY for read committed
+        cleanup();
+        return resolved;
     }
 
   private:
@@ -311,6 +337,12 @@ class iot_tree {
         buf.resize(span.size_bytes());
         if (!span.empty()) { std::memcpy(buf.data(), span.data(), buf.size()); }
         return buf;
+    }
+
+    [[nodiscard]] static auto hash_key(const Key& key) noexcept -> u64 {
+        stdx::hasher h;
+        h.combine(key);
+        return h.finalize();
     }
 
   private:

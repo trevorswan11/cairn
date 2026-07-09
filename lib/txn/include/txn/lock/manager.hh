@@ -15,19 +15,19 @@ namespace cairn::txn::lock {
 
 class manager {
   public:
-    [[nodiscard]] auto lock_row_shared(id_t id, index_id_t index_id, u64 key_hash) {
+    [[nodiscard]] auto lock_row_shared(id_t id, index_id_t index_id, key_hash_t key_hash) {
         return acquire_lock(id, {index_id, key_hash, resource_type_t::ROW}, mode_t::SHARED);
     }
 
-    [[nodiscard]] auto lock_row_exclusive(id_t id, index_id_t index_id, u64 key_hash) {
+    [[nodiscard]] auto lock_row_exclusive(id_t id, index_id_t index_id, key_hash_t key_hash) {
         return acquire_lock(id, {index_id, key_hash, resource_type_t::ROW}, mode_t::EXCLUSIVE);
     }
 
-    [[nodiscard]] auto lock_gap_shared(id_t id, index_id_t index_id, u64 key_hash) {
+    [[nodiscard]] auto lock_gap_shared(id_t id, index_id_t index_id, key_hash_t key_hash) {
         return acquire_lock(id, {index_id, key_hash, resource_type_t::GAP}, mode_t::SHARED);
     }
 
-    [[nodiscard]] auto lock_gap_exclusive(id_t id, index_id_t index_id, u64 key_hash) {
+    [[nodiscard]] auto lock_gap_exclusive(id_t id, index_id_t index_id, key_hash_t key_hash) {
         return acquire_lock(id, {index_id, key_hash, resource_type_t::GAP}, mode_t::EXCLUSIVE);
     }
 
