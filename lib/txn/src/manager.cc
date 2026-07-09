@@ -17,6 +17,7 @@
 #include "support/error.hh"
 #include "txn/id.hh"
 #include "txn/lock/manager.hh"
+#include "txn/lock/types.hh"
 #include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
@@ -65,6 +66,7 @@ auto manager::begin_txn(isolation_level_t level) -> id_t {
     case isolation_level_t::READ_COMMITTED:  break;
     case isolation_level_t::REPEATABLE_READ: break;
     }
+    isolation_map_.emplace(id, level);
 
     return id;
 }
@@ -118,6 +120,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
     read_sets_.erase(id);
+    isolation_map_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -143,6 +146,7 @@ auto manager::abort_txn(id_t id, wal::log::manager& manager) -> result<void> {
     active_txns_.erase(it);
     active_txns_at_start_.erase(id);
     read_sets_.erase(id);
+    isolation_map_.erase(id);
 
     const auto horizon{snapshot_horizon_locked()};
     prune_committed_txns_locked(horizon);
@@ -187,6 +191,12 @@ auto manager::get_commit_timestamp(id_t id) const -> result<stdx::option<timesta
     if (auto it{committed_txns_.find(id)}; it != committed_txns_.end()) { return it->second; }
     if (active_txns_.contains(id)) { return stdx::err{error_t::TXN_NOT_FOUND}; }
     if (id != INVALID_TXN_ID && id < next_txn_id_) { return stdx::none; }
+    return stdx::err{error_t::TXN_NOT_FOUND};
+}
+
+auto manager::get_isolation_level(id_t id) const -> result<isolation_level_t> {
+    std::unique_lock lock{mutex_};
+    if (auto it{isolation_map_.find(id)}; it != isolation_map_.end()) { return it->second; }
     return stdx::err{error_t::TXN_NOT_FOUND};
 }
 
@@ -266,6 +276,27 @@ auto manager::get_or_create_read_set(id_t                      id,
         return inserted_it->second.get();
     }
     return map_it->second.get();
+}
+
+auto manager::lock_row_shared(id_t id, storage::tree_id_t tree_id, lock::key_hash_t key_hash) const
+    -> result<void> {
+    if (lock_manager_) {
+        return lock_manager_->lock_row_shared(id, std::to_underlying(tree_id), key_hash);
+    }
+    return {};
+}
+
+auto manager::lock_row_exclusive(id_t               id,
+                                 storage::tree_id_t tree_id,
+                                 lock::key_hash_t   key_hash) const -> result<void> {
+    if (lock_manager_) {
+        return lock_manager_->lock_row_exclusive(id, std::to_underlying(tree_id), key_hash);
+    }
+    return {};
+}
+
+auto manager::release_shared_locks(id_t id) const -> void {
+    if (lock_manager_) { lock_manager_->release_shared_locks(id); }
 }
 
 auto manager::find_id_locked(id_t id) noexcept -> found_id_res_t {

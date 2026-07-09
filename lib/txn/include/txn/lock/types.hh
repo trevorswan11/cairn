@@ -24,11 +24,12 @@ enum class resource_type_t : u8 {
     GAP,
 };
 
-enum class index_id_t : u64 {};
+using index_id_t = u64; // This is loosely typed to support different resources
+using key_hash_t = u64; // This is loosely typed to support different resources
 
 struct resource_id_t {
     index_id_t      index_id;
-    u64             key_hash;
+    key_hash_t      key_hash;
     resource_type_t type;
 
     [[nodiscard]] auto operator==(const resource_id_t&) const noexcept -> bool = default;
