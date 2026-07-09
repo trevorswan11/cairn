@@ -10,12 +10,12 @@
 #include <vector>
 
 #include <gsl/span>
+#include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/result.hh>
-#include <stdx/hash.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
-#include "stdx/utility.hh"
 #include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
@@ -129,10 +129,9 @@ class index_scan {
             [&](const IndexKey&, const PrimaryKey& pk) -> bool {
                 if (level == txn::isolation_level_t::READ_COMMITTED ||
                     level == txn::isolation_level_t::REPEATABLE_READ) {
-                    stdx::hasher h;
-                    h.combine(pk);
-                    auto lock_res = txn_mgr_.lock_row_shared(
-                        reader_txn_id_, primary_tree_.tree_id(), h.finalize());
+                    auto lock_res = txn_mgr_.lock_row_shared(reader_txn_id_,
+                                                             primary_tree_.tree_id(),
+                                                             stdx::hasher{}.combine(pk).finalize());
                     if (!lock_res) {
                         scan_res = lock_res;
                         return false;
@@ -147,7 +146,7 @@ class index_scan {
 
                 const auto [header, payload]{*get_res};
                 auto resolved{primary_tree_.resolve_version(
-                    reader_txn_id_, snap_, txn_mgr_, header, payload, payload_buf)};
+                    reader_txn_id_, active_snap, txn_mgr_, header, payload, payload_buf)};
                 if (!resolved) {
                     scan_res = resolved.error();
                     return false;
