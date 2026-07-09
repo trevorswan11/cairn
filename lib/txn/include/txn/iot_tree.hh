@@ -282,28 +282,25 @@ class iot_tree {
             static_cast<iot_tree_read_set_t&>(*rs).add_key(key);
         }
 
-        snapshot_t active_snap{snap};
+        auto active_snap{snap};
         switch (level) {
         case isolation_level_t::SNAPSHOT:
         case isolation_level_t::SERIALIZABLE: break;
         case isolation_level_t::READ_COMMITTED:
             // Acquire a fresh snapshot dynamically for this statement
             active_snap = TRY(txn_mgr.acquire_snapshot(reader_txn_id));
+            [[fallthrough]];
         case isolation_level_t::REPEATABLE_READ:
             // Acquire S-lock if transaction runs under certain isolation levels
             TRY(txn_mgr.lock_row_shared(reader_txn_id, tree_id(), hash_key(key)));
             break;
         }
 
-        const auto cleanup = [&] {
-            if (level == isolation_level_t::READ_COMMITTED) {
-                txn_mgr.release_shared_locks(reader_txn_id);
-            }
-        };
+        const shared_lock_guard_t guard{
+            txn_mgr, reader_txn_id, level == isolation_level_t::READ_COMMITTED};
 
         const auto get_res{tree_.get(key)};
         if (!get_res) {
-            cleanup();
             if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return stdx::none; }
             return stdx::err{get_res.error()};
         }
@@ -311,11 +308,7 @@ class iot_tree {
         const auto val{*get_res};
         const auto header{read_version_header(val)};
         const auto payload{read_payload(val)};
-        auto resolved{resolve_version(reader_txn_id, snap, txn_mgr, header, payload, payload_buf)};
-
-        // Release the shared locks ONLY for read committed
-        cleanup();
-        return resolved;
+        return resolve_version(reader_txn_id, active_snap, txn_mgr, header, payload, payload_buf);
     }
 
   private:

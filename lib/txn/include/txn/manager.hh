@@ -15,8 +15,8 @@
 #include "storage/bplus.hh"
 #include "support/error.hh"
 #include "txn/id.hh"
-#include "txn/read_set.hh"
 #include "txn/lock/types.hh"
+#include "txn/read_set.hh"
 #include "txn/snapshot.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"
@@ -105,6 +105,30 @@ class manager {
     stdx::option<lock::manager&> lock_manager_;
 
     mutable read_set_map_t read_sets_;
+};
+
+class shared_lock_guard_t {
+  public:
+    shared_lock_guard_t(const manager& mgr, id_t txn_id, bool active) noexcept
+        : mgr_{mgr}, txn_id_{txn_id}, active_{active} {}
+
+    ~shared_lock_guard_t() {
+        if (active_) { mgr_.release_shared_locks(txn_id_); }
+    }
+
+    shared_lock_guard_t(const shared_lock_guard_t&)                    = delete;
+    auto operator=(const shared_lock_guard_t&) -> shared_lock_guard_t& = delete;
+
+    shared_lock_guard_t(shared_lock_guard_t&& other) noexcept
+        : mgr_{other.mgr_}, txn_id_{other.txn_id_}, active_{other.active_} {
+        other.active_ = false;
+    }
+    auto operator=(shared_lock_guard_t&&) -> shared_lock_guard_t& = delete;
+
+  private:
+    const manager& mgr_;
+    id_t           txn_id_;
+    bool           active_;
 };
 
 } // namespace cairn::txn

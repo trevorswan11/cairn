@@ -12,6 +12,7 @@
 #include <gsl/span>
 #include <stdx/memory.hh>
 #include <stdx/result.hh>
+#include <stdx/hash.hh>
 #include <stdx/types.hh>
 
 #include "stdx/utility.hh"
@@ -104,20 +105,40 @@ class index_scan {
     auto operator()(const IndexKey& low, const IndexKey& high, Fn&& visitor, bool inclusive = true)
         -> result<usize> {
         using fn_result_t = std::invoke_result_t<Fn, const PrimaryKey&, gsl::span<const std::byte>>;
+        std::vector<std::byte> payload_buf;
 
+        const auto level{TRY(txn_mgr_.get_isolation_level(reader_txn_id_))};
         if (auto rs{txn_mgr_.get_or_create_read_set(reader_txn_id_, index_.tree_id(), [&] {
                 return stdx::make_box<index_scan_read_set_t>(index_, primary_tree_);
             })}) {
             static_cast<index_scan_read_set_t&>(*rs).add_range(low, high);
         }
 
-        usize count{0};
+        auto active_snap{snap_};
+        if (level == txn::isolation_level_t::READ_COMMITTED) {
+            active_snap = TRY(txn_mgr_.acquire_snapshot(reader_txn_id_));
+        }
+        const txn::shared_lock_guard_t guard{
+            txn_mgr_, reader_txn_id_, level == txn::isolation_level_t::READ_COMMITTED};
 
-        std::vector<std::byte> payload_buf;
+        usize        count{0};
+        result<void> scan_res{};
         TRY(index_.range_scan(
             low,
             high,
             [&](const IndexKey&, const PrimaryKey& pk) -> bool {
+                if (level == txn::isolation_level_t::READ_COMMITTED ||
+                    level == txn::isolation_level_t::REPEATABLE_READ) {
+                    stdx::hasher h;
+                    h.combine(pk);
+                    auto lock_res = txn_mgr_.lock_row_shared(
+                        reader_txn_id_, primary_tree_.tree_id(), h.finalize());
+                    if (!lock_res) {
+                        scan_res = lock_res;
+                        return false;
+                    }
+                }
+
                 auto get_res{primary_tree_.get_raw(pk)};
                 if (!get_res) {
                     if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return true; }
@@ -127,7 +148,10 @@ class index_scan {
                 const auto [header, payload]{*get_res};
                 auto resolved{primary_tree_.resolve_version(
                     reader_txn_id_, snap_, txn_mgr_, header, payload, payload_buf)};
-                if (!resolved) { return false; }
+                if (!resolved) {
+                    scan_res = resolved.error();
+                    return false;
+                }
 
                 if (resolved.value()) {
                     count++;
@@ -142,6 +166,7 @@ class index_scan {
                 return true;
             },
             inclusive));
+        TRY(scan_res);
 
         return count;
     }
