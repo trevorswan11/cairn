@@ -5,9 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
+#include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "stdx/option.hh"
 #include "storage/buffer_pool.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
