@@ -58,7 +58,13 @@ auto manager::begin_txn(isolation_level_t level) -> id_t {
                              .last_lsn = stdx::none,
                              .read_ts  = global_ts_,
                          });
-    if (level == isolation_level_t::SERIALIZABLE) { read_sets_.emplace(id, tree_read_set_map_t{}); }
+
+    switch (level) {
+    case isolation_level_t::SNAPSHOT:        break;
+    case isolation_level_t::SERIALIZABLE:    read_sets_.emplace(id, tree_read_set_map_t{}); break;
+    case isolation_level_t::READ_COMMITTED:  break;
+    case isolation_level_t::REPEATABLE_READ: break;
+    }
 
     return id;
 }

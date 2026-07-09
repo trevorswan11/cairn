@@ -16,6 +16,8 @@ constexpr timestamp_t INVALID_TIMESTAMP{stdx::nullable<timestamp_t>::invalid()};
 enum class isolation_level_t : u8 {
     SNAPSHOT,
     SERIALIZABLE,
+    READ_COMMITTED,
+    REPEATABLE_READ,
 };
 
 } // namespace cairn::txn

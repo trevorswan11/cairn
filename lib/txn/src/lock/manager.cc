@@ -14,6 +14,11 @@
 
 namespace cairn::txn::lock {
 
+auto manager::is_wounded(id_t id) const noexcept -> bool {
+    std::lock_guard lock{mutex_};
+    return wounded_txns_.contains(id);
+}
+
 auto manager::release_all_locks(id_t id) -> void {
     std::lock_guard lock{mutex_};
 
@@ -22,30 +27,58 @@ auto manager::release_all_locks(id_t id) -> void {
     if (!txn_res_opt) { return; }
     const auto& txn_res{*txn_res_opt};
 
+    for (const auto& res_id : txn_res) { DISCARD(release_locks_in_bucket(id, res_id, stdx::none)); }
+    tracked_txn_resources_.remove(id);
+}
+
+auto manager::release_shared_locks(id_t id) -> void {
+    std::lock_guard lock{mutex_};
+
+    const auto txn_res_opt{tracked_txn_resources_.get_opt(id)};
+    if (!txn_res_opt) { return; }
+    auto&           txn_res{*txn_res_opt};
+    txn_resources_t remaining_res;
+
     for (const auto& res_id : txn_res) {
-        const auto bucket{bucket_table_.get_opt(res_id)};
-        if (!bucket) { continue; }
-
-        // Remove all requests for this transaction
-        auto& reqs{bucket->requests};
-        for (auto it{reqs.begin()}; it != reqs.end();) {
-            if (it->txn_id == id) {
-                it = reqs.erase(it);
-            } else {
-                ++it;
-            }
+        if (!release_locks_in_bucket(id, res_id, mode_t::SHARED)) {
+            remaining_res.emplace_back(res_id);
         }
+    }
 
+    if (remaining_res.empty()) {
+        tracked_txn_resources_.remove(id);
+    } else {
+        txn_res = std::move(remaining_res);
+    }
+}
+
+auto manager::release_locks_in_bucket(id_t                 id,
+                                      resource_id_t        res_id,
+                                      stdx::option<mode_t> filter_mode) -> bool {
+    const auto bucket{bucket_table_.get_opt(res_id)};
+    if (!bucket) { return true; }
+
+    auto& reqs{bucket->requests};
+    bool  released{false};
+    for (auto it{reqs.begin()}; it != reqs.end();) {
+        if (it->txn_id == id && (!filter_mode || it->mode == *filter_mode)) {
+            it       = reqs.erase(it);
+            released = true;
+        } else {
+            ++it;
+        }
+    }
+
+    if (released) {
         if (reqs.empty()) {
             bucket_table_.remove(res_id);
-            continue;
+            return true;
         }
 
-        // Try to grant locks to waiting requests in FIFO order
+        // Grant locks to waiting requests in FIFO order
         for (auto& req : reqs) {
             if (req.granted) { continue; }
 
-            // Check if this request conflicts with any currently granted requests
             bool conflict{false};
             for (const auto& other_req : reqs) {
                 if (other_req.granted && conflicts(other_req.mode, req.mode)) {
@@ -62,17 +95,16 @@ auto manager::release_all_locks(id_t id) -> void {
                     req.wait_state->cv.notify_one();
                 }
             } else {
-                // FIFO lock scheduling: stop granting subsequent requests on conflict
                 break;
             }
         }
     }
-    tracked_txn_resources_.remove(id);
-}
 
-auto manager::is_wounded(id_t id) const noexcept -> bool {
-    std::lock_guard lock{mutex_};
-    return wounded_txns_.contains(id);
+    // Check if the transaction still holds any locks in this bucket
+    for (const auto& req : reqs) {
+        if (req.txn_id == id) { return false; }
+    }
+    return true;
 }
 
 auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result<void> {
