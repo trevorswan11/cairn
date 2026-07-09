@@ -333,9 +333,7 @@ class iot_tree {
     }
 
     [[nodiscard]] static auto hash_key(const Key& key) noexcept -> u64 {
-        stdx::hasher h;
-        h.combine(key);
-        return h.finalize();
+        return stdx::hasher{}.combine(key).finalize();
     }
 
   private:

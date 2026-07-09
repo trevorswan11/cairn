@@ -37,11 +37,11 @@ struct resource_id_t {
 
 struct resource_id_hash {
     [[nodiscard]] static constexpr auto operator()(const resource_id_t& rid) noexcept -> u64 {
-        stdx::hasher h;
-        h.combine(rid.index_id);
-        h.combine(rid.key_hash);
-        h.combine(rid.type);
-        return h.finalize();
+        return stdx::hasher{}
+            .combine(rid.index_id)
+            .combine(rid.key_hash)
+            .combine(rid.type)
+            .finalize();
     }
 };
 

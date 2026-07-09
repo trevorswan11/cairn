@@ -62,10 +62,8 @@ class table_scan {
             [&](const Key& k, gsl::span<const std::byte> val) -> bool {
                 if (level == txn::isolation_level_t::READ_COMMITTED ||
                     level == txn::isolation_level_t::REPEATABLE_READ) {
-                    stdx::hasher h;
-                    h.combine(k);
                     if (auto lock_res{txn_mgr_.lock_row_shared(
-                            reader_txn_id_, tree_.tree_id(), h.finalize())};
+                            reader_txn_id_, tree_.tree_id(), stdx::hasher{}.combine(k).finalize())};
                         !lock_res) {
                         scan_res = lock_res;
                         return false;
@@ -76,7 +74,7 @@ class table_scan {
                 const auto payload{txn::read_payload(val)};
 
                 auto resolved{tree_.resolve_version(
-                    reader_txn_id_, snap_, txn_mgr_, header, payload, payload_buf)};
+                    reader_txn_id_, active_snap, txn_mgr_, header, payload, payload_buf)};
                 if (!resolved) {
                     scan_res = resolved.error();
                     return false;
