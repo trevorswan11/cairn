@@ -4,10 +4,12 @@
 #include <cstddef>
 #include <cstring>
 #include <functional>
+#include <stdx/utility.hh>
 #include <type_traits>
 #include <vector>
 
 #include <gsl/span>
+#include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -38,23 +40,47 @@ class table_scan {
         using fn_result_t = std::invoke_result_t<Fn, const Key&, gsl::span<const std::byte>>;
         std::vector<std::byte> payload_buf;
 
+        const auto level{TRY(txn_mgr_.get_isolation_level(reader_txn_id_))};
         if (auto rs{txn_mgr_.get_or_create_read_set(reader_txn_id_, tree_.tree_id(), [&] {
                 return stdx::make_box<iot_tree_read_set_t>(tree_);
             })}) {
             static_cast<iot_tree_read_set_t&>(*rs).add_range(low, high);
         }
 
-        usize count{0};
+        auto active_snap{snap_};
+        if (level == txn::isolation_level_t::READ_COMMITTED) {
+            active_snap = TRY(txn_mgr_.acquire_snapshot(reader_txn_id_));
+        }
+        const txn::shared_lock_guard_t guard{
+            txn_mgr_, reader_txn_id_, level == txn::isolation_level_t::READ_COMMITTED};
+
+        usize        count{0};
+        result<void> scan_res{};
         TRY(tree_.tree().range_scan(
             low,
             high,
             [&](const Key& k, gsl::span<const std::byte> val) -> bool {
+                if (level == txn::isolation_level_t::READ_COMMITTED ||
+                    level == txn::isolation_level_t::REPEATABLE_READ) {
+                    stdx::hasher h;
+                    h.combine(k);
+                    if (auto lock_res{txn_mgr_.lock_row_shared(
+                            reader_txn_id_, tree_.tree_id(), h.finalize())};
+                        !lock_res) {
+                        scan_res = lock_res;
+                        return false;
+                    }
+                }
+
                 const auto header{txn::read_version_header(val)};
                 const auto payload{txn::read_payload(val)};
 
                 auto resolved{tree_.resolve_version(
                     reader_txn_id_, snap_, txn_mgr_, header, payload, payload_buf)};
-                if (!resolved) { return false; } // Stop scan on error
+                if (!resolved) {
+                    scan_res = resolved.error();
+                    return false;
+                }
 
                 if (resolved.value()) {
                     count++;
@@ -68,6 +94,7 @@ class table_scan {
                 return true;
             },
             inclusive));
+        TRY(scan_res);
 
         return count;
     }
