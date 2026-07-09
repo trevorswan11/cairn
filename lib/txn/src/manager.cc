@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <gsl/pointers>
+#include <stdx/assert.hh>
 #include <stdx/enum.hh>
 #include <stdx/option.hh>
 #include <stdx/profiler.hh>
@@ -198,6 +199,21 @@ auto manager::get_isolation_level(id_t id) const -> result<isolation_level_t> {
     std::unique_lock lock{mutex_};
     if (auto it{isolation_map_.find(id)}; it != isolation_map_.end()) { return it->second; }
     return stdx::err{error_t::TXN_NOT_FOUND};
+}
+
+auto manager::committed_before_horizon(id_t id, timestamp_t horizon) const noexcept -> bool {
+    std::unique_lock lock{mutex_};
+    ASSERT(id != INVALID_TXN_ID, "The id should be validated before calling this");
+
+    if (active_txns_.contains(id)) { return false; }
+    if (id >= next_txn_id_) { return false; }
+    if (auto it{committed_txns_.find(id)}; it != committed_txns_.end()) {
+        return it->second <= horizon;
+    }
+
+    // If it's committed but not in committed_txns_,
+    // it must have committed and been pruned, which means its commit timestamp was < horizon.
+    return true;
 }
 
 auto manager::snapshot_horizon() const noexcept -> timestamp_t {

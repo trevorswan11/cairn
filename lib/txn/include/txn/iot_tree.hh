@@ -15,6 +15,7 @@
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
 #include "storage/bplus.hh"
 #include "support/error.hh"
@@ -246,8 +247,23 @@ class iot_tree {
                                        gsl::span<const std::byte>    latest_payload,
                                        std::vector<std::byte>&       payload_buf) const
         -> result<stdx::option<gsl::span<const std::byte>>> {
+        const auto horizon{txn_mgr.snapshot_horizon()};
+
         if (txn_mgr.is_visible(
                 snap, reader_txn_id, latest_header.txn_id, latest_header.is_timestamp)) {
+            if (latest_header.undo_ptr) {
+                std::vector<std::byte> temp_buf;
+                if (auto first_rec_res{undo_mgr_.read_record(*latest_header.undo_ptr, temp_buf)}) {
+                    const auto& first_rec{first_rec_res.value()};
+                    if (first_rec.txn_id &&
+                        txn_mgr.committed_before_horizon(*first_rec.txn_id, horizon)) {
+                        if (first_rec.prev_undo_ptr) {
+                            DISCARD(undo_mgr_.reclaim_prev_ptr(*latest_header.undo_ptr));
+                        }
+                    }
+                }
+            }
+
             if (latest_header.is_deleted) { return stdx::none; }
             payload_buf.resize(latest_payload.size_bytes());
             if (!latest_payload.empty()) {
@@ -259,10 +275,19 @@ class iot_tree {
         stdx::option<undo::ptr_t> cur_ptr{latest_header.undo_ptr};
         while (cur_ptr) {
             const auto rec{TRY(undo_mgr_.read_record(*cur_ptr, payload_buf))};
+
+            bool stopped{false};
+            if (rec.txn_id && txn_mgr.committed_before_horizon(*rec.txn_id, horizon)) {
+                if (rec.prev_undo_ptr) { TRY(undo_mgr_.reclaim_prev_ptr(*cur_ptr)); }
+                stopped = true;
+            }
+
             if (txn_mgr.is_visible(snap, reader_txn_id, rec.txn_id, rec.is_timestamp)) {
                 if (rec.is_deleted) { return stdx::none; }
                 return gsl::span{payload_buf.data(), payload_buf.size()};
             }
+
+            if (stopped) { break; }
             cur_ptr = rec.prev_undo_ptr;
         }
 
