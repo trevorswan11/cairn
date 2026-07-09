@@ -12,6 +12,7 @@
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
@@ -72,6 +73,11 @@ struct page_header_t {
 
 template <typename Key, usize PoolSize> class manager {
   public:
+    using active_txn_undo_map_t = ankerl::unordered_dense::map<txn::id_t, ptr_t, txn::id_hash_t>;
+    using page_active_records_map_t =
+        ankerl::unordered_dense::map<storage::page_id_t, u32, storage::page_id_hash_t>;
+
+  public:
     explicit manager(storage::buffer_pool<PoolSize>& pool) noexcept : pool_{pool} {}
     ~manager() = default;
 
@@ -109,9 +115,10 @@ template <typename Key, usize PoolSize> class manager {
 
         // Fetch active page and append
         const auto pid{*active_page_id_};
-        auto       guard{TRY(pool_.fetch_write(pid))};
-        auto       header{guard.template as<page_header_t>()};
-        const u16  offset{header->free_space_ptr};
+        page_active_records_[pid]++;
+        auto      guard{TRY(pool_.fetch_write(pid))};
+        auto      header{guard.template as<page_header_t>()};
+        const u16 offset{header->free_space_ptr};
 
         stdx::option<ptr_t> prev_txn_undo;
         auto [txn_id_it, inserted]{active_txn_undo_.try_emplace(txn_id)};
@@ -170,12 +177,78 @@ template <typename Key, usize PoolSize> class manager {
         active_txn_undo_.erase(txn_id);
     }
 
+    [[nodiscard]] auto active_page_count() const noexcept -> usize {
+        std::lock_guard lock{mutex_};
+        return page_active_records_.size();
+    }
+
+    [[nodiscard]] auto get_page_active_records(storage::page_id_t pid) const noexcept
+        -> stdx::option<u32> {
+        std::lock_guard lock{mutex_};
+        if (auto it{page_active_records_.find(pid)}; it != page_active_records_.end()) {
+            return it->second;
+        }
+        return stdx::none;
+    }
+
+    [[nodiscard]] auto reclaim_prev_ptr(ptr_t ptr) -> result<void> {
+        std::lock_guard lock{mutex_};
+        auto            guard{TRY(pool_.fetch_write(ptr.page_id))};
+        gsl::span       src{guard.get()->data() + ptr.offset, sizeof(record_t<Key>)};
+
+        record_t<Key> rec;
+        std::memcpy(&rec, src.data(), src.size_bytes());
+
+        auto old_prev{rec.prev_undo_ptr};
+        if (!old_prev) { return {}; } // Already reclaimed
+
+        rec.prev_undo_ptr.reset();
+        std::memcpy(src.data(), &rec, src.size_bytes());
+        guard.mark_dirty();
+
+        reclaim_undo_chain_locked(*old_prev);
+        return {};
+    }
+
+    auto reclaim_undo_chain(ptr_t start_ptr) -> void {
+        std::lock_guard lock{mutex_};
+        reclaim_undo_chain_locked(start_ptr);
+    }
+
   private:
+    auto reclaim_undo_chain_locked(ptr_t start_ptr) -> void {
+        stdx::option<ptr_t> cur{start_ptr};
+        while (cur) {
+            auto bucket_res = pool_.fetch_read(cur->page_id);
+            if (!bucket_res) { break; }
+
+            const gsl::span rec_span{bucket_res.value().get()->data() + cur->offset,
+                                     sizeof(record_t<Key>)};
+            record_t<Key>   rec;
+            std::memcpy(&rec, rec_span.data(), rec_span.size_bytes());
+
+            auto next{rec.prev_undo_ptr};
+            auto page_id{cur->page_id};
+
+            if (auto it = page_active_records_.find(page_id); it != page_active_records_.end()) {
+                if (--it->second == 0) {
+                    page_active_records_.erase(it);
+                    if (active_page_id_ && *active_page_id_ == page_id) { active_page_id_.reset(); }
+                    DISCARD(pool_.delete_page(page_id));
+                }
+            }
+
+            cur = next;
+        }
+    }
+
+  private:
+    mutable std::mutex               mutex_;
     storage::buffer_pool<PoolSize>&  pool_;
     stdx::option<storage::page_id_t> active_page_id_;
 
-    mutable std::mutex                                             mutex_;
-    ankerl::unordered_dense::map<txn::id_t, ptr_t, txn::id_hash_t> active_txn_undo_;
+    active_txn_undo_map_t     active_txn_undo_;
+    page_active_records_map_t page_active_records_;
 };
 
 } // namespace cairn::txn::undo

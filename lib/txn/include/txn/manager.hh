@@ -57,6 +57,8 @@ class manager {
     // Retrieve the commit timestamp of a recently committed transaction
     [[nodiscard]] auto get_commit_timestamp(id_t id) const -> result<stdx::option<timestamp_t>>;
     [[nodiscard]] auto get_isolation_level(id_t id) const -> result<isolation_level_t>;
+    [[nodiscard]] auto committed_before_horizon(id_t id, timestamp_t horizon) const noexcept
+        -> bool;
 
     // Calculate the minimum read timestamp of all active transactions
     [[nodiscard]] auto snapshot_horizon() const noexcept -> timestamp_t;
