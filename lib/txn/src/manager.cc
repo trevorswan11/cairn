@@ -97,11 +97,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
             }
         }
 
-        if (conflict) {
-            lock.unlock();
-            TRY(abort_txn(id, manager));
-            return stdx::err{error_t::TXN_SERIALIZATION_FAILURE};
-        }
+        if (conflict) { return stdx::err{error_t::TXN_SERIALIZATION_FAILURE}; }
     }
 
     if (found->last_lsn) {

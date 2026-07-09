@@ -133,15 +133,11 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
         }
     }
 
-    // 4. Check compatibility with existing locks
     bool must_wait{false};
     for (const auto& req : bucket.requests) {
         if (req.granted && conflicts(req.mode, mode)) {
-            if (id < req.txn_id) {
-                wound(req.txn_id);
-            } else {
-                must_wait = true;
-            }
+            if (id < req.txn_id) { wound(req.txn_id); }
+            must_wait = true;
         } else if (!req.granted && conflicts(req.mode, mode)) {
             must_wait = true;
         }
@@ -163,26 +159,12 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
         lock.lock();
 
         if (wait_state.aborted) {
-            auto& reqs{bucket_table_.get(res_id).requests};
-            for (auto it{reqs.begin()}; it != reqs.end(); ++it) {
-                if (it->txn_id == id && !it->granted) {
-                    reqs.erase(it);
-                    break;
-                }
-            }
-            if (reqs.empty()) { bucket_table_.remove(res_id); }
+            DISCARD(release_locks_in_bucket(id, res_id, stdx::none));
             return stdx::err{error_t::TXN_DEADLOCK_DETECTED};
         }
 
         if (auto res{add_tracked_resource(id, res_id)}; !res) {
-            auto& reqs{bucket_table_.get(res_id).requests};
-            for (auto it{reqs.begin()}; it != reqs.end(); ++it) {
-                if (it->txn_id == id) {
-                    reqs.erase(it);
-                    break;
-                }
-            }
-            if (reqs.empty()) { bucket_table_.remove(res_id); }
+            DISCARD(release_locks_in_bucket(id, res_id, stdx::none));
             return res;
         }
         return {};

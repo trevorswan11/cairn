@@ -50,10 +50,8 @@ auto manager::append_record(record& record) -> result<seq_num> {
     PROFILE_FUNCTION();
 
     // Staging is done locally to allow for temporary releasing of lock
-    thread_local std::vector<std::byte> staging;
-    staging.clear();
-
-    std::unique_lock lock{mutex_};
+    std::vector<std::byte> staging;
+    std::unique_lock       lock{mutex_};
 
     // Write in the lsn before serializing
     const auto lsn{next_lsn()};

@@ -61,6 +61,7 @@ class iot_tree_read_set : public read_set_t {
                         timestamp_t            read_ts,
                         const get_commit_ts_t& get_commit_ts) const -> result<bool> override {
         std::scoped_lock lock{mutex_};
+        std::vector<std::byte> payload_buf;
 
         for (const auto& key : keys_) {
             if (auto get_res{tree_.get_raw(key)}) {
@@ -68,6 +69,16 @@ class iot_tree_read_set : public read_set_t {
                 if (header.txn_id && *header.txn_id != reader_txn_id) {
                     auto commit_ts_opt{get_commit_ts(*header.txn_id)};
                     if (commit_ts_opt && *commit_ts_opt > read_ts) { return true; }
+                }
+
+                stdx::option<undo::ptr_t> cur_ptr{header.undo_ptr};
+                while (cur_ptr) {
+                    const auto rec{TRY(tree_.undo_manager().read_record(*cur_ptr, payload_buf))};
+                    if (rec.txn_id && *rec.txn_id != reader_txn_id) {
+                        auto commit_ts_opt{get_commit_ts(*rec.txn_id)};
+                        if (commit_ts_opt && *commit_ts_opt > read_ts) { return true; }
+                    }
+                    cur_ptr = rec.prev_undo_ptr;
                 }
             }
         }
@@ -83,6 +94,21 @@ class iot_tree_read_set : public read_set_t {
                             conflict_detected = true;
                             return false;
                         }
+                    }
+
+                    stdx::option<undo::ptr_t> cur_ptr{header.undo_ptr};
+                    while (cur_ptr) {
+                        auto rec_res = tree_.undo_manager().read_record(*cur_ptr, payload_buf);
+                        if (!rec_res) { break; }
+                        const auto rec = *rec_res;
+                        if (rec.txn_id && *rec.txn_id != reader_txn_id) {
+                            auto commit_ts_opt{get_commit_ts(*rec.txn_id)};
+                            if (commit_ts_opt && *commit_ts_opt > read_ts) {
+                                conflict_detected = true;
+                                return false;
+                            }
+                        }
+                        cur_ptr = rec.prev_undo_ptr;
                     }
                     return true;
                 }));
