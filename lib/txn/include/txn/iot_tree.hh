@@ -60,7 +60,7 @@ class iot_tree_read_set : public read_set_t {
     auto check_conflict(id_t                   reader_txn_id,
                         timestamp_t            read_ts,
                         const get_commit_ts_t& get_commit_ts) const -> result<bool> override {
-        std::scoped_lock lock{mutex_};
+        std::scoped_lock       lock{mutex_};
         std::vector<std::byte> payload_buf;
 
         for (const auto& key : keys_) {
