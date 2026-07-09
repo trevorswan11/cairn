@@ -216,6 +216,12 @@ auto manager::acquire_snapshot(id_t id) const -> result<snapshot_t> {
 
     auto txn_it{active_txns_.find(id)};
     if (txn_it == active_txns_.end()) { return stdx::err{error_t::TXN_NOT_FOUND}; }
+
+    auto level{isolation_level_t::SNAPSHOT};
+    if (auto it{isolation_map_.find(id)}; it != isolation_map_.end()) { level = it->second; }
+
+    if (level == isolation_level_t::READ_COMMITTED) { return acquire_snapshot_locked(); }
+
     const auto read_ts{txn_it->second.read_ts.value_or(global_ts_)};
 
     snapshot_t::txn_buf_t active;
@@ -234,19 +240,7 @@ auto manager::acquire_snapshot(id_t id) const -> result<snapshot_t> {
 auto manager::acquire_snapshot() const -> snapshot_t {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
-
-    snapshot_t::txn_buf_t active;
-    for (const auto& [tid, _] : active_txns_ | std::views::take(active.capacity() - 1)) {
-        active.emplace_back(tid);
-    }
-    std::ranges::sort(active);
-
-    return snapshot_t{
-        .read_ts     = global_ts_,
-        .xmin        = active.empty() ? next_txn_id_ : active.front(),
-        .xmax        = next_txn_id_,
-        .active_txns = std::move(active),
-    };
+    return acquire_snapshot_locked();
 }
 
 auto manager::is_visible(const snapshot_t&  snap,
@@ -316,6 +310,21 @@ auto manager::snapshot_horizon_locked() const noexcept -> timestamp_t {
         if (entry.read_ts && *entry.read_ts < min_ts) { min_ts = *entry.read_ts; }
     }
     return min_ts;
+}
+
+auto manager::acquire_snapshot_locked() const -> snapshot_t {
+    snapshot_t::txn_buf_t active;
+    for (const auto& [tid, _] : active_txns_ | std::views::take(active.capacity() - 1)) {
+        active.emplace_back(tid);
+    }
+    std::ranges::sort(active);
+
+    return snapshot_t{
+        .read_ts     = global_ts_,
+        .xmin        = active.empty() ? next_txn_id_ : active.front(),
+        .xmax        = next_txn_id_,
+        .active_txns = std::move(active),
+    };
 }
 
 } // namespace cairn::txn
