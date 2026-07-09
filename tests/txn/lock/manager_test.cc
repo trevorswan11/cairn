@@ -87,6 +87,7 @@ TEST_CASE("lock::manager wound-wait deadlock prevention") {
                 young_granted = true;
             } else {
                 young_err = res.error();
+                lm.release_all_locks(tx_young);
             }
         }};
 
