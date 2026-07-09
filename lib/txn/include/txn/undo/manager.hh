@@ -256,7 +256,8 @@ template <typename Key, usize PoolSize> class manager {
     }
 
   private:
-    template <typename Proj> auto reclaim_undo_chain_locked(ptr_t start_ptr, Proj proj) -> void {
+    template <typename Proj>
+    auto reclaim_undo_chain_locked(ptr_t start_ptr, Proj record_projection) -> void {
         stdx::option<ptr_t> cur{start_ptr};
         while (cur) {
             stdx::option<ptr_t> next;
@@ -270,7 +271,7 @@ template <typename Key, usize PoolSize> class manager {
                 const gsl::span src{bucket_res.value().get()->data() + cur->offset,
                                     sizeof(record_t<Key>)};
                 std::memcpy(&rec, src.data(), src.size_bytes());
-                next = std::invoke(proj, rec);
+                next = std::invoke(record_projection, rec);
             }
 
             if (auto it{page_active_records_.find(page_id)}; it != page_active_records_.end()) {
