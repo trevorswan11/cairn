@@ -20,6 +20,7 @@
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
+#include "testhelpers/mt_verifier.hh"
 #include "txn/manager.hh"
 #include "wal/checkpoint/manager.hh"
 #include "wal/checkpoint/types.hh"
@@ -126,15 +127,15 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
     std::vector<std::jthread> writers;
     std::atomic<bool>         stop{false};
-    std::atomic<i32>          update_failures{0};
+    helpers::mt_verifier      verifier;
 
     for (i32 t{0}; t < num_threads; ++t) {
-        writers.emplace_back([&bp, &log, &tm, t, &stop, &update_failures] {
+        writers.emplace_back([&bp, &log, &tm, t, &stop, &verifier] {
             const auto tid{tm.begin_txn()};
 
             page_id_t pid;
             {
-                auto [id, guard] = helpers::unwrap(bp->new_write());
+                auto [id, guard] = helpers::mt_unwrap(verifier, bp->new_write());
                 pid              = id;
                 slotted_page sp{*guard.get()};
                 sp.refresh_page();
@@ -143,7 +144,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
             i32 seq{0};
             while (!stop.load()) {
-                auto         guard{helpers::unwrap(bp->fetch_write(pid))};
+                auto         guard{helpers::mt_unwrap(verifier, bp->fetch_write(pid))};
                 slotted_page sp{*guard.get()};
 
                 const auto data{fmt::format("writer {} seq {}", t, seq++)};
@@ -155,7 +156,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
                                        })};
                 if (slot_id) {
                     if (auto page_lsn{guard.get()->page_lsn()}) {
-                        if (!tm.update_txn_lsn(tid, *page_lsn)) { update_failures += 1; }
+                        THREAD_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
                     }
                     guard.mark_dirty();
                 }
@@ -172,7 +173,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
     stop.store(true);
     writers.clear();
-    CHECK(update_failures == 0);
+    REQUIRE_FALSE(verifier.dump_if_error());
 }
 
 } // namespace cairn::tests

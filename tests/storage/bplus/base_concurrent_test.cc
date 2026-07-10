@@ -14,6 +14,7 @@
 #include "storage/bplus.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
+#include "testhelpers/mt_verifier.hh"
 
 namespace cairn::tests {
 
@@ -27,21 +28,21 @@ TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
     auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
     auto              tree{helpers::unwrap(tree_t::create(*pool))};
 
-    constexpr i64    per_thread{2'000};
-    std::atomic<i32> insert_failures{0};
+    constexpr i64        per_thread{2'000};
+    helpers::mt_verifier verifier;
 
     stdx::fixed::vector<std::jthread, 8> workers;
     for (usize t{0}; t < workers.capacity(); ++t) {
         workers.emplace_back([&, t] {
             for (i64 i{0}; i < per_thread; ++i) {
                 const i64 key{static_cast<i64>(t) * per_thread + i};
-                if (!tree.emplace(key, static_cast<u64>(key))) { insert_failures.fetch_add(1); }
+                THREAD_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
             }
         });
     }
     workers.clear();
 
-    CHECK(insert_failures.load() == 0);
+    REQUIRE_FALSE(verifier.dump_if_error());
     const i64 total{static_cast<i64>(workers.capacity()) * per_thread};
     for (i64 k{0}; k < total; ++k) { CHECK(helpers::unwrap(tree.get(k)) == static_cast<u64>(k)); }
 
@@ -68,7 +69,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
     }
 
     const auto                seed{Catch::getSeed()};
-    std::atomic<i32>          failures{0};
+    helpers::mt_verifier      verifier;
     std::atomic<bool>         go{false};
     std::vector<std::jthread> workers;
 
@@ -78,7 +79,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i64 i{0}; i < per_writer; ++i) {
                 const i64 key{static_cast<i64>(t) * per_writer + i};
-                if (!tree.remove(key)) { failures.fetch_add(1); }
+                THREAD_CHECK(verifier, tree.remove(key));
             }
         });
     }
@@ -89,7 +90,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i64 i{0}; i < per_writer; ++i) {
                 const i64 key{emplace_base + static_cast<i64>(t) * per_writer + i};
-                if (!tree.emplace(key, static_cast<u64>(key))) { failures.fetch_add(1); }
+                THREAD_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
             }
         });
     }
@@ -103,16 +104,15 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i32 i{0}; i < 20'000; ++i) {
                 const i64 key{dist(rng)};
-                if (auto r{tree.get(key)}; !r || *r != static_cast<u64>(key)) {
-                    failures.fetch_add(1);
-                }
+                auto      val{helpers::mt_unwrap(verifier, tree.get(key))};
+                THREAD_CHECK(verifier, val == static_cast<u64>(key));
             }
         });
     }
 
     go.store(true);
     workers.clear();
-    CHECK(failures.load() == 0);
+    REQUIRE_FALSE(verifier.dump_if_error());
 
     // Deleted blocks are gone
     for (i64 k{remove_base}; k < stable_base; ++k) { CHECK_FALSE(tree.get(k)); }

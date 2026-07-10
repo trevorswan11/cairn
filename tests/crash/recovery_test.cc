@@ -23,6 +23,7 @@
 #include "support/crash/injection.hh"
 #include "testhelpers/argv.hh"
 #include "testhelpers/conversion.hh"
+#include "testhelpers/mt_verifier.hh"
 #include "testhelpers/subprocess.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -55,22 +56,17 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
     // Concurrent writers executing transactions
     std::vector<std::jthread> writers;
     std::atomic<bool>         go{false};
-    std::atomic<i32>          failures{0};
+    helpers::mt_verifier      verifier;
 
     for (i32 t{0}; t < 2; ++t) {
-        writers.emplace_back([&bp, &log, &tm, t, &go, &failures] {
+        writers.emplace_back([&bp, &log, &tm, t, &go, &verifier] {
             while (!go.load()) { std::this_thread::yield(); }
 
             for (i32 i{0}; i < 3; ++i) {
                 const auto         tid{tm.begin_txn()};
                 storage::page_id_t pid;
                 {
-                    auto write_res{bp->new_write()};
-                    if (!write_res) {
-                        failures++;
-                        return;
-                    }
-                    auto [id, guard]{std::move(write_res.value())};
+                    auto [id, guard]{helpers::mt_unwrap(verifier, bp->new_write())};
                     pid = id;
                     storage::slotted_page sp{*guard.get()};
                     sp.refresh_page();
@@ -78,45 +74,32 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                 }
 
                 {
-                    auto guard_res{bp->fetch_write(pid)};
-                    if (!guard_res) {
-                        failures++;
-                        return;
-                    }
-                    auto                  guard{std::move(guard_res.value())};
+                    auto                  guard{helpers::mt_unwrap(verifier, bp->fetch_write(pid))};
                     storage::slotted_page sp{*guard.get()};
 
                     const auto data{fmt::format("t_{}_s_{}", t, i)};
-                    if (!sp.insert(helpers::span_from_string(data),
-                                   {
-                                       .txn_id      = tid,
-                                       .prev_lsn    = stdx::none,
-                                       .log_manager = log,
-                                   })) {
-                        failures++;
-                        return;
-                    }
+                    THREAD_CHECK(verifier,
+                                 sp.insert(helpers::span_from_string(data),
+                                           {
+                                               .txn_id      = tid,
+                                               .prev_lsn    = stdx::none,
+                                               .log_manager = log,
+                                           }));
 
                     if (auto page_lsn{guard.get()->page_lsn()}) {
-                        if (!tm.update_txn_lsn(tid, *page_lsn)) {
-                            failures++;
-                            return;
-                        }
+                        THREAD_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
                     }
                     guard.mark_dirty();
                 }
 
-                if (!tm.commit_txn(tid, log)) {
-                    failures++;
-                    return;
-                }
+                THREAD_CHECK(verifier, tm.commit_txn(tid, log));
             }
         });
     }
 
     go.store(true);
     writers.clear();
-    REQUIRE(failures.load() == 0);
+    REQUIRE_FALSE(verifier.dump_if_error());
 }
 
 namespace {
