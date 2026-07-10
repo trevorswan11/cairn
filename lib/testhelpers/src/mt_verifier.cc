@@ -8,8 +8,6 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 
-#include "testhelpers/internal/safe_assertions.hh"
-
 namespace cairn::tests::helpers {
 
 auto mt_verifier::add_failure(std::string msg) -> void {
@@ -22,9 +20,11 @@ auto mt_verifier::check(bool condition, std::string_view expr, std::string_view 
     if (!condition) { add_failure(fmt::format("{} failed at {}:{}", expr, file, line)); }
 }
 
-auto mt_verifier::dump_if_error() -> void {
-    CAIRN_CHECK(failures_.empty());
+auto mt_verifier::dump_if_error() -> bool {
+    const auto has_errors{!failures_.empty()};
     for (const auto& failure : failures_) { fmt::println("\t{}", failure); }
+    failures_.clear();
+    return has_errors;
 }
 
 } // namespace cairn::tests::helpers

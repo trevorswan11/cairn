@@ -12,7 +12,9 @@ class mt_verifier {
   public:
     auto add_failure(std::string msg) -> void;
     auto check(bool condition, std::string_view expr, std::string_view file, int line) -> void;
-    auto dump_if_error() -> void;
+
+    // Returns true only if there were errors emitted
+    auto dump_if_error() -> bool;
 
   private:
     std::mutex               mutex_;
