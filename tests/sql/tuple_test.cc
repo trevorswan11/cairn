@@ -40,7 +40,7 @@ TEST_CASE("tuple serialization and deserialization") {
                                   value_t{i16{256}},
                                   value_t{i64{999'999'999}},
                                   value_t{f32{3.14f}}};
-        const auto           t{helpers::unwrap(tuple::serialize(sch, vals))};
+        const auto           t{UNWRAP(tuple::serialize(sch, vals))};
 
         REQUIRE(t.deserialize(sch, out_vals));
         REQUIRE(out_vals.size() == 9);
@@ -66,7 +66,7 @@ TEST_CASE("tuple serialization and deserialization") {
                                         value_t::make_null(type::id_t::SMALLINT),
                                         value_t::make_null(type::id_t::BIGINT),
                                         value_t::make_null(type::id_t::FLOAT)};
-        const auto                 t{helpers::unwrap(tuple::serialize(sch, vals))};
+        const auto                 t{UNWRAP(tuple::serialize(sch, vals))};
 
         CHECK(t.deserialize(sch, out_vals));
         CHECK(out_vals.size() == 9);

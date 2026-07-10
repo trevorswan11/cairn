@@ -60,7 +60,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
                         active_slots.emplace_back(slot_id);
                     }
                 } else {
-                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_PAGE_FULL);
+                    EXPECT_TRUE(UNWRAP_ERR(res) == error_t::STORAGE_PAGE_FULL);
                 }
             },
             [&](UpdateOp uop) {
@@ -73,7 +73,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
                 if (auto res{sp.update(slot_id, span)}) {
                     oracle[slot_val] = uop.data;
                 } else {
-                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_PAGE_FULL);
+                    EXPECT_TRUE(UNWRAP_ERR(res) == error_t::STORAGE_PAGE_FULL);
                 }
             },
             [&](RemoveOp rop) {
@@ -93,7 +93,7 @@ void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
 
         for (const auto& [slot_val, expected_str] : oracle) {
             slot_id_t  slot_id{slot_val};
-            auto       span{helpers::unwrap(sp.get(slot_id))};
+            auto       span{UNWRAP(sp.get(slot_id))};
             const auto actual_str{helpers::string_from_span(span)};
             EXPECT_EQ(actual_str, expected_str);
         }

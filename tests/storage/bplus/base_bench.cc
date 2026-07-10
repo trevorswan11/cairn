@@ -25,8 +25,8 @@ using tree_t = bplus_tree<i64, u64, 4_KiB>;
 
 TEST_CASE("bplus_tree throughput", "[.][bench]") {
     helpers::tempfile file{"bpt_bench"};
-    auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto              tree{helpers::unwrap(tree_t::create(*pool))};
+    auto              pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto              tree{UNWRAP(tree_t::create(*pool))};
 
     std::mt19937_64                   rng{Catch::getSeed()};
     stdx::fixed::vector<i64, 100'000> keys;
@@ -48,10 +48,10 @@ TEST_CASE("bplus_tree throughput", "[.][bench]") {
     BENCHMARK_ADVANCED("bulk insert 10k into a fresh tree")
     (Catch::Benchmark::Chronometer meter) {
         helpers::tempfile fresh_file{"bpt_bench_ins"};
-        auto              fresh_pool{helpers::unwrap(tree_t::pool_t::open(fresh_file.path))};
+        auto              fresh_pool{UNWRAP(tree_t::pool_t::open(fresh_file.path))};
 
         meter.measure([&] {
-            auto fresh_tree{helpers::unwrap(tree_t::create(*fresh_pool))};
+            auto fresh_tree{UNWRAP(tree_t::create(*fresh_pool))};
             for (i64 i{0}; i < 10'000; ++i) { DISCARD(fresh_tree.emplace(i, static_cast<u64>(i))); }
             return fresh_tree.empty();
         });

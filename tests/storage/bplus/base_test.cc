@@ -45,34 +45,34 @@ class fat_key {
 TEST_CASE("bplus_tree handles an empty tree") {
     helpers::tempfile file{"bpt_empty"};
     using tree_t = bplus_tree<i64, u64, 64>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
-    CHECK(helpers::unwrap(tree.empty()));
-    CHECK_FALSE(helpers::unwrap(tree.contains(42)));
-    CHECK(helpers::unwrap_err(tree.get(42)) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP(tree.empty()));
+    CHECK_FALSE(UNWRAP(tree.contains(42)));
+    CHECK(UNWRAP_ERR(tree.get(42)) == error_t::STORAGE_KEY_NOT_FOUND);
 }
 
 TEST_CASE("bplus_tree inserts and looks up sequential keys") {
     helpers::tempfile file{"bpt_seq"};
     using tree_t = bplus_tree<i64, u64, 256>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     constexpr i64 n{5'000};
     for (i64 i{0}; i < n; ++i) { REQUIRE(tree.emplace(i, static_cast<u64>(i * 10))); }
-    CHECK_FALSE(helpers::unwrap(tree.empty()));
-    for (i64 i{0}; i < n; ++i) { CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i * 10)); }
+    CHECK_FALSE(UNWRAP(tree.empty()));
+    for (i64 i{0}; i < n; ++i) { CHECK(UNWRAP(tree.get(i)) == static_cast<u64>(i * 10)); }
 
-    CHECK(helpers::unwrap_err(tree.emplace(123, 0)) == error_t::STORAGE_DUPLICATE_KEY);
-    CHECK(helpers::unwrap_err(tree.get(n + 1)) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tree.emplace(123, 0)) == error_t::STORAGE_DUPLICATE_KEY);
+    CHECK(UNWRAP_ERR(tree.get(n + 1)) == error_t::STORAGE_KEY_NOT_FOUND);
 }
 
 TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
     helpers::tempfile file{"bpt_rand"};
     using tree_t = bplus_tree<i64, u64, 256>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     std::mt19937_64                 rng{Catch::getSeed()};
     stdx::fixed::vector<i64, 4'000> keys;
@@ -86,14 +86,14 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
         REQUIRE(tree.emplace(k, v));
         oracle.emplace(k, v);
     }
-    for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
+    for (const auto& [k, v] : oracle) { CHECK(UNWRAP(tree.get(k)) == v); }
 
     SECTION("full ascending range scan equals the oracle order") {
         stdx::fixed::vector<std::pair<i64, u64>, keys.capacity()> got;
         const auto                                                count{tree.range_scan(
             0, max, [&](const i64& k, const u64& v) -> void { got.emplace_back(k, v); })};
 
-        CHECK(helpers::unwrap(count) == oracle.size());
+        CHECK(UNWRAP(count) == oracle.size());
         REQUIRE(got.size() == oracle.size());
         CHECK(std::ranges::equal(got, oracle));
     }
@@ -118,7 +118,7 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
             },
             inclusive)};
 
-        CHECK(helpers::unwrap(count) == seen);
+        CHECK(UNWRAP(count) == seen);
         if (inclusive) {
             CHECK(seen == static_cast<usize>(hi - lo + 1));
         } else {
@@ -132,21 +132,21 @@ TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
             0, max, [&](const i64&, const u64&) -> bool { return ++visited < 10; })};
 
         CHECK(visited == 10);
-        CHECK(helpers::unwrap(count) == visited);
+        CHECK(UNWRAP(count) == visited);
     }
 
     SECTION("non-bool visitor values are discarded safely") {
         const auto count{tree.range_scan(
             0, max, [] [[nodiscard]] (const i64&, const u64&) -> double { return 0.0; })};
-        CHECK(helpers::unwrap(count) == oracle.size());
+        CHECK(UNWRAP(count) == oracle.size());
     }
 }
 
 TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
     helpers::tempfile file{"bpt_del"};
     using tree_t = bplus_tree<i64, u64, 256>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     std::mt19937_64                 rng{Catch::getSeed()};
     stdx::fixed::vector<i64, 3'000> keys;
@@ -164,18 +164,18 @@ TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
         REQUIRE(tree.remove(keys[i]));
         oracle.erase(keys[i]);
     }
-    CHECK(helpers::unwrap_err(tree.remove(keys[0])) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tree.remove(keys[0])) == error_t::STORAGE_KEY_NOT_FOUND);
 
-    for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
+    for (const auto& [k, v] : oracle) { CHECK(UNWRAP(tree.get(k)) == v); }
     for (usize i{half}; i < keys.size(); ++i) { REQUIRE(tree.remove(keys[i])); }
-    CHECK(helpers::unwrap(tree.empty()));
+    CHECK(UNWRAP(tree.empty()));
 }
 
 TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
     helpers::tempfile file{"bpt_fuzz"};
     using tree_t = bplus_tree<i64, u64, 256>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     constexpr i64 lo{0};
     constexpr i64 hi{8'000};
@@ -190,7 +190,7 @@ TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
         if (op_dist(rng)) {
             const u64 v{rng()};
             if (oracle.contains(k)) {
-                CHECK(helpers::unwrap_err(tree.emplace(k, v)) == error_t::STORAGE_DUPLICATE_KEY);
+                CHECK(UNWRAP_ERR(tree.emplace(k, v)) == error_t::STORAGE_DUPLICATE_KEY);
             } else {
                 CHECK(tree.emplace(k, v));
                 oracle.emplace(k, v);
@@ -200,13 +200,13 @@ TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
                 CHECK(tree.remove(k));
                 oracle.erase(k);
             } else {
-                CHECK(helpers::unwrap_err(tree.remove(k)) == error_t::STORAGE_KEY_NOT_FOUND);
+                CHECK(UNWRAP_ERR(tree.remove(k)) == error_t::STORAGE_KEY_NOT_FOUND);
             }
         }
     }
 
-    for (const auto& [k, v] : oracle) { CHECK(helpers::unwrap(tree.get(k)) == v); }
-    CHECK(helpers::unwrap(tree.range_scan(lo, hi, [](const i64&, const u64&) {})) == oracle.size());
+    for (const auto& [k, v] : oracle) { CHECK(UNWRAP(tree.get(k)) == v); }
+    CHECK(UNWRAP(tree.range_scan(lo, hi, [](const i64&, const u64&) {})) == oracle.size());
 }
 
 TEST_CASE("bplus_tree exercises split/merge/collapse with a small fan-out") {
@@ -214,8 +214,8 @@ TEST_CASE("bplus_tree exercises split/merge/collapse with a small fan-out") {
     STATIC_REQUIRE(tree_t::LEAF_SLOTS < 16);
 
     helpers::tempfile file{"bpt_wide"};
-    auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto              tree{helpers::unwrap(tree_t::create(*pool))};
+    auto              pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto              tree{UNWRAP(tree_t::create(*pool))};
 
     std::mt19937_64               rng{Catch::getSeed()};
     stdx::fixed::vector<i64, 800> keys;
@@ -224,15 +224,15 @@ TEST_CASE("bplus_tree exercises split/merge/collapse with a small fan-out") {
 
     for (const i64 k : keys) { REQUIRE(tree.emplace(fat_key{k}, static_cast<u64>(k))); }
     for (usize i{0}; i < keys.capacity(); ++i) {
-        CHECK(helpers::unwrap(tree.get(fat_key{i})) == static_cast<u64>(i));
+        CHECK(UNWRAP(tree.get(fat_key{i})) == static_cast<u64>(i));
     }
 
     std::ranges::shuffle(keys, rng);
     for (const i64 k : keys) { REQUIRE(tree.remove(fat_key{k})); }
-    CHECK(helpers::unwrap(tree.empty()));
+    CHECK(UNWRAP(tree.empty()));
 
     REQUIRE(tree.emplace(fat_key{7}, 7));
-    CHECK(helpers::unwrap(tree.get(fat_key{7})) == 7);
+    CHECK(UNWRAP(tree.get(fat_key{7})) == 7);
 }
 
 TEST_CASE("bplus_tree persists across a buffer-pool reopen") {
@@ -242,39 +242,37 @@ TEST_CASE("bplus_tree persists across a buffer-pool reopen") {
     page_id_t meta{INVALID_PAGE_ID};
 
     {
-        auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-        auto tree{helpers::unwrap(tree_t::create(*pool))};
+        auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+        auto tree{UNWRAP(tree_t::create(*pool))};
         meta = tree.meta_page();
 
         for (i64 i{0}; i < n; ++i) { REQUIRE(tree.emplace(i, static_cast<u64>(i + 1))); }
         REQUIRE(pool->flush());
     }
 
-    auto   pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
+    auto   pool{UNWRAP(tree_t::pool_t::open(file.path))};
     tree_t tree{*pool, meta};
-    for (i64 i{0}; i < n; ++i) { CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i + 1)); }
+    for (i64 i{0}; i < n; ++i) { CHECK(UNWRAP(tree.get(i)) == static_cast<u64>(i + 1)); }
 }
 
 TEST_CASE("bplus_tree update operations") {
     helpers::tempfile file{"bpt_update"};
     using tree_t = bplus_tree<i64, u64, 64>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     SECTION("Basic update") {
-        CHECK(helpers::unwrap_err(tree.update(42, 100)) == error_t::STORAGE_KEY_NOT_FOUND);
+        CHECK(UNWRAP_ERR(tree.update(42, 100)) == error_t::STORAGE_KEY_NOT_FOUND);
         REQUIRE(tree.emplace(42, 10));
-        CHECK(helpers::unwrap(tree.get(42)) == 10);
+        CHECK(UNWRAP(tree.get(42)) == 10);
         REQUIRE(tree.update(42, 20));
-        CHECK(helpers::unwrap(tree.get(42)) == 20);
+        CHECK(UNWRAP(tree.get(42)) == 20);
     }
 
     SECTION("Multiple update") {
         for (i64 i{0}; i < 100; ++i) { REQUIRE(tree.emplace(i, static_cast<u64>(i * 10))); }
         for (i64 i{0}; i < 100; ++i) { REQUIRE(tree.update(i, static_cast<u64>(i * 100))); }
-        for (i64 i{0}; i < 100; ++i) {
-            CHECK(helpers::unwrap(tree.get(i)) == static_cast<u64>(i * 100));
-        }
+        for (i64 i{0}; i < 100; ++i) { CHECK(UNWRAP(tree.get(i)) == static_cast<u64>(i * 100)); }
     }
 }
 

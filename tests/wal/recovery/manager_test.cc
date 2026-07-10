@@ -41,13 +41,13 @@ TEST_CASE("recovery clean shutdown (no-op)") {
     // Run database cleanly and shut down
     {
         log::manager log{log_file.path, 4_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager tm;
         const auto   tid{tm.begin_txn()};
 
-        auto [id, guard]{helpers::unwrap(bp->new_write())};
+        auto [id, guard]{UNWRAP(bp->new_write())};
         pid = id;
 
         slotted_page sp{*guard.get()};
@@ -60,7 +60,7 @@ TEST_CASE("recovery clean shutdown (no-op)") {
                             .log_manager = log,
                         }));
 
-        update_lsn = helpers::unwrap(guard.get()->page_lsn());
+        update_lsn = UNWRAP(guard.get()->page_lsn());
         REQUIRE(tm.update_txn_lsn(tid, update_lsn));
         guard.mark_dirty();
         guard.drop();
@@ -71,7 +71,7 @@ TEST_CASE("recovery clean shutdown (no-op)") {
     // Run recovery manager on the cleanly shut down database
     {
         log::manager log{log_file.path, 4_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager         tm;
@@ -81,11 +81,11 @@ TEST_CASE("recovery clean shutdown (no-op)") {
 
     // Verify data is still intact
     {
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
-        auto         guard{helpers::unwrap(bp->fetch_read(pid))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
+        auto         guard{UNWRAP(bp->fetch_read(pid))};
         slotted_page sp{*guard.get()};
 
-        const auto tuple{helpers::unwrap(sp.get(slot_id_t{0}))};
+        const auto tuple{UNWRAP(sp.get(slot_id_t{0}))};
         CHECK(helpers::string_from_span(tuple) == data);
     }
 }
@@ -103,7 +103,7 @@ TEST_CASE("recovery crash") {
     // Perform database operations
     {
         log::manager log{log_file.path, 16_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager           tm;
@@ -114,7 +114,7 @@ TEST_CASE("recovery crash") {
 
         // Write to page 1 under T1
         {
-            auto [id, guard]{helpers::unwrap(bp->new_write())};
+            auto [id, guard]{UNWRAP(bp->new_write())};
             pid1 = id;
             slotted_page sp{*guard.get()};
             sp.refresh_page();
@@ -125,13 +125,13 @@ TEST_CASE("recovery crash") {
                                 .prev_lsn    = stdx::none,
                                 .log_manager = log,
                             }));
-            REQUIRE(tm.update_txn_lsn(t1, helpers::unwrap(guard.get()->page_lsn())));
+            REQUIRE(tm.update_txn_lsn(t1, UNWRAP(guard.get()->page_lsn())));
             guard.mark_dirty();
         }
 
         // Write to page 2 under T2
         {
-            auto [id, guard]{helpers::unwrap(bp->new_write())};
+            auto [id, guard]{UNWRAP(bp->new_write())};
             pid2 = id;
             slotted_page sp{*guard.get()};
             sp.refresh_page();
@@ -142,7 +142,7 @@ TEST_CASE("recovery crash") {
                                 .prev_lsn    = stdx::none,
                                 .log_manager = log,
                             }));
-            REQUIRE(tm.update_txn_lsn(t2, helpers::unwrap(guard.get()->page_lsn())));
+            REQUIRE(tm.update_txn_lsn(t2, UNWRAP(guard.get()->page_lsn())));
             guard.mark_dirty();
         }
 
@@ -158,7 +158,7 @@ TEST_CASE("recovery crash") {
             db_snapshot.path, db_file.path, std::filesystem::copy_options::overwrite_existing);
 
         log::manager log{log_file.path, 16_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager         tm;
@@ -168,21 +168,21 @@ TEST_CASE("recovery crash") {
 
     // Verify recovered state
     {
-        auto bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto bp{UNWRAP(pool_t::open(db_file.path))};
 
         // T1 committed data must be present
         {
-            auto         guard{helpers::unwrap(bp->fetch_read(pid1))};
+            auto         guard{UNWRAP(bp->fetch_read(pid1))};
             slotted_page sp{*guard.get()};
-            const auto   tuple{helpers::unwrap(sp.get(slot_id_t{0}))};
+            const auto   tuple{UNWRAP(sp.get(slot_id_t{0}))};
             CHECK(helpers::string_from_span(tuple) == "T1 committed data");
         }
 
         // T2 uncommitted data must NOT be present
         {
-            auto         guard{helpers::unwrap(bp->fetch_read(pid2))};
+            auto         guard{UNWRAP(bp->fetch_read(pid2))};
             slotted_page sp{*guard.get()};
-            CHECK(helpers::unwrap_err(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
         }
     }
 }
@@ -201,7 +201,7 @@ TEST_CASE("recovery with checkpoint") {
 
     {
         log::manager log{log_file.path, 16_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager        tm;
@@ -212,7 +212,7 @@ TEST_CASE("recovery with checkpoint") {
 
         // 1. Write T1 page 1
         {
-            auto [id, guard]{helpers::unwrap(bp->new_write())};
+            auto [id, guard]{UNWRAP(bp->new_write())};
             pid1 = id;
             slotted_page sp{*guard.get()};
             sp.refresh_page();
@@ -222,18 +222,18 @@ TEST_CASE("recovery with checkpoint") {
                                 .prev_lsn    = stdx::none,
                                 .log_manager = log,
                             }));
-            update_lsn1 = helpers::unwrap(guard.get()->page_lsn());
+            update_lsn1 = UNWRAP(guard.get()->page_lsn());
             REQUIRE(tm.update_txn_lsn(t1, update_lsn1));
             guard.mark_dirty();
         }
 
         // 2. Perform a checkpoint
-        const auto cp_lsn{helpers::unwrap(cm.checkpoint(*bp, tm, log))};
+        const auto cp_lsn{UNWRAP(cm.checkpoint(*bp, tm, log))};
         REQUIRE(cp_lsn != log::INVALID_LSN);
 
         // 3. Write T2 page 2
         {
-            auto [id, guard]{helpers::unwrap(bp->new_write())};
+            auto [id, guard]{UNWRAP(bp->new_write())};
             pid2 = id;
             slotted_page sp{*guard.get()};
             sp.refresh_page();
@@ -243,7 +243,7 @@ TEST_CASE("recovery with checkpoint") {
                                 .prev_lsn    = stdx::none,
                                 .log_manager = log,
                             }));
-            update_lsn2 = helpers::unwrap(guard.get()->page_lsn());
+            update_lsn2 = UNWRAP(guard.get()->page_lsn());
             REQUIRE(tm.update_txn_lsn(t2, update_lsn2));
             guard.mark_dirty();
         }
@@ -260,7 +260,7 @@ TEST_CASE("recovery with checkpoint") {
             db_snapshot.path, db_file.path, std::filesystem::copy_options::overwrite_existing);
 
         log::manager log{log_file.path, 16_KiB};
-        auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
         bp->set_log_manager(log);
 
         txn::manager         tm;
@@ -270,21 +270,21 @@ TEST_CASE("recovery with checkpoint") {
 
     // Verify state
     {
-        auto bp{helpers::unwrap(pool_t::open(db_file.path))};
+        auto bp{UNWRAP(pool_t::open(db_file.path))};
 
         // T1 committed data must be present
         {
-            auto         guard{helpers::unwrap(bp->fetch_read(pid1))};
+            auto         guard{UNWRAP(bp->fetch_read(pid1))};
             slotted_page sp{*guard.get()};
-            const auto   tuple{helpers::unwrap(sp.get(slot_id_t{0}))};
+            const auto   tuple{UNWRAP(sp.get(slot_id_t{0}))};
             CHECK(helpers::string_from_span(tuple) == "T1 checkpoinable data");
         }
 
         // T2 uncommitted data must NOT be present
         {
-            auto         guard{helpers::unwrap(bp->fetch_read(pid2))};
+            auto         guard{UNWRAP(bp->fetch_read(pid2))};
             slotted_page sp{*guard.get()};
-            CHECK(helpers::unwrap_err(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
         }
     }
 }

@@ -49,7 +49,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
 
     using pool_t = storage::buffer_pool<8>;
     wal::log::manager log{wal_path, 4_KiB};
-    auto              bp{helpers::unwrap(pool_t::open(db_path))};
+    auto              bp{UNWRAP(pool_t::open(db_path))};
     bp->set_log_manager(log);
     txn::manager tm;
 
@@ -66,7 +66,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                 const auto         tid{tm.begin_txn()};
                 storage::page_id_t pid;
                 {
-                    auto [id, guard]{helpers::mt_unwrap(verifier, bp->new_write())};
+                    auto [id, guard]{MT_UNWRAP(verifier, bp->new_write())};
                     pid = id;
                     storage::slotted_page sp{*guard.get()};
                     sp.refresh_page();
@@ -74,7 +74,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                 }
 
                 {
-                    auto                  guard{helpers::mt_unwrap(verifier, bp->fetch_write(pid))};
+                    auto                  guard{MT_UNWRAP(verifier, bp->fetch_write(pid))};
                     storage::slotted_page sp{*guard.get()};
 
                     const auto data{fmt::format("t_{}_s_{}", t, i)};
@@ -127,7 +127,7 @@ TEST_CASE("crash recovery entrypoint") {
 
         helpers::set_env("CAIRN_CRASH_LIMIT", std::to_string(limit));
         const helpers::Argv args{self_exe, "[crash]"};
-        const auto          exit_code{helpers::unwrap(helpers::spawn_child(args))};
+        const auto          exit_code{UNWRAP(helpers::spawn_child(args))};
 
         if (exit_code == 0) {
             // Workload ran to completion without hitting the crash limit
@@ -138,7 +138,7 @@ TEST_CASE("crash recovery entrypoint") {
 
             {
                 wal::log::manager log{log_file.path, 4_KiB};
-                auto              bp{helpers::unwrap(pool_t::open(db_file.path))};
+                auto              bp{UNWRAP(pool_t::open(db_file.path))};
                 bp->set_log_manager(log);
 
                 txn::manager              tm;
@@ -147,25 +147,25 @@ TEST_CASE("crash recovery entrypoint") {
             }
 
             // Check correctness of recovered state by scanning the WAL
-            auto reader{helpers::unwrap(wal::log::reader::open(log_file.path))};
+            auto reader{UNWRAP(wal::log::reader::open(log_file.path))};
             REQUIRE(reader.seek_to_start());
 
             ankerl::unordered_dense::set<txn::id_t, txn::id_hash_t> committed_txns;
             update_map_t                                            updates;
 
-            while (auto rec{helpers::unwrap(reader.next_record_lenient())}) {
+            while (auto rec{UNWRAP(reader.next_record_lenient())}) {
                 if (rec->type == wal::log::record_type::COMMIT) {
                     committed_txns.insert(rec->txn_id);
                 } else if (rec->type == wal::log::record_type::UPDATE) {
                     updates[rec->txn_id].emplace_back(
-                        helpers::unwrap(rec->page_id),
-                        helpers::unwrap(rec->slot_id),
+                        UNWRAP(rec->page_id),
+                        UNWRAP(rec->slot_id),
                         std::string{helpers::string_from_span(rec->redo_data)});
                 }
             }
 
             // Verify recovered database pages match the committed txn state
-            auto      bp{helpers::unwrap(pool_t::open(db_file.path))};
+            auto      bp{UNWRAP(pool_t::open(db_file.path))};
             const i64 num_pages{bp->num_pages()};
 
             for (const auto& [tid, tx_updates] : updates) {
@@ -176,9 +176,9 @@ TEST_CASE("crash recovery entrypoint") {
 
                     if (is_committed) {
                         REQUIRE(page_id_val < num_pages);
-                        auto                  guard{helpers::unwrap(bp->fetch_read(upd.pid))};
+                        auto                  guard{UNWRAP(bp->fetch_read(upd.pid))};
                         storage::slotted_page sp{*guard.get()};
-                        auto                  tuple{helpers::unwrap(sp.get(upd.sid))};
+                        auto                  tuple{UNWRAP(sp.get(upd.sid))};
                         CHECK(helpers::string_from_span(tuple) == upd.data);
                     } else {
                         if (page_id_val < num_pages) {

@@ -18,9 +18,9 @@ TEST_CASE("replacer evicts LRU among under-K frames") {
     CHECK(replacer.size() == 3);
 
     // Insert time should be used since all have single access
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{0});
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{1});
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{2});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{0});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{1});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{2});
     CHECK(replacer.size() == 0);
     CHECK_FALSE(replacer.evict());
 }
@@ -34,8 +34,8 @@ TEST_CASE("replacer prefers under-K frames") {
     replacer.set_evictable(frame_id_t{0}, true);
     replacer.set_evictable(frame_id_t{1}, true);
 
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{1});
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{0});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{1});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{0});
 }
 
 TEST_CASE("replacer orders full-history by k-distance") {
@@ -49,8 +49,8 @@ TEST_CASE("replacer orders full-history by k-distance") {
     replacer.set_evictable(frame_id_t{0}, true);
     replacer.set_evictable(frame_id_t{1}, true);
 
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{0});
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{1});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{0});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{1});
 }
 
 TEST_CASE("replacer respects evictability and removal") {
@@ -66,8 +66,8 @@ TEST_CASE("replacer respects evictability and removal") {
     CHECK(replacer.size() == 2);
 
     // 1 should never be evicted and 2 should've been dropped
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{0});
-    CHECK(helpers::unwrap(replacer.evict()) == frame_id_t{3});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{0});
+    CHECK(UNWRAP(replacer.evict()) == frame_id_t{3});
     CHECK_FALSE(replacer.evict());
 }
 

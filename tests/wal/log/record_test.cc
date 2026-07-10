@@ -59,7 +59,7 @@ TEST_CASE("log::record checksum corruption") {
 
     buffer[25] ^= std::byte{0xFF};
     gsl::span<const std::byte> src{buffer};
-    CHECK(helpers::unwrap_err(log::record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
+    CHECK(UNWRAP_ERR(log::record::deserialize(src)) == error_t::WAL_CHECKSUM_CORRUPT);
 }
 
 } // namespace cairn::tests

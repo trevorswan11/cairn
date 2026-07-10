@@ -23,13 +23,12 @@ namespace cairn::tests {
 
 using namespace stdx::size_literals;
 using namespace cairn::exec;
-using helpers::unwrap;
 
 TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
     helpers::tempfile file{"exec_scan_table_test"};
     using txn_tree_t = txn::iot_tree<i64, 128, 64>;
-    auto                        pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                        base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                        pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                        base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     txn::undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t                  tree{base_tree, undo_mgr};
     txn::manager                tm;
@@ -51,10 +50,10 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
     // 2. Transaction 2 starts. It shouldn't see anything yet
     {
         const auto               t2{tm.begin_txn()};
-        const auto               snap{unwrap(tm.acquire_snapshot(t2))};
+        const auto               snap{UNWRAP(tm.acquire_snapshot(t2))};
         table_scan<i64, 128, 64> scanner{tree, t2, snap, tm};
 
-        CHECK(unwrap(scanner(0, 100, visitor)) == 0);
+        CHECK(UNWRAP(scanner(0, 100, visitor)) == 0);
         CHECK(results.empty());
     }
 
@@ -66,10 +65,10 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
     {
         results.clear();
         const auto               t3{tm.begin_txn()};
-        const auto               snap{unwrap(tm.acquire_snapshot(t3))};
+        const auto               snap{UNWRAP(tm.acquire_snapshot(t3))};
         table_scan<i64, 128, 64> scanner{tree, t3, snap, tm};
 
-        CHECK(unwrap(scanner(0, 100, visitor)) == 2);
+        CHECK(UNWRAP(scanner(0, 100, visitor)) == 2);
         REQUIRE(results.size() == 2);
         CHECK(results[0] == record1);
         CHECK(results[1] == record2);
@@ -81,10 +80,10 @@ TEST_CASE("exec::table_scan snapshot isolation and visibility range scans") {
     {
         results.clear();
         const auto               t4{tm.begin_txn()};
-        const auto               snap{unwrap(tm.acquire_snapshot(t4))};
+        const auto               snap{UNWRAP(tm.acquire_snapshot(t4))};
         table_scan<i64, 128, 64> scanner{tree, t4, snap, tm};
 
-        CHECK(unwrap(scanner(0, 100, visitor)) == 2);
+        CHECK(UNWRAP(scanner(0, 100, visitor)) == 2);
         REQUIRE(results.size() == 2);
         CHECK(results[0] == record1);
         CHECK(results[1] == record2);

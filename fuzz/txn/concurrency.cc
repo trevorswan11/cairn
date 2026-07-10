@@ -57,8 +57,8 @@ using ConcurrencyOp = stdx::variant<BeginOp, ReadOp, WriteOp, CommitOp, AbortOp>
 void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
     helpers::tempfile file{"fuzz_concurrency_db"};
     using txn_tree_t = txn::iot_tree<i64, 128, 64>;
-    auto                        pool{helpers::unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                        base_tree{helpers::unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                        pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                        base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     txn::undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t                  tree{base_tree, undo_mgr};
     txn::manager                tm;
@@ -98,10 +98,10 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 if (!txns[idx].active) { return; }
 
                 const auto txn_id{txns[idx].id};
-                const auto snap{helpers::unwrap(tm.acquire_snapshot(txn_id))};
+                const auto snap{UNWRAP(tm.acquire_snapshot(txn_id))};
 
                 std::vector<std::byte> buf;
-                auto       get_res{helpers::unwrap(tree.get_txn(txn_id, snap, tm, rop.key, buf))};
+                auto       get_res{UNWRAP(tree.get_txn(txn_id, snap, tm, rop.key, buf))};
                 const auto val_str{get_res.transform(helpers::string_from_span).value_or("")};
 
                 // Verify Repeatable Reads behavior

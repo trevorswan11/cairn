@@ -18,9 +18,9 @@
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
 #include "testhelpers/conversion.hh"
+#include "testhelpers/mt_verifier.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
-#include "testhelpers/mt_verifier.hh"
 #include "txn/manager.hh"
 #include "wal/checkpoint/manager.hh"
 #include "wal/checkpoint/types.hh"
@@ -43,7 +43,7 @@ TEST_CASE("checkpoint basic accuracy") {
 
     using pool_t = buffer_pool<8>;
     log::manager log{log_file.path, 4_KiB};
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+    auto         bp{UNWRAP(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager        tm;
@@ -54,7 +54,7 @@ TEST_CASE("checkpoint basic accuracy") {
     log::seq_num update_lsn;
 
     {
-        auto [id, guard]{helpers::unwrap(bp->new_write())};
+        auto [id, guard]{UNWRAP(bp->new_write())};
         pid = id;
 
         slotted_page sp{*guard.get()};
@@ -68,34 +68,34 @@ TEST_CASE("checkpoint basic accuracy") {
                             .log_manager = log,
                         }));
 
-        update_lsn = helpers::unwrap(guard.get()->page_lsn());
+        update_lsn = UNWRAP(guard.get()->page_lsn());
         REQUIRE(guard.get()->rec_lsn().has_value());
         CHECK(*guard.get()->rec_lsn() == update_lsn);
         REQUIRE(tm.update_txn_lsn(tid, update_lsn));
         guard.mark_dirty();
     }
 
-    const auto cm_lsn{helpers::unwrap(cm.checkpoint(*bp, tm, log))};
+    const auto cm_lsn{UNWRAP(cm.checkpoint(*bp, tm, log))};
     CHECK(cm_lsn != log::INVALID_LSN);
-    const auto persisted_lsn{helpers::unwrap(cm.read_latest_checkpoint_lsn())};
+    const auto persisted_lsn{UNWRAP(cm.read_latest_checkpoint_lsn())};
     CHECK(persisted_lsn == cm_lsn);
 
     {
-        auto reader{helpers::unwrap(log::reader::open(log_file.path))};
+        auto reader{UNWRAP(log::reader::open(log_file.path))};
 
         // Record 1: UPDATE
-        auto r1{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto r1{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r1.lsn == update_lsn);
         CHECK(r1.type == log::record_type::UPDATE);
         CHECK(r1.txn_id == tid);
 
         // Record 2: CHECKPOINT_BEGIN
-        auto r2{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto r2{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r2.lsn == cm_lsn);
         CHECK(r2.type == log::record_type::CHECKPOINT_BEGIN);
 
         // Record 3: CHECKPOINT_END
-        auto r3{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto r3{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r3.type == log::record_type::CHECKPOINT_END);
 
         // DPT and ATT details inside CHECKPOINT_END
@@ -117,7 +117,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
     using pool_t = buffer_pool<8>;
     log::manager log{log_file.path, 16_KiB};
-    auto         bp{helpers::unwrap(pool_t::open(db_file.path))};
+    auto         bp{UNWRAP(pool_t::open(db_file.path))};
     bp->set_log_manager(log);
 
     txn::manager        tm;
@@ -135,7 +135,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
             page_id_t pid;
             {
-                auto [id, guard] = helpers::mt_unwrap(verifier, bp->new_write());
+                auto [id, guard] = MT_UNWRAP(verifier, bp->new_write());
                 pid              = id;
                 slotted_page sp{*guard.get()};
                 sp.refresh_page();
@@ -144,7 +144,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
 
             i32 seq{0};
             while (!stop.load()) {
-                auto         guard{helpers::mt_unwrap(verifier, bp->fetch_write(pid))};
+                auto         guard{MT_UNWRAP(verifier, bp->fetch_write(pid))};
                 slotted_page sp{*guard.get()};
 
                 const auto data{fmt::format("writer {} seq {}", t, seq++)};

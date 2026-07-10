@@ -26,9 +26,9 @@ TEST_CASE("slotted_page guards when empty") {
     slotted_page sp{p};
     sp.refresh_page();
 
-    CHECK(helpers::unwrap_err(sp.get(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
-    CHECK(helpers::unwrap_err(sp.remove(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
-    CHECK(helpers::unwrap_err(sp.update(slot_id_t{0}, {})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.remove(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.update(slot_id_t{0}, {})) == error_t::STORAGE_INVALID_SLOT);
 }
 
 TEST_CASE("slotted_page insert and get") {
@@ -37,11 +37,11 @@ TEST_CASE("slotted_page insert and get") {
     sp.refresh_page();
 
     const std::string_view data{"hello world"};
-    const auto             slot_id{helpers::unwrap(sp.insert(helpers::span_from_string(data)))};
+    const auto             slot_id{UNWRAP(sp.insert(helpers::span_from_string(data)))};
     CHECK(slot_id == slot_id_t{0});
     CHECK(sp.slot_count() == 1);
 
-    const auto tuple_out{helpers::unwrap(sp.get(slot_id))};
+    const auto tuple_out{UNWRAP(sp.get(slot_id))};
     CHECK(helpers::string_from_span(tuple_out) == data);
 }
 
@@ -51,27 +51,27 @@ TEST_CASE("slotted_page delete and update") {
     sp.refresh_page();
 
     const std::string_view data1{"first tuple"};
-    const auto             id1{helpers::unwrap(sp.insert(helpers::span_from_string(data1)))};
+    const auto             id1{UNWRAP(sp.insert(helpers::span_from_string(data1)))};
     const std::string_view data2{"second tuple"};
-    const auto             id2{helpers::unwrap(sp.insert(helpers::span_from_string(data2)))};
+    const auto             id2{UNWRAP(sp.insert(helpers::span_from_string(data2)))};
 
     REQUIRE(sp.remove(id1));
-    CHECK(helpers::unwrap_err(sp.get(id1)) == error_t::STORAGE_TUPLE_DELETED);
+    CHECK(UNWRAP_ERR(sp.get(id1)) == error_t::STORAGE_TUPLE_DELETED);
 
     // Should reuse tombstone
     const std::string_view data3{"reused tuple"};
-    const auto             id3{helpers::unwrap(sp.insert(helpers::span_from_string(data3)))};
+    const auto             id3{UNWRAP(sp.insert(helpers::span_from_string(data3)))};
     CHECK(id3 == id1);
 
     // Update in-place to smaller
     const std::string_view data4{"smaller"};
     REQUIRE(sp.update(id2, helpers::span_from_string(data4)));
-    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id2))) == data4);
+    CHECK(helpers::string_from_span(UNWRAP(sp.get(id2))) == data4);
 
     // Update in-place to larger
     const std::string_view data5{"much much larger tuple"};
     REQUIRE(sp.update(id2, helpers::span_from_string(data5)));
-    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id2))) == data5);
+    CHECK(helpers::string_from_span(UNWRAP(sp.get(id2))) == data5);
 }
 
 TEST_CASE("slotted_page compaction") {
@@ -80,19 +80,19 @@ TEST_CASE("slotted_page compaction") {
     sp.refresh_page();
 
     const std::string data1(2'000, 'a');
-    const auto        id1{helpers::unwrap(sp.insert(helpers::span_from_string(data1)))};
+    const auto        id1{UNWRAP(sp.insert(helpers::span_from_string(data1)))};
     const std::string data2(2'000, 'b');
-    const auto        id2{helpers::unwrap(sp.insert(helpers::span_from_string(data2)))};
+    const auto        id2{UNWRAP(sp.insert(helpers::span_from_string(data2)))};
     const std::string data3(2'000, 'c');
-    const auto        id3{helpers::unwrap(sp.insert(helpers::span_from_string(data3)))};
+    const auto        id3{UNWRAP(sp.insert(helpers::span_from_string(data3)))};
 
     // Force free space to be made through a compact op
     REQUIRE(sp.remove(id2));
     std::string data4(3'000, 'd');
     REQUIRE(sp.insert(helpers::span_from_string(data4)));
 
-    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id1))) == data1);
-    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id3))) == data3);
+    CHECK(helpers::string_from_span(UNWRAP(sp.get(id1))) == data1);
+    CHECK(helpers::string_from_span(UNWRAP(sp.get(id3))) == data3);
 }
 
 TEST_CASE("slotted_page write_slot_raw") {
@@ -103,12 +103,12 @@ TEST_CASE("slotted_page write_slot_raw") {
     // Case 1. Deletion test
     {
         const std::string_view data{"delete me"};
-        const auto             id{helpers::unwrap(sp.insert(helpers::span_from_string(data)))};
+        const auto             id{UNWRAP(sp.insert(helpers::span_from_string(data)))};
         CHECK(id == slot_id_t{0});
         CHECK(sp.slot_count() == 1);
 
         REQUIRE(sp.write_slot_raw(id, stdx::none));
-        CHECK(helpers::unwrap_err(sp.get(id)) == error_t::STORAGE_TUPLE_DELETED);
+        CHECK(UNWRAP_ERR(sp.get(id)) == error_t::STORAGE_TUPLE_DELETED);
         REQUIRE(sp.write_slot_raw(slot_id_t{10}, stdx::none));
     }
 
@@ -118,23 +118,23 @@ TEST_CASE("slotted_page write_slot_raw") {
         REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
         CHECK(sp.slot_count() == 6);
         for (i32 i{0}; i < 5; ++i) {
-            CHECK(helpers::unwrap_err(sp.get(slot_id_t{i})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{i})) == error_t::STORAGE_TUPLE_DELETED);
         }
-        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+        CHECK(helpers::string_from_span(UNWRAP(sp.get(slot_id_t{5}))) == data);
     }
 
     // Case 3. In-place update test
     {
         const std::string_view data{"small"};
         REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
-        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+        CHECK(helpers::string_from_span(UNWRAP(sp.get(slot_id_t{5}))) == data);
     }
 
     // Case 4. Out-of-place update test
     {
         const std::string_view data{"much larger tuple data"};
         REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
-        CHECK(helpers::string_from_span(helpers::unwrap(sp.get(slot_id_t{5}))) == data);
+        CHECK(helpers::string_from_span(UNWRAP(sp.get(slot_id_t{5}))) == data);
     }
 }
 
@@ -153,7 +153,7 @@ TEST_CASE("slotted_page logging updates") {
     };
 
     const std::string_view data1{"insert logged"};
-    const auto id{helpers::unwrap(sp.insert(helpers::span_from_string(data1), log_params))};
+    const auto             id{UNWRAP(sp.insert(helpers::span_from_string(data1), log_params))};
     CHECK(id == slot_id_t{0});
 
     // Update with log
@@ -172,9 +172,9 @@ TEST_CASE("slotted_page compaction and full errors during update") {
     sp.refresh_page();
 
     const std::string data1(1'200, 'a');
-    const auto        id1{helpers::unwrap(sp.insert(helpers::span_from_string(data1)))};
+    const auto        id1{UNWRAP(sp.insert(helpers::span_from_string(data1)))};
     const std::string data2(1'200, 'b');
-    const auto        id2{helpers::unwrap(sp.insert(helpers::span_from_string(data2)))};
+    const auto        id2{UNWRAP(sp.insert(helpers::span_from_string(data2)))};
     const std::string data3(1'200, 'c');
     REQUIRE(sp.insert(helpers::span_from_string(data3)));
     REQUIRE(sp.remove(id2)); // Fragment
@@ -182,7 +182,7 @@ TEST_CASE("slotted_page compaction and full errors during update") {
     // Try to update id1 to 1400 bytes to compact and fit
     const std::string data1_larger(1'400, 'x');
     REQUIRE(sp.update(id1, helpers::span_from_string(data1_larger)));
-    CHECK(helpers::string_from_span(helpers::unwrap(sp.get(id1))) == data1_larger);
+    CHECK(helpers::string_from_span(UNWRAP(sp.get(id1))) == data1_larger);
 
     // Try to update id1 to 7000 bytes to compact but still fail
     const std::string data1_too_large(7'000, 'y');

@@ -25,8 +25,8 @@ TEST_CASE("Index-organized table durability smoke test") {
 
     // Open pool & create tree
     {
-        auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-        auto tree{helpers::unwrap(tree_t::create(*pool))};
+        auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+        auto tree{UNWRAP(tree_t::create(*pool))};
         meta = tree.meta_page();
 
         REQUIRE(tree.emplace(10, helpers::span_from_string(val1)));
@@ -37,20 +37,20 @@ TEST_CASE("Index-organized table durability smoke test") {
 
     // Reopen the data files, simulating a process restart
     {
-        auto   pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
+        auto   pool{UNWRAP(tree_t::pool_t::open(file.path))};
         tree_t tree{*pool, meta};
 
-        CHECK(helpers::unwrap(
-                  tree.range_scan(10, 30, [&](const i64& k, const gsl::span<const std::byte>& v) {
-                      const auto str_v{helpers::string_from_span(v)};
-                      if (k == 10) {
-                          CHECK(str_v == val1);
-                      } else if (k == 20) {
-                          CHECK(str_v == val2);
-                      } else if (k == 30) {
-                          CHECK(str_v == val3);
-                      }
-                  })) == 3);
+        CHECK(
+            UNWRAP(tree.range_scan(10, 30, [&](const i64& k, const gsl::span<const std::byte>& v) {
+                const auto str_v{helpers::string_from_span(v)};
+                if (k == 10) {
+                    CHECK(str_v == val1);
+                } else if (k == 20) {
+                    CHECK(str_v == val2);
+                } else if (k == 30) {
+                    CHECK(str_v == val3);
+                }
+            })) == 3);
     }
 }
 

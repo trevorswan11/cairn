@@ -34,7 +34,7 @@ TEST_CASE("log::manager append and flush") {
         log::record rec1;
         rec1.txn_id = txn::id_t{1};
         rec1.type   = log::record_type::BEGIN;
-        auto lsn1   = helpers::unwrap(manager.append_record(rec1));
+        auto lsn1   = UNWRAP(manager.append_record(rec1));
 
         log::record rec2;
         rec2.txn_id    = txn::id_t{1};
@@ -43,7 +43,7 @@ TEST_CASE("log::manager append and flush") {
         rec2.slot_id   = storage::slot_id_t{2};
         rec2.redo_data = helpers::redo_bytes;
         rec2.undo_data = helpers::undo_bytes;
-        auto lsn2{helpers::unwrap(manager.append_record(rec2))};
+        auto lsn2{UNWRAP(manager.append_record(rec2))};
 
         CHECK(lsn1 == log::seq_num{1});
         CHECK(lsn2 == log::seq_num{2});
@@ -55,12 +55,12 @@ TEST_CASE("log::manager append and flush") {
 
     // Verify written data by reading it back
     {
-        auto reader{helpers::unwrap(log::reader::open(file.path))};
-        auto r1{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto reader{UNWRAP(log::reader::open(file.path))};
+        auto r1{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r1.lsn == log::seq_num{1});
         CHECK(r1.type == log::record_type::BEGIN);
 
-        auto r2{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto r2{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r2.lsn == log::seq_num{2});
         CHECK(r2.type == log::record_type::UPDATE);
         CHECK(r2.page_id == storage::page_id_t{4});
@@ -85,7 +85,7 @@ TEST_CASE("log::manager double buffering boundary") {
             rec.redo_data = helpers::redo_bytes;
             rec.undo_data = helpers::undo_bytes;
 
-            lsns.emplace_back(helpers::unwrap(manager.append_record(rec)));
+            lsns.emplace_back(UNWRAP(manager.append_record(rec)));
         }
 
         // Flush all
@@ -94,9 +94,9 @@ TEST_CASE("log::manager double buffering boundary") {
 
     // Verify all 10 records are read back successfully
     {
-        auto reader{helpers::unwrap(log::reader::open(file.path))};
+        auto reader{UNWRAP(log::reader::open(file.path))};
         for (i64 i{0}; i < 10; ++i) {
-            auto r{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+            auto r{UNWRAP(UNWRAP(reader.next_record()))};
             CHECK(r.lsn == log::seq_num{i + 1});
             CHECK(r.txn_id == txn::id_t{i});
             CHECK(r.page_id == storage::page_id_t{i});
@@ -128,7 +128,7 @@ TEST_CASE("log::manager concurrent appends") {
                     rec.slot_id   = storage::slot_id_t{0};
                     rec.redo_data = helpers::redo_bytes;
 
-                    helpers::unwrap(manager.flush(helpers::unwrap(manager.append_record(rec))));
+                    UNWRAP(manager.flush(UNWRAP(manager.append_record(rec))));
                 }
             });
         }
@@ -139,8 +139,8 @@ TEST_CASE("log::manager concurrent appends") {
     // Read back and verify count and content consistency
     {
         i32  total_records{0};
-        auto reader{helpers::unwrap(log::reader::open(file.path))};
-        while (helpers::unwrap(reader.next_record())) { total_records++; }
+        auto reader{UNWRAP(log::reader::open(file.path))};
+        while (UNWRAP(reader.next_record())) { total_records++; }
         CHECK(total_records == num_threads * appends_per_thread);
     }
 }
