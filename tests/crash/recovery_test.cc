@@ -43,7 +43,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
     const auto wal_path{helpers::get_env("CAIRN_WAL_PATH")};
     const auto limit_str{helpers::get_env("CAIRN_CRASH_LIMIT")};
 
-    const auto limit{helpers::parse_integral<i32>(limit_str)};
+    const auto limit{UNWRAP(helpers::parse_integral<i32>(limit_str))};
     crash::initialize();
     crash::configure(limit);
 
