@@ -36,7 +36,7 @@ TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
         workers.emplace_back([&, t] {
             for (i64 i{0}; i < per_thread; ++i) {
                 const i64 key{static_cast<i64>(t) * per_thread + i};
-                THREAD_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
+                MT_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
             }
         });
     }
@@ -78,7 +78,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i64 i{0}; i < per_writer; ++i) {
                 const i64 key{static_cast<i64>(t) * per_writer + i};
-                THREAD_CHECK(verifier, tree.remove(key));
+                MT_CHECK(verifier, tree.remove(key));
             }
         });
     }
@@ -89,7 +89,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i64 i{0}; i < per_writer; ++i) {
                 const i64 key{emplace_base + static_cast<i64>(t) * per_writer + i};
-                THREAD_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
+                MT_CHECK(verifier, tree.emplace(key, static_cast<u64>(key)));
             }
         });
     }
@@ -104,7 +104,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             for (i32 i{0}; i < 20'000; ++i) {
                 const i64 key{dist(rng)};
                 auto      val{MT_UNWRAP(verifier, tree.get(key))};
-                THREAD_CHECK(verifier, val == static_cast<u64>(key));
+                MT_CHECK(verifier, val == static_cast<u64>(key));
             }
         });
     }

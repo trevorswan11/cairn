@@ -78,21 +78,21 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
                     storage::slotted_page sp{*guard.get()};
 
                     const auto data{fmt::format("t_{}_s_{}", t, i)};
-                    THREAD_CHECK(verifier,
-                                 sp.insert(helpers::span_from_string(data),
-                                           {
-                                               .txn_id      = tid,
-                                               .prev_lsn    = stdx::none,
-                                               .log_manager = log,
-                                           }));
+                    MT_CHECK(verifier,
+                             sp.insert(helpers::span_from_string(data),
+                                       {
+                                           .txn_id      = tid,
+                                           .prev_lsn    = stdx::none,
+                                           .log_manager = log,
+                                       }));
 
                     if (auto page_lsn{guard.get()->page_lsn()}) {
-                        THREAD_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
+                        MT_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
                     }
                     guard.mark_dirty();
                 }
 
-                THREAD_CHECK(verifier, tm.commit_txn(tid, log));
+                MT_CHECK(verifier, tm.commit_txn(tid, log));
             }
         });
     }
