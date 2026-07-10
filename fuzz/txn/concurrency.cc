@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <string>
@@ -72,6 +73,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
         txn::isolation_level_t                   level{txn::isolation_level_t::SNAPSHOT};
         bool                                     active{false};
         std::vector<std::pair<i64, std::string>> reads;
+        std::vector<i64>                         modified_keys;
     };
     std::array<TxnState, 2> txns;
 
@@ -84,6 +86,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                     EXPECT_TRUE(tm.abort_txn(txns[idx].id, lm));
                     txns[idx].active = false;
                     txns[idx].reads.clear();
+                    txns[idx].modified_keys.clear();
                 }
 
                 const auto isolation{static_cast<txn::isolation_level_t>(bop.level % 4)};
@@ -92,6 +95,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 txns[idx].level  = isolation;
                 txns[idx].active = true;
                 txns[idx].reads.clear();
+                txns[idx].modified_keys.clear();
             },
             [&](ReadOp rop) {
                 const auto idx{static_cast<usize>(rop.txn_idx % 2)};
@@ -116,6 +120,17 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 const auto idx{static_cast<usize>(wop.txn_idx % 2)};
                 if (!txns[idx].active) { return; }
 
+                // Skip write if the other active transaction has modified the same key to avoid
+                // write-write conflicts
+                const auto other_idx{(idx + 1) % 2};
+                if (txns[other_idx].active) {
+                    if (std::ranges::find(txns[other_idx].modified_keys,
+                                          static_cast<i64>(wop.key)) !=
+                        txns[other_idx].modified_keys.end()) {
+                        return;
+                    }
+                }
+
                 const auto txn_id{txns[idx].id};
                 const auto val_str{std::to_string(wop.value % 1'000)};
                 auto       write_res{
@@ -124,6 +139,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                     EXPECT_TRUE(
                         tree.insert_txn(txn_id, wop.key, helpers::span_from_string(val_str)));
                 }
+                txns[idx].modified_keys.emplace_back(wop.key);
             },
             [&](CommitOp cop) {
                 const auto idx{static_cast<usize>(cop.txn_idx % 2)};
@@ -139,6 +155,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 }
                 txns[idx].active = false;
                 txns[idx].reads.clear();
+                txns[idx].modified_keys.clear();
             },
             [&](AbortOp aop) {
                 const auto idx{static_cast<usize>(aop.txn_idx % 2)};
@@ -149,6 +166,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 EXPECT_TRUE(tm.abort_txn(txn_id, lm));
                 txns[idx].active = false;
                 txns[idx].reads.clear();
+                txns[idx].modified_keys.clear();
             });
     }
 
