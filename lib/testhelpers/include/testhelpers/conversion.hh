@@ -7,9 +7,8 @@
 #include <system_error>
 
 #include <gsl/span>
+#include <stdx/option.hh>
 #include <stdx/utility.hh>
-
-#include "testhelpers/internal/safe_assertions.hh"
 
 namespace cairn::tests::helpers {
 
@@ -17,12 +16,11 @@ namespace cairn::tests::helpers {
 [[nodiscard]] auto string_from_span(gsl::span<const std::byte> span) -> std::string_view;
 
 template <std::integral I>
-[[nodiscard]] constexpr auto parse_integral(std::string_view str) noexcept -> I {
+[[nodiscard]] constexpr auto parse_integral(std::string_view str) noexcept -> stdx::option<I> {
     I          out;
     const auto result{std::from_chars(str.begin(), str.end(), out, 10)};
-    CAIRN_REQUIRE(result.ec == std::errc{});
-    CAIRN_REQUIRE(result.ptr == str.end());
-    return out;
+    if (result.ec == std::errc{} && result.ptr == str.end()) { return out; }
+    return stdx::none;
 }
 
 } // namespace cairn::tests::helpers
