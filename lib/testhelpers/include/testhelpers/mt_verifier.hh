@@ -21,12 +21,23 @@ class mt_verifier {
     std::vector<std::string> failures_;
 };
 
-#define THREAD_CHECK(verifier, cond) \
+#define MT_CHECK(verifier, cond) \
     (verifier).check(static_cast<bool>(cond), #cond, __FILE__, __LINE__)
 
-#define THREAD_REQUIRE(verifier, cond)                          \
+#define THREAD_CHECK_FALSE(verifier, cond) \
+    (verifier).check(!static_cast<bool>(cond), #cond, __FILE__, __LINE__)
+
+#define MT_REQUIRE(verifier, cond)                              \
     do {                                                        \
         if (!(cond)) {                                          \
+            (verifier).check(false, #cond, __FILE__, __LINE__); \
+            return;                                             \
+        }                                                       \
+    } while (0)
+
+#define THREAD_REQUIRE_FALSE(verifier, cond)                    \
+    do {                                                        \
+        if (cond) {                                             \
             (verifier).check(false, #cond, __FILE__, __LINE__); \
             return;                                             \
         }                                                       \

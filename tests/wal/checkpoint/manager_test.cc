@@ -156,7 +156,7 @@ TEST_CASE("checkpoint concurrent with page writes") {
                                        })};
                 if (slot_id) {
                     if (auto page_lsn{guard.get()->page_lsn()}) {
-                        THREAD_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
+                        MT_CHECK(verifier, tm.update_txn_lsn(tid, *page_lsn));
                     }
                     guard.mark_dirty();
                 }
