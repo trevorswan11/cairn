@@ -32,7 +32,8 @@ using namespace stdx::size_literals;
 using namespace helpers::common_tids;
 using helpers::deterministic_scheduler;
 using helpers::unwrap;
-using helpers::unwrap_err;
+using helpers::mt_unwrap;
+using helpers::mt_unwrap_err;
 
 using txn_tree_t = iot_tree<i64, 128, 64>;
 using pool_t     = storage::buffer_pool<64>;
@@ -72,11 +73,11 @@ TEST_CASE(
             const auto t1{tm.begin_txn(isolation_level_t::SERIALIZABLE)};
             THREAD_REQUIRE(verifier, scheduler.yield_to_schedule(tid0));
 
-            const auto             snap1{unwrap(verifier, tm.acquire_snapshot(t1))};
+            const auto             snap1{mt_unwrap(verifier, tm.acquire_snapshot(t1))};
             std::vector<std::byte> buf;
-            auto                   val1{unwrap(verifier, tree.get_txn(t1, snap1, tm, 1, buf))};
+            auto                   val1{mt_unwrap(verifier, tree.get_txn(t1, snap1, tm, 1, buf))};
             THREAD_CHECK(verifier,
-                         helpers::string_from_span(unwrap(verifier, val1)) == key1_init_val);
+                         helpers::string_from_span(mt_unwrap(verifier, val1)) == key1_init_val);
 
             THREAD_REQUIRE(verifier, scheduler.yield_to_schedule(tid0));
             THREAD_REQUIRE(verifier, tree.update_txn(t1, 1, helpers::span_from_string(t1_val)));
@@ -94,11 +95,11 @@ TEST_CASE(
             THREAD_REQUIRE(verifier, scheduler.yield_to_schedule(tid1));
             const auto t2{tm.begin_txn(isolation_level_t::SERIALIZABLE)};
 
-            const auto             snap2{unwrap(verifier, tm.acquire_snapshot(t2))};
+            const auto             snap2{mt_unwrap(verifier, tm.acquire_snapshot(t2))};
             std::vector<std::byte> buf;
-            auto                   val2{unwrap(verifier, tree.get_txn(t2, snap2, tm, 1, buf))};
+            auto                   val2{mt_unwrap(verifier, tree.get_txn(t2, snap2, tm, 1, buf))};
             THREAD_CHECK(verifier,
-                         helpers::string_from_span(unwrap(verifier, val2)) == key1_init_val);
+                         helpers::string_from_span(mt_unwrap(verifier, val2)) == key1_init_val);
 
             THREAD_REQUIRE(verifier, scheduler.yield_to_schedule(tid1));
             THREAD_REQUIRE(verifier, tree.update_txn(t2, 1, helpers::span_from_string("val_t2")));
@@ -107,7 +108,7 @@ TEST_CASE(
             // Commit T2: must fail with serialization failure due to T1 writing first
             THREAD_REQUIRE(verifier, tm.update_txn_lsn(t2, wal::log::seq_num{3}));
             THREAD_CHECK(verifier,
-                         unwrap_err(verifier, tm.commit_txn(t2, lm)) ==
+                         mt_unwrap_err(verifier, tm.commit_txn(t2, lm)) ==
                              error_t::TXN_SERIALIZATION_FAILURE);
             THREAD_REQUIRE(verifier, tree.rollback_txn(t2));
             THREAD_REQUIRE(verifier, tm.abort_txn(t2, lm));

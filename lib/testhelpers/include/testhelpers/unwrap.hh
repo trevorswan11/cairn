@@ -33,14 +33,14 @@ template <Unwrappable U> auto unwrap_err(U&& u) -> decltype(auto) {
 }
 
 // Thread safe!
-template <Unwrappable U> [[nodiscard]] auto unwrap(mt_verifier& verifier, U&& u) -> decltype(auto) {
+template <Unwrappable U> [[nodiscard]] auto mt_unwrap(mt_verifier& verifier, U&& u) -> decltype(auto) {
     verifier.check(static_cast<bool>(u), "u", __FILE__, __LINE__);
     VERIFY(!verifier.dump_if_error());
     return *std::forward<U>(u);
 }
 
 // Thread safe!
-template <Unwrappable U> auto unwrap_err(mt_verifier& verifier, U&& u) -> decltype(auto) {
+template <Unwrappable U> auto mt_unwrap_err(mt_verifier& verifier, U&& u) -> decltype(auto) {
     using T = std::remove_cvref_t<U>;
     if constexpr (stdx::Option<T>) {
         verifier.check(!static_cast<bool>(u), "!u", __FILE__, __LINE__);
