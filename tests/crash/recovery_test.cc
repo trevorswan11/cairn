@@ -1,10 +1,8 @@
 #include <atomic>
-#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -44,12 +42,7 @@ TEST_CASE("crash recovery workload", "[.][crash]") {
     const auto wal_path{helpers::get_env("CAIRN_WAL_PATH")};
     const auto limit_str{helpers::get_env("CAIRN_CRASH_LIMIT")};
 
-    i32 limit;
-    {
-        const auto result{std::from_chars(limit_str.begin(), limit_str.end(), limit)};
-        REQUIRE(result.ec == std::errc{});
-        REQUIRE(result.ptr == limit_str.end());
-    }
+    const auto limit{helpers::parse_integral<i32>(limit_str)};
     crash::initialize();
     crash::configure(limit);
 

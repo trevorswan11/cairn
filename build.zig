@@ -626,6 +626,9 @@ fn addArtifacts(b: *std.Build, config: struct {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("storage/slotted_page", .{
                 .link_libraries = &all_cairn_libraries,
             })));
+            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("txn/concurrency", .{
+                .link_libraries = &all_cairn_libraries,
+            })));
         }
 
         tests = .{
