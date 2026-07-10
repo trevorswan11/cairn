@@ -34,8 +34,8 @@ using TreeOp = stdx::variant<InsertOp, RemoveOp, GetOp>;
 void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
     helpers::tempfile file{"bpt_wide"};
     using tree_t = bplus_tree<u64, u64, 64>;
-    auto pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto tree{helpers::unwrap(tree_t::create(*pool))};
+    auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto tree{UNWRAP(tree_t::create(*pool))};
 
     std::map<u64, u64> oracle;
     for (const auto& op : operations) {
@@ -44,7 +44,7 @@ void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
                 auto res{tree.emplace(iop.key, iop.value)};
                 if (oracle.contains(iop.key)) {
                     // Key exists: B+tree must report DUPLICATE_KEY
-                    EXPECT_TRUE(helpers::unwrap_err(res) == error_t::STORAGE_DUPLICATE_KEY);
+                    EXPECT_TRUE(UNWRAP_ERR(res) == error_t::STORAGE_DUPLICATE_KEY);
                     return;
                 }
 
@@ -81,16 +81,14 @@ void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
         u64 high{oracle.rbegin()->first};
 
         usize scan_count{0};
-        EXPECT_EQ(helpers::unwrap(tree.range_scan(low,
-                                                  high,
-                                                  [&](const u64& k, const u64& v) {
-                                                      auto it = oracle.find(k);
-                                                      EXPECT_NE(it, oracle.end());
-                                                      if (it != oracle.end()) {
-                                                          EXPECT_EQ(v, it->second);
-                                                      }
-                                                      scan_count++;
-                                                  })),
+        EXPECT_EQ(UNWRAP(tree.range_scan(low,
+                                         high,
+                                         [&](const u64& k, const u64& v) {
+                                             auto it = oracle.find(k);
+                                             EXPECT_NE(it, oracle.end());
+                                             if (it != oracle.end()) { EXPECT_EQ(v, it->second); }
+                                             scan_count++;
+                                         })),
                   scan_count);
     }
 }

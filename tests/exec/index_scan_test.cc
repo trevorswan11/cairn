@@ -24,18 +24,17 @@ namespace cairn::tests {
 
 using namespace stdx::size_literals;
 using namespace cairn::exec;
-using helpers::unwrap;
 
 TEST_CASE("exec::index_scan range scans over secondary index") {
     helpers::tempfile file{"exec_scan_index_test"};
     using txn_tree_t   = txn::iot_tree<i64, 128, 64>;
     using index_tree_t = storage::bplus_tree<i64, i64, 64>;
 
-    auto                        pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                        primary_base{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                        pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                        primary_base{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     txn::undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t                  primary_tree{primary_base, undo_mgr};
-    index_tree_t                secondary_index{unwrap(index_tree_t::create(*pool))};
+    index_tree_t                secondary_index{UNWRAP(index_tree_t::create(*pool))};
     txn::manager                tm;
     helpers::tempfile           wal_file{"exec_scan_index_test_wal"};
     wal::log::manager           lm{wal_file.path, 1_MiB};
@@ -51,11 +50,11 @@ TEST_CASE("exec::index_scan range scans over secondary index") {
 
     // T2 starts and does an index scan
     const auto                    t2{tm.begin_txn()};
-    const auto                    snap2{unwrap(tm.acquire_snapshot(t2))};
+    const auto                    snap2{UNWRAP(tm.acquire_snapshot(t2))};
     index_scan<i64, i64, 128, 64> scanner{secondary_index, primary_tree, t2, snap2, tm};
 
     std::vector<std::pair<i64, std::string>> results;
-    CHECK(unwrap(scanner(0, 50, [&](const i64& pk, gsl::span<const std::byte> val) {
+    CHECK(UNWRAP(scanner(0, 50, [&](const i64& pk, gsl::span<const std::byte> val) {
               results.emplace_back(pk, helpers::string_from_span(val));
           })) == 1);
 

@@ -1,8 +1,10 @@
 #pragma once
 
-#include <stdx/assert.hh>
+#include <print>
+#include <string_view>
 #include <type_traits>
 
+#include <stdx/assert.hh>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
@@ -17,12 +19,20 @@ concept Unwrappable = stdx::Option<std::remove_cvref_t<T>> ||
                       stdx::Result<std::remove_cvref_t<T>> || stdx::OptSize<std::remove_cvref_t<T>>;
 
 // Unpacks the value in the option or result and returns its value if present
-template <Unwrappable U> [[nodiscard]] auto unwrap(U&& u) -> decltype(auto) {
+template <Unwrappable U>
+[[nodiscard]] auto unwrap(U&& u, std::string_view expr, std::string_view file, int line)
+    -> decltype(auto) {
+    if (!u) { std::println("Unwrap called on disengaged value ({}): {}:{}", expr, file, line); }
     CAIRN_REQUIRE(u);
     return *std::forward<U>(u);
 }
 
-template <Unwrappable U> auto unwrap_err(U&& u) -> decltype(auto) {
+#define UNWRAP(expr) ::cairn::tests::helpers::unwrap((expr), #expr, __FILE__, __LINE__)
+
+template <Unwrappable U>
+auto unwrap_err(U&& u, std::string_view expr, std::string_view file, int line) -> decltype(auto) {
+    if (u) { std::println("Unwraperr called on engaged value ({}): {}:{}", expr, file, line); }
+
     using T = std::remove_cvref_t<U>;
     if constexpr (stdx::Option<T>) {
         CAIRN_REQUIRE_FALSE(u);
@@ -32,24 +42,38 @@ template <Unwrappable U> auto unwrap_err(U&& u) -> decltype(auto) {
     }
 }
 
+#define UNWRAP_ERR(expr) ::cairn::tests::helpers::unwrap_err((expr), #expr, __FILE__, __LINE__)
+
 // Thread safe!
-template <Unwrappable U> [[nodiscard]] auto mt_unwrap(mt_verifier& verifier, U&& u) -> decltype(auto) {
-    verifier.check(static_cast<bool>(u), "u", __FILE__, __LINE__);
+template <Unwrappable U>
+[[nodiscard]] auto
+mt_unwrap(mt_verifier& verifier, U&& u, std::string_view expr, std::string_view file, int line)
+    -> decltype(auto) {
+    verifier.check(static_cast<bool>(u), expr, file, line);
     VERIFY(!verifier.dump_if_error());
     return *std::forward<U>(u);
 }
 
+#define MT_UNWRAP(verifier, expr) \
+    ::cairn::tests::helpers::mt_unwrap((verifier), (expr), #expr, __FILE__, __LINE__)
+
 // Thread safe!
-template <Unwrappable U> auto mt_unwrap_err(mt_verifier& verifier, U&& u) -> decltype(auto) {
+template <Unwrappable U>
+auto mt_unwrap_err(
+    mt_verifier& verifier, U&& u, std::string_view expr, std::string_view file, int line)
+    -> decltype(auto) {
+    verifier.check(!static_cast<bool>(u), expr, file, line);
+
     using T = std::remove_cvref_t<U>;
     if constexpr (stdx::Option<T>) {
-        verifier.check(!static_cast<bool>(u), "!u", __FILE__, __LINE__);
         VERIFY(!verifier.dump_if_error());
     } else if constexpr (stdx::Result<T>) {
-        verifier.check(!static_cast<bool>(u), "!u", __FILE__, __LINE__);
         VERIFY(!verifier.dump_if_error());
         return u.error();
     }
 }
+
+#define MT_UNWRAP_ERR(verifier, expr) \
+    ::cairn::tests::helpers::mt_unwrap_err((verifier), (expr), #expr, __FILE__, __LINE__)
 
 } // namespace cairn::tests::helpers

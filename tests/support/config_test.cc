@@ -25,7 +25,7 @@ TEST_CASE("Well-formed config parsing") {
           }}
         }})",
         logging ? "" : "//");
-    const auto config{helpers::unwrap(config::parse("development", input))};
+    const auto config{UNWRAP(config::parse("development", input))};
 
     CHECK(config.host == "127.0.0.1");
     CHECK(config.port == 5'432);
@@ -41,7 +41,7 @@ TEST_CASE("Well-formed config parsing") {
 }
 
 TEST_CASE("Config not nested inside of object") {
-    const auto err = helpers::unwrap_err(config::parse("development", R"("development": {
+    const auto err = UNWRAP_ERR(config::parse("development", R"("development": {
             "host": "127.0.0.1",
             "port": 5432,
             "database": "my_app_dev",
@@ -53,14 +53,14 @@ TEST_CASE("Config not nested inside of object") {
 }
 
 TEST_CASE("Config with missing required fields") {
-    const auto err = helpers::unwrap_err(config::parse("development", R"({
+    const auto err = UNWRAP_ERR(config::parse("development", R"({
         "development": {}
     })"));
     CHECK(err == error_t::SUPPORT_JSON_MISSING_FIELD);
 }
 
 TEST_CASE("Config with mistyped field value") {
-    const auto err = helpers::unwrap_err(config::parse("development", R"({
+    const auto err = UNWRAP_ERR(config::parse("development", R"({
         "development": {
             "host": "127.0.0.1",
             "port": "5432",

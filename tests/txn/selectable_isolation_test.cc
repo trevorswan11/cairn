@@ -29,16 +29,14 @@ namespace cairn::tests {
 
 using namespace cairn::txn;
 using namespace stdx::size_literals;
-using helpers::unwrap;
-using helpers::unwrap_err;
 
 using txn_tree_t   = iot_tree<i64, 128, 64>;
 using table_scan_t = exec::table_scan<i64, 128, 64>;
 
 TEST_CASE("selectable isolation write skew prevention") {
     helpers::tempfile      file{"txn_serializable_write_skew_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -57,17 +55,17 @@ TEST_CASE("selectable isolation write skew prevention") {
         const auto t1{tm.begin_txn(isolation_level_t::SNAPSHOT)};
         const auto t2{tm.begin_txn(isolation_level_t::SNAPSHOT)};
 
-        const auto snap1{unwrap(tm.acquire_snapshot(t1))};
-        const auto snap2{unwrap(tm.acquire_snapshot(t2))};
+        const auto snap1{UNWRAP(tm.acquire_snapshot(t1))};
+        const auto snap2{UNWRAP(tm.acquire_snapshot(t2))};
 
         std::vector<std::byte> buf1;
         std::vector<std::byte> buf2;
 
         // Both read both accounts
-        CHECK(unwrap(tree.get_txn(t1, snap1, tm, 1, buf1)));
-        CHECK(unwrap(tree.get_txn(t1, snap1, tm, 2, buf1)));
-        CHECK(unwrap(tree.get_txn(t2, snap2, tm, 1, buf2)));
-        CHECK(unwrap(tree.get_txn(t2, snap2, tm, 2, buf2)));
+        CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf1)));
+        CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 2, buf1)));
+        CHECK(UNWRAP(tree.get_txn(t2, snap2, tm, 1, buf2)));
+        CHECK(UNWRAP(tree.get_txn(t2, snap2, tm, 2, buf2)));
 
         // T1 and T2 withdraw respectively
         REQUIRE(tree.update_txn(t1, 1, helpers::span_from_string("0")));
@@ -95,17 +93,17 @@ TEST_CASE("selectable isolation write skew prevention") {
         const auto t1{tm.begin_txn(isolation_level_t::SERIALIZABLE)};
         const auto t2{tm.begin_txn(isolation_level_t::SERIALIZABLE)};
 
-        const auto snap1{unwrap(tm.acquire_snapshot(t1))};
-        const auto snap2{unwrap(tm.acquire_snapshot(t2))};
+        const auto snap1{UNWRAP(tm.acquire_snapshot(t1))};
+        const auto snap2{UNWRAP(tm.acquire_snapshot(t2))};
 
         std::vector<std::byte> buf1;
         std::vector<std::byte> buf2;
 
         // Both read both accounts
-        CHECK(unwrap(tree.get_txn(t1, snap1, tm, 1, buf1)));
-        CHECK(unwrap(tree.get_txn(t1, snap1, tm, 2, buf1)));
-        CHECK(unwrap(tree.get_txn(t2, snap2, tm, 1, buf2)));
-        CHECK(unwrap(tree.get_txn(t2, snap2, tm, 2, buf2)));
+        CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf1)));
+        CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 2, buf1)));
+        CHECK(UNWRAP(tree.get_txn(t2, snap2, tm, 1, buf2)));
+        CHECK(UNWRAP(tree.get_txn(t2, snap2, tm, 2, buf2)));
 
         // T1 and T2 withdraw respectively
         REQUIRE(tree.update_txn(t1, 1, helpers::span_from_string("0")));
@@ -117,14 +115,14 @@ TEST_CASE("selectable isolation write skew prevention") {
 
         // T2 tries to commit but should fail
         REQUIRE(tm.update_txn_lsn(t2, wal::log::seq_num{6}));
-        CHECK(unwrap_err(tm.commit_txn(t2, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
+        CHECK(UNWRAP_ERR(tm.commit_txn(t2, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
     }
 }
 
 TEST_CASE("selectable isolation phantom read prevention") {
     helpers::tempfile      file{"txn_serializable_phantom_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -134,7 +132,7 @@ TEST_CASE("selectable isolation phantom read prevention") {
     // Scenario 1: Under SNAPSHOT isolation, phantoms are not detected
     {
         const auto t1{tm.begin_txn(isolation_level_t::SNAPSHOT)};
-        const auto snap1{unwrap(tm.acquire_snapshot(t1))};
+        const auto snap1{UNWRAP(tm.acquire_snapshot(t1))};
 
         table_scan_t scanner{tree, t1, snap1, tm};
         usize        count{0};
@@ -163,7 +161,7 @@ TEST_CASE("selectable isolation phantom read prevention") {
     // Scenario 2: Under SERIALIZABLE isolation, phantoms are detected
     {
         const auto t1{tm.begin_txn(isolation_level_t::SERIALIZABLE)};
-        const auto snap1{unwrap(tm.acquire_snapshot(t1))};
+        const auto snap1{UNWRAP(tm.acquire_snapshot(t1))};
 
         table_scan_t scanner{tree, t1, snap1, tm};
         usize        count{0};
@@ -178,14 +176,14 @@ TEST_CASE("selectable isolation phantom read prevention") {
 
         // T1 tries to commit but should fail
         REQUIRE(tm.update_txn_lsn(t1, wal::log::seq_num{5}));
-        CHECK(unwrap_err(tm.commit_txn(t1, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
+        CHECK(UNWRAP_ERR(tm.commit_txn(t1, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
     }
 }
 
 TEST_CASE("selectable isolation Read Committed snapshot visibility") {
     helpers::tempfile      file{"txn_rc_visibility_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -198,9 +196,9 @@ TEST_CASE("selectable isolation Read Committed snapshot visibility") {
     REQUIRE(tm.commit_txn(init_txn, lm));
 
     const auto             t1{tm.begin_txn(isolation_level_t::READ_COMMITTED)};
-    const auto             snap1{unwrap(tm.acquire_snapshot(t1))};
+    const auto             snap1{UNWRAP(tm.acquire_snapshot(t1))};
     std::vector<std::byte> buf;
-    CHECK(helpers::string_from_span(unwrap(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
+    CHECK(helpers::string_from_span(UNWRAP(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
 
     // Tx2 concurrently updates key 1 to 200 and commits
     const auto t2{tm.begin_txn(isolation_level_t::SNAPSHOT)};
@@ -209,15 +207,15 @@ TEST_CASE("selectable isolation Read Committed snapshot visibility") {
     REQUIRE(tm.commit_txn(t2, lm));
 
     // Second read under READ_COMMITTED: should see 200
-    CHECK(helpers::string_from_span(unwrap(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)))) == "200");
+    CHECK(helpers::string_from_span(UNWRAP(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)))) == "200");
     REQUIRE(tm.update_txn_lsn(t1, wal::log::seq_num{3}));
     REQUIRE(tm.commit_txn(t1, lm));
 }
 
 TEST_CASE("selectable isolation Repeatable Read snapshot visibility") {
     helpers::tempfile      file{"txn_rr_visibility_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -230,9 +228,9 @@ TEST_CASE("selectable isolation Repeatable Read snapshot visibility") {
     REQUIRE(tm.commit_txn(init_txn, lm));
 
     const auto             t1{tm.begin_txn(isolation_level_t::REPEATABLE_READ)};
-    const auto             snap1{unwrap(tm.acquire_snapshot(t1))};
+    const auto             snap1{UNWRAP(tm.acquire_snapshot(t1))};
     std::vector<std::byte> buf;
-    CHECK(helpers::string_from_span(unwrap(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
+    CHECK(helpers::string_from_span(UNWRAP(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
 
     // Tx2 concurrently updates key 1 to 200 and commits
     const auto t2{tm.begin_txn(isolation_level_t::SNAPSHOT)};
@@ -241,15 +239,15 @@ TEST_CASE("selectable isolation Repeatable Read snapshot visibility") {
     REQUIRE(tm.commit_txn(t2, lm));
 
     // Second read under REPEATABLE_READ: should still see 100
-    CHECK(helpers::string_from_span(unwrap(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
+    CHECK(helpers::string_from_span(UNWRAP(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)))) == "100");
     REQUIRE(tm.update_txn_lsn(t1, wal::log::seq_num{3}));
     REQUIRE(tm.commit_txn(t1, lm));
 }
 
 TEST_CASE("selectable isolation Read Committed S-lock release") {
     helpers::tempfile      file{"txn_rc_lock_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -264,9 +262,9 @@ TEST_CASE("selectable isolation Read Committed S-lock release") {
     REQUIRE(tm.commit_txn(init_txn, lm));
 
     const auto             t1{tm.begin_txn(isolation_level_t::READ_COMMITTED)};
-    const auto             snap1{unwrap(tm.acquire_snapshot(t1))};
+    const auto             snap1{UNWRAP(tm.acquire_snapshot(t1))};
     std::vector<std::byte> buf;
-    CHECK(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)).has_value());
+    CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)).has_value());
 
     // Tx2 (concurrent) should be able to acquire exclusive lock on key 1 immediately
     // because Tx1 released its S-lock at the end of get_txn.
@@ -280,8 +278,8 @@ TEST_CASE("selectable isolation Read Committed S-lock release") {
 
 TEST_CASE("selectable isolation Repeatable Read S-lock holding") {
     helpers::tempfile      file{"txn_rr_lock_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -296,9 +294,9 @@ TEST_CASE("selectable isolation Repeatable Read S-lock holding") {
     REQUIRE(tm.commit_txn(init_txn, lm));
 
     const auto             t1{tm.begin_txn(isolation_level_t::REPEATABLE_READ)};
-    const auto             snap1{unwrap(tm.acquire_snapshot(t1))};
+    const auto             snap1{UNWRAP(tm.acquire_snapshot(t1))};
     std::vector<std::byte> buf;
-    CHECK(unwrap(tree.get_txn(t1, snap1, tm, 1, buf)).has_value());
+    CHECK(UNWRAP(tree.get_txn(t1, snap1, tm, 1, buf)).has_value());
 
     const auto t2{tm.begin_txn(isolation_level_t::REPEATABLE_READ)};
     const auto key_hash = stdx::hasher{}.combine(1).finalize();
@@ -325,8 +323,8 @@ TEST_CASE("selectable isolation Repeatable Read S-lock holding") {
 
 TEST_CASE("selectable isolation undo page reclamation") {
     helpers::tempfile      file{"txn_undo_reclaim_test"};
-    auto                   pool{unwrap(txn_tree_t::tree_t::pool_t::open(file.path))};
-    auto                   base_tree{unwrap(txn_tree_t::tree_t::create(*pool))};
+    auto                   pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};
+    auto                   base_tree{UNWRAP(txn_tree_t::tree_t::create(*pool))};
     undo::manager<i64, 64> undo_mgr{*pool};
     txn_tree_t             tree{base_tree, undo_mgr};
     manager                tm;
@@ -342,7 +340,7 @@ TEST_CASE("selectable isolation undo page reclamation") {
 
     // Start a transaction t_pinned which will pin the horizon
     const auto t_pinned{tm.begin_txn(isolation_level_t::SNAPSHOT)};
-    const auto snap_pinned{unwrap(tm.acquire_snapshot(t_pinned))};
+    const auto snap_pinned{UNWRAP(tm.acquire_snapshot(t_pinned))};
 
     const auto t1{tm.begin_txn(isolation_level_t::SNAPSHOT)};
     REQUIRE(tree.update_txn(t1, 1, helpers::span_from_string("200")));
@@ -357,7 +355,7 @@ TEST_CASE("selectable isolation undo page reclamation") {
     CHECK(undo_mgr.active_page_count() > 0);
     storage::page_id_t old_page_id;
     {
-        const auto get{unwrap(tree.tree().get(1))};
+        const auto get{UNWRAP(tree.tree().get(1))};
         const auto header{cairn::txn::read_version_header(get)};
         REQUIRE(header.undo_ptr);
         old_page_id = header.undo_ptr->page_id;
@@ -370,9 +368,9 @@ TEST_CASE("selectable isolation undo page reclamation") {
     // Since all previous versions are now older than the snapshot horizon,
     // resolve_version should trigger unlinking and reclamation of the old undo chain.
     const auto             t_reader{tm.begin_txn(isolation_level_t::SNAPSHOT)};
-    const auto             snap_reader{unwrap(tm.acquire_snapshot(t_reader))};
+    const auto             snap_reader{UNWRAP(tm.acquire_snapshot(t_reader))};
     std::vector<std::byte> buf;
-    const auto             res{unwrap(unwrap(tree.get_txn(t_reader, snap_reader, tm, 1, buf)))};
+    const auto             res{UNWRAP(UNWRAP(tree.get_txn(t_reader, snap_reader, tm, 1, buf)))};
     CHECK(helpers::string_from_span(res) == "300");
     REQUIRE(tm.commit_txn(t_reader, lm));
     CHECK(undo_mgr.active_page_count() == 1);
@@ -383,7 +381,7 @@ TEST_CASE("selectable isolation undo page reclamation") {
     REQUIRE(tree.update_txn(t3, 1, helpers::span_from_string("400")));
     REQUIRE(tm.update_txn_lsn(t3, wal::log::seq_num{4}));
     REQUIRE(tm.commit_txn(t3, lm));
-    CHECK(unwrap(undo_mgr.get_page_active_records(old_page_id)) == 1);
+    CHECK(UNWRAP(undo_mgr.get_page_active_records(old_page_id)) == 1);
     CHECK(undo_mgr.active_page_count() == 1);
 }
 

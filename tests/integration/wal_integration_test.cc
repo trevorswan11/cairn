@@ -28,26 +28,26 @@ TEST_CASE("WAL page flush forces WAL flush") {
     helpers::tempfile log_file{"wal_int_log"};
 
     wal::log::manager log{log_file.path, 1_KiB};
-    auto              bp{helpers::unwrap(storage::buffer_pool<8>::open(db_file.path))};
+    auto              bp{UNWRAP(storage::buffer_pool<8>::open(db_file.path))};
     bp->set_log_manager(log);
 
     storage::page_id_t pid;
     wal::log::seq_num  expected_lsn;
     {
-        auto [id, guard]{helpers::unwrap(bp->new_write())};
+        auto [id, guard]{UNWRAP(bp->new_write())};
         pid = id;
         storage::slotted_page sp{*guard.get()};
         sp.refresh_page();
 
         const std::string_view data{"hello wal integration"};
-        const auto             slot_id{helpers::unwrap(sp.insert(helpers::span_from_string(data),
-                                                                 {
-                                                                     .txn_id      = txn::id_t{1},
-                                                                     .prev_lsn    = stdx::none,
-                                                                     .log_manager = log,
-                                                     }))};
+        const auto             slot_id{UNWRAP(sp.insert(helpers::span_from_string(data),
+                                                        {
+                                                            .txn_id      = txn::id_t{1},
+                                                            .prev_lsn    = stdx::none,
+                                                            .log_manager = log,
+                                            }))};
         CHECK(slot_id == storage::slot_id_t{0});
-        expected_lsn = helpers::unwrap(guard.get()->page_lsn());
+        expected_lsn = UNWRAP(guard.get()->page_lsn());
 
         CHECK(log.flushed_lsn() < expected_lsn);
         guard.mark_dirty();
@@ -57,8 +57,8 @@ TEST_CASE("WAL page flush forces WAL flush") {
     CHECK(log.flushed_lsn() >= expected_lsn);
 
     {
-        auto reader{helpers::unwrap(wal::log::reader::open(log_file.path))};
-        auto r{helpers::unwrap(helpers::unwrap(reader.next_record()))};
+        auto reader{UNWRAP(wal::log::reader::open(log_file.path))};
+        auto r{UNWRAP(UNWRAP(reader.next_record()))};
         CHECK(r.lsn == expected_lsn);
         CHECK(r.txn_id == txn::id_t{1});
         CHECK(r.type == wal::log::record_type::UPDATE);
@@ -73,12 +73,12 @@ TEST_CASE("WAL eviction forces WAL flush") {
     helpers::tempfile log_file{"wal_evict_log"};
 
     wal::log::manager log{log_file.path, 1_KiB};
-    auto              bp{helpers::unwrap(storage::buffer_pool<1>::open(db_file.path))};
+    auto              bp{UNWRAP(storage::buffer_pool<1>::open(db_file.path))};
     bp->set_log_manager(log);
 
     wal::log::seq_num expected_lsn;
     {
-        auto [id, guard]{helpers::unwrap(bp->new_write())};
+        auto [id, guard]{UNWRAP(bp->new_write())};
         storage::slotted_page sp{*guard.get()};
         sp.refresh_page();
 
@@ -95,7 +95,7 @@ TEST_CASE("WAL eviction forces WAL flush") {
         guard.mark_dirty();
     }
 
-    auto [_, guard2]{helpers::unwrap(bp->new_write())};
+    auto [_, guard2]{UNWRAP(bp->new_write())};
     CHECK(log.flushed_lsn() >= expected_lsn);
 }
 

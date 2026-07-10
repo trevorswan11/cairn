@@ -50,11 +50,11 @@ using read_buf_t = gsl::span<const std::byte, sizeof(i64)>;
 
 TEST_CASE("buffer pool round-trips a page through pin/unpin") {
     helpers::tempfile file{"bp_rw"};
-    auto              bp{helpers::unwrap(buffer_pool<8>::open(file.path))};
+    auto              bp{UNWRAP(buffer_pool<8>::open(file.path))};
 
     page_id_t pid{INVALID_PAGE_ID};
     {
-        auto pg{helpers::unwrap(bp->new_page())};
+        auto pg{UNWRAP(bp->new_page())};
         pid = pg->page_id();
         write_marker(pg->data(), 0xbeef);
         CHECK(bp->pin_count(pid) == 1);
@@ -62,7 +62,7 @@ TEST_CASE("buffer pool round-trips a page through pin/unpin") {
         CHECK(bp->pin_count(pid) == 0);
     }
 
-    auto again{helpers::unwrap(bp->fetch_page(pid))};
+    auto again{UNWRAP(bp->fetch_page(pid))};
     CHECK(read_marker(again->data()) == 0xbeef);
     REQUIRE(bp->unpin_page(pid, false));
 }
@@ -70,27 +70,27 @@ TEST_CASE("buffer pool round-trips a page through pin/unpin") {
 TEST_CASE("buffer pool reports exhaustion when every frame is pinned") {
     helpers::tempfile file{"bp_exhaust"};
     using pool_t = buffer_pool<3>;
-    auto bp{helpers::unwrap(pool_t::open(file.path))};
+    auto bp{UNWRAP(pool_t::open(file.path))};
 
     stdx::fixed::vector<page_id_t, pool_t::pool_size> ids;
     for (usize i{0}; i < ids.capacity(); ++i) {
-        auto pg{helpers::unwrap(bp->new_page())};
+        auto pg{UNWRAP(bp->new_page())};
         ids.emplace_back(pg->page_id());
     }
 
     // All frames full must error
-    REQUIRE(helpers::unwrap_err(bp->new_page()) == error_t::STORAGE_POOL_EXHAUSTED);
+    REQUIRE(UNWRAP_ERR(bp->new_page()) == error_t::STORAGE_POOL_EXHAUSTED);
     REQUIRE(bp->unpin_page(ids.front(), false));
     CHECK(bp->new_page());
 }
 
 TEST_CASE("buffer pool evicts and reloads cold pages") {
     helpers::tempfile file{"bp_evict"};
-    auto              bp{helpers::unwrap(buffer_pool<2>::open(file.path))};
+    auto              bp{UNWRAP(buffer_pool<2>::open(file.path))};
 
     stdx::fixed::vector<page_id_t, 3> ids;
     for (usize i{0}; i < ids.capacity(); ++i) {
-        auto pg{helpers::unwrap(bp->new_page())};
+        auto pg{UNWRAP(bp->new_page())};
         write_marker(pg->data(), 100 + static_cast<i64>(i));
 
         // Unpin the page since the pool can only fit 2
@@ -98,18 +98,18 @@ TEST_CASE("buffer pool evicts and reloads cold pages") {
         ids.emplace_back(pg->page_id());
     }
 
-    auto reloaded{helpers::unwrap(bp->fetch_page(ids.front()))};
+    auto reloaded{UNWRAP(bp->fetch_page(ids.front()))};
     CHECK(read_marker(reloaded->data()) == 100);
     REQUIRE(bp->unpin_page(ids.front(), false));
 }
 
 TEST_CASE("buffer pool guards latch and unlatch") {
     helpers::tempfile file{"bp_guard"};
-    auto              bp{helpers::unwrap(buffer_pool<8>::open(file.path))};
+    auto              bp{UNWRAP(buffer_pool<8>::open(file.path))};
 
     page_id_t pid{INVALID_PAGE_ID};
     {
-        auto [id, guard]{helpers::unwrap(bp->new_write())};
+        auto [id, guard]{UNWRAP(bp->new_write())};
         write_marker(guard.as<std::byte>(), 1'234);
         guard.mark_dirty();
         CHECK(bp->pin_count(id) == 1);
@@ -118,7 +118,7 @@ TEST_CASE("buffer pool guards latch and unlatch") {
     CHECK(bp->pin_count(pid) == 0);
 
     {
-        auto guard{helpers::unwrap(bp->fetch_read(pid))};
+        auto guard{UNWRAP(bp->fetch_read(pid))};
         CHECK(read_marker(guard.as<std::byte>()) == 1'234);
     }
     CHECK(bp->pin_count(pid) == 0);
@@ -130,9 +130,9 @@ TEST_CASE("buffer pool persists pages across reopen") {
 
     stdx::fixed::vector<page_id_t, 6> ids;
     {
-        auto bp{helpers::unwrap(pool_t::open(file.path))};
+        auto bp{UNWRAP(pool_t::open(file.path))};
         for (usize i{0}; i < ids.capacity(); ++i) {
-            auto pg{helpers::unwrap(bp->new_page())};
+            auto pg{UNWRAP(bp->new_page())};
             write_marker(pg->data(), 500 + static_cast<i64>(i));
             REQUIRE(bp->unpin_page(pg->page_id(), true));
             ids.emplace_back(pg->page_id());
@@ -140,9 +140,9 @@ TEST_CASE("buffer pool persists pages across reopen") {
         REQUIRE(bp->flush());
     }
 
-    auto bp{helpers::unwrap(pool_t::open(file.path))};
+    auto bp{UNWRAP(pool_t::open(file.path))};
     for (i64 i{0}; const auto pid : ids) {
-        auto pg{helpers::unwrap(bp->fetch_page(pid))};
+        auto pg{UNWRAP(bp->fetch_page(pid))};
         CHECK(read_marker(pg->data()) == 500 + i++);
         REQUIRE(bp->unpin_page(pid, false));
     }
@@ -151,11 +151,11 @@ TEST_CASE("buffer pool persists pages across reopen") {
 TEST_CASE("buffer pool stays correct under heavy churn") {
     helpers::tempfile file{"bp_churn"};
     using pool_t = buffer_pool<8>;
-    auto bp{helpers::unwrap(pool_t::open(file.path))};
+    auto bp{UNWRAP(pool_t::open(file.path))};
 
     stdx::fixed::vector<page_id_t, 6'000> ids;
     for (usize i{0}; i < ids.capacity(); ++i) {
-        auto pg{helpers::unwrap(bp->new_page())};
+        auto pg{UNWRAP(bp->new_page())};
         ids.emplace_back(pg->page_id());
         write_marker(pg->data(), std::to_underlying(ids[i]));
         REQUIRE(bp->unpin_page(ids[i], true));
@@ -165,7 +165,7 @@ TEST_CASE("buffer pool stays correct under heavy churn") {
     std::mt19937_64 rng{Catch::getSeed()};
     std::ranges::shuffle(ids, rng);
     for (const auto pid : ids) {
-        auto pg{helpers::unwrap(bp->fetch_page(pid))};
+        auto pg{UNWRAP(bp->fetch_page(pid))};
         CHECK(read_marker(pg->data()) == std::to_underlying(pid));
         REQUIRE(bp->unpin_page(pid, false));
     }

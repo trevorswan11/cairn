@@ -28,20 +28,20 @@ template <usize N> auto seeded_pattern(std::array<std::byte, N>& buf, u8 seed) -
 
 TEST_CASE("Disk manager allocates dense page IDs") {
     helpers::tempfile file{"dm_alloc"};
-    auto              dm{helpers::unwrap(disk_manager::open(file.path))};
+    auto              dm{UNWRAP(disk_manager::open(file.path))};
 
     CHECK(dm->num_pages() == 0);
-    CHECK(helpers::unwrap(dm->allocate_page()) == page_id_t{0});
-    CHECK(helpers::unwrap(dm->allocate_page()) == page_id_t{1});
-    CHECK(helpers::unwrap(dm->allocate_page()) == page_id_t{2});
+    CHECK(UNWRAP(dm->allocate_page()) == page_id_t{0});
+    CHECK(UNWRAP(dm->allocate_page()) == page_id_t{1});
+    CHECK(UNWRAP(dm->allocate_page()) == page_id_t{2});
     CHECK(dm->num_pages() == 3);
 }
 
 TEST_CASE("Disk manager round-trips page contents") {
     helpers::tempfile file{"dm_rw"};
-    auto              dm{helpers::unwrap(disk_manager::open(file.path))};
+    auto              dm{UNWRAP(disk_manager::open(file.path))};
 
-    const auto                          pid{helpers::unwrap(dm->allocate_page())};
+    const auto                          pid{UNWRAP(dm->allocate_page())};
     std::array<std::byte, DB_PAGE_SIZE> buf_out{};
     seeded_pattern(buf_out, 42);
     REQUIRE(dm->write_page(pid, buf_out));
@@ -53,14 +53,12 @@ TEST_CASE("Disk manager round-trips page contents") {
 
 TEST_CASE("Disk manager rejects invalid page IDs") {
     helpers::tempfile file{"dm_invalid"};
-    auto              dm{helpers::unwrap(disk_manager::open(file.path))};
+    auto              dm{UNWRAP(disk_manager::open(file.path))};
     REQUIRE(dm->allocate_page());
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{5}, buf)) ==
-          error_t::STORAGE_INVALID_PAGE_ID);
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{-1}, buf)) ==
-          error_t::STORAGE_INVALID_PAGE_ID);
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{5}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{-1}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
 }
 
 TEST_CASE("Disk manager persists across reopens") {
@@ -70,13 +68,13 @@ TEST_CASE("Disk manager persists across reopens") {
     page_id_t pid{INVALID_PAGE_ID};
 
     {
-        auto dm{helpers::unwrap(disk_manager::open(file.path))};
-        pid = helpers::unwrap(dm->allocate_page());
+        auto dm{UNWRAP(disk_manager::open(file.path))};
+        pid = UNWRAP(dm->allocate_page());
         REQUIRE(dm->allocate_page());
         REQUIRE(dm->write_page(pid, buf_out));
     }
 
-    auto reopened{helpers::unwrap(disk_manager::open(file.path))};
+    auto reopened{UNWRAP(disk_manager::open(file.path))};
     CHECK(reopened->num_pages() == 2);
 
     std::array<std::byte, DB_PAGE_SIZE> buf_in{};
@@ -94,8 +92,8 @@ TEST_CASE("Disk manager short reads are detected") {
     }
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
-    auto                                dm{helpers::unwrap(disk_manager::open(file.path))};
-    CHECK(helpers::unwrap_err(dm->read_page(page_id_t{0}, buf)) == error_t::STORAGE_SHORT_READ);
+    auto                                dm{UNWRAP(disk_manager::open(file.path))};
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{0}, buf)) == error_t::STORAGE_SHORT_READ);
 }
 
 } // namespace cairn::tests

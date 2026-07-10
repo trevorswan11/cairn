@@ -12,9 +12,9 @@
 #include <stdx/utility.hh>
 
 #include "storage/bplus.hh"
+#include "testhelpers/mt_verifier.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
-#include "testhelpers/mt_verifier.hh"
 
 namespace cairn::tests {
 
@@ -25,8 +25,8 @@ using tree_t = bplus_tree<i64, u64, 1_KiB>;
 
 TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
     helpers::tempfile file{"bpt_cc_insert"};
-    auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto              tree{helpers::unwrap(tree_t::create(*pool))};
+    auto              pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto              tree{UNWRAP(tree_t::create(*pool))};
 
     constexpr i64        per_thread{2'000};
     helpers::mt_verifier verifier;
@@ -44,17 +44,16 @@ TEST_CASE("bplus_tree supports concurrent disjoint inserts") {
 
     REQUIRE_FALSE(verifier.dump_if_error());
     const i64 total{static_cast<i64>(workers.capacity()) * per_thread};
-    for (i64 k{0}; k < total; ++k) { CHECK(helpers::unwrap(tree.get(k)) == static_cast<u64>(k)); }
+    for (i64 k{0}; k < total; ++k) { CHECK(UNWRAP(tree.get(k)) == static_cast<u64>(k)); }
 
-    CHECK(helpers::unwrap(tree.range_scan(0, total - 1, [](const i64&, const u64&) {
-              return true;
-          })) == static_cast<usize>(total));
+    CHECK(UNWRAP(tree.range_scan(0, total - 1, [](const i64&, const u64&) { return true; })) ==
+          static_cast<usize>(total));
 }
 
 TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
     helpers::tempfile file{"bpt_cc_mixed"};
-    auto              pool{helpers::unwrap(tree_t::pool_t::open(file.path))};
-    auto              tree{helpers::unwrap(tree_t::create(*pool))};
+    auto              pool{UNWRAP(tree_t::pool_t::open(file.path))};
+    auto              tree{UNWRAP(tree_t::create(*pool))};
 
     constexpr i32 writers{4};
     constexpr i64 per_writer{3'000};
@@ -104,7 +103,7 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
             while (!go.load());
             for (i32 i{0}; i < 20'000; ++i) {
                 const i64 key{dist(rng)};
-                auto      val{helpers::mt_unwrap(verifier, tree.get(key))};
+                auto      val{MT_UNWRAP(verifier, tree.get(key))};
                 THREAD_CHECK(verifier, val == static_cast<u64>(key));
             }
         });
@@ -119,14 +118,14 @@ TEST_CASE("bplus_tree supports concurrent readers, deleters, and inserters") {
 
     // Stable region intact
     for (i64 k{stable_base}; k < stable_base + stable; ++k) {
-        CHECK(helpers::unwrap(tree.get(k)) == static_cast<u64>(k));
+        CHECK(UNWRAP(tree.get(k)) == static_cast<u64>(k));
     }
 
     // Concurrently inserted block present
     const i64 insert_total{static_cast<i64>(writers) * per_writer};
     for (i64 i{0}; i < insert_total; ++i) {
         const i64 k{emplace_base + i};
-        CHECK(helpers::unwrap(tree.get(k)) == static_cast<u64>(k));
+        CHECK(UNWRAP(tree.get(k)) == static_cast<u64>(k));
     }
 }
 
