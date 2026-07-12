@@ -24,7 +24,7 @@ constinit std::atomic<bool> initialized{false};
 constinit std::atomic<i32>  boundary_limit;
 constinit std::atomic<i32>  boundaries;
 
-[[noreturn]] auto bail(boundary_t boundary) -> void {
+auto bail(boundary_t boundary) -> void {
     fmt::println("[CRASH INJECTION] Bailing at boundary: {} (limit: {})",
                  magic_enum::enum_name(boundary),
                  boundary_limit);
