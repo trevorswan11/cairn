@@ -72,11 +72,7 @@ auto mt_unwrap_err(
     }
 
     using T = std::remove_cvref_t<U>;
-    if constexpr (stdx::Option<T>) {
-        // Nothing to return
-    } else if constexpr (stdx::Result<T>) {
-        return u.error();
-    }
+    if constexpr (stdx::Result<T>) { return u.error(); }
 }
 
 #define MT_UNWRAP_ERR(verifier, expr) \
