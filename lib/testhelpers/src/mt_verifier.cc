@@ -21,7 +21,8 @@ auto mt_verifier::check(bool condition, std::string_view expr, std::string_view 
 }
 
 auto mt_verifier::dump_if_error() -> bool {
-    const auto has_errors{!failures_.empty()};
+    std::scoped_lock lock{mutex_};
+    const auto       has_errors{!failures_.empty()};
     for (const auto& failure : failures_) { fmt::println("\t{}", failure); }
     failures_.clear();
     return has_errors;

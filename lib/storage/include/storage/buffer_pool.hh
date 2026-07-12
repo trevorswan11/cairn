@@ -182,6 +182,7 @@ template <usize PoolSize> class buffer_pool {
         if (auto slot{page_table_.get_opt(pid)}) {
             const auto fid{*slot};
             auto&      f{frame_at(fid)};
+            if (f.is_deleted()) { return stdx::err{error_t::STORAGE_PAGE_NOT_FOUND}; }
             f.pin();
             replacer_.access(fid);
             replacer_.set_evictable(fid, false);
@@ -242,7 +243,17 @@ template <usize PoolSize> class buffer_pool {
         auto&      f{frame_at(fid)};
         if (f.pin_count() <= 0) { return stdx::err{error_t::STORAGE_PAGE_NOT_FOUND}; }
         if (dirty) { f.set_dirty(true); }
-        if (f.unpin() == 0) { replacer_.set_evictable(fid, true); }
+        if (f.unpin() == 0) {
+            if (f.is_deleted()) {
+                page_table_.remove(pid);
+                replacer_.remove(fid);
+                f.reset(INVALID_PAGE_ID, true);
+                free_list_.emplace_back(fid);
+                free_pages_.emplace_back(pid);
+            } else {
+                replacer_.set_evictable(fid, true);
+            }
+        }
         return {};
     }
 
@@ -269,7 +280,10 @@ template <usize PoolSize> class buffer_pool {
 
         const auto fid{*slot};
         auto&      f{frame_at(fid)};
-        if (f.pin_count() > 0) { return stdx::err{error_t::STORAGE_TREE_CORRUPT}; }
+        if (f.pin_count() > 0) {
+            f.set_deleted(true);
+            return {};
+        }
 
         page_table_.remove(pid);
         replacer_.remove(fid);

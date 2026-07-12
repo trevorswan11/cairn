@@ -19,57 +19,6 @@ enum class page_id_t : i64 {};
 constexpr page_id_t INVALID_PAGE_ID{-1};
 using page_id_hash_t = stdx::hash<storage::page_id_t>;
 
-constexpr usize DB_PAGE_SIZE{stdx::sizes::kib(8UZ)};
-
-// The most primitive thread-safe abstraction over a chunk of memory
-class page {
-  public:
-    constexpr page() noexcept = default;
-    ~page()                   = default;
-    MAKE_PINNED(page);
-
-    [[nodiscard]] constexpr auto data(this auto&& self) noexcept -> auto* { return self.data_; }
-    [[nodiscard]] constexpr auto page_id() const noexcept -> page_id_t { return page_id_; }
-    [[nodiscard]] constexpr auto pin_count() const noexcept -> i32 { return pin_count_; }
-    [[nodiscard]] constexpr auto is_dirty() const noexcept -> bool { return is_dirty_; }
-    [[nodiscard]] auto           latch() noexcept -> rw_latch& { return latch_; }
-    [[nodiscard]] constexpr auto page_lsn() const noexcept -> stdx::option<wal::log::seq_num> {
-        return page_lsn_;
-    }
-
-    // Rebinds the page to a fresh id and clears its state
-    constexpr auto reset(page_id_t pid, bool zero = true) noexcept -> void {
-        if (zero) { std::fill_n(data_, DB_PAGE_SIZE, std::byte{0}); }
-        page_id_   = pid;
-        pin_count_ = 0;
-        is_dirty_  = false;
-        page_lsn_.reset();
-        rec_lsn_.reset();
-    }
-
-    constexpr auto set_page_lsn(stdx::option<wal::log::seq_num> lsn) noexcept -> void {
-        page_lsn_ = lsn;
-        if (lsn && !rec_lsn_) { rec_lsn_ = lsn; }
-    }
-    constexpr auto               set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
-    constexpr auto               pin() noexcept -> i32 { return ++pin_count_; }
-    constexpr auto               unpin() noexcept -> i32 { return --pin_count_; }
-    [[nodiscard]] constexpr auto rec_lsn() const noexcept -> stdx::option<wal::log::seq_num> {
-        return rec_lsn_;
-    }
-    constexpr auto clear_rec_lsn() noexcept -> void { rec_lsn_.reset(); }
-
-  private:
-    alignas(std::max_align_t) std::byte data_[DB_PAGE_SIZE]{};
-    rw_latch latch_;
-
-    page_id_t                       page_id_{INVALID_PAGE_ID};
-    i32                             pin_count_{0};
-    bool                            is_dirty_{false};
-    stdx::option<wal::log::seq_num> page_lsn_{stdx::none};
-    stdx::option<wal::log::seq_num> rec_lsn_{stdx::none};
-};
-
 } // namespace cairn::storage
 
 namespace stdx {
@@ -86,3 +35,64 @@ template <> struct nullable<cairn::storage::page_id_t> {
 };
 
 } // namespace stdx
+
+namespace cairn::storage {
+
+constexpr usize DB_PAGE_SIZE{stdx::sizes::kib(8UZ)};
+
+// The most primitive thread-safe abstraction over a chunk of memory
+class page {
+  public:
+    constexpr page() noexcept = default;
+    ~page()                   = default;
+    MAKE_PINNED(page);
+
+    [[nodiscard]] constexpr auto data(this auto&& self) noexcept -> auto* { return self.data_; }
+    [[nodiscard]] constexpr auto page_id() const noexcept -> page_id_t {
+        return page_id_.value_or(INVALID_PAGE_ID); // TODO(tcs) make this return an option
+    }
+    [[nodiscard]] constexpr auto pin_count() const noexcept -> i32 { return pin_count_; }
+    [[nodiscard]] constexpr auto is_dirty() const noexcept -> bool { return is_dirty_; }
+    [[nodiscard]] constexpr auto is_deleted() const noexcept -> bool { return deleted_; }
+    [[nodiscard]] auto           latch() noexcept -> rw_latch& { return latch_; }
+    [[nodiscard]] constexpr auto page_lsn() const noexcept -> stdx::option<wal::log::seq_num> {
+        return page_lsn_;
+    }
+
+    // Rebinds the page to a fresh id and clears its state
+    constexpr auto reset(page_id_t pid, bool zero = true) noexcept -> void {
+        if (zero) { std::fill_n(data_, DB_PAGE_SIZE, std::byte{0}); }
+        page_id_   = pid;
+        pin_count_ = 0;
+        is_dirty_  = false;
+        deleted_   = false;
+        page_lsn_.reset();
+        rec_lsn_.reset();
+    }
+
+    constexpr auto set_page_lsn(stdx::option<wal::log::seq_num> lsn) noexcept -> void {
+        page_lsn_ = lsn;
+        if (lsn && !rec_lsn_) { rec_lsn_ = lsn; }
+    }
+    constexpr auto               set_dirty(bool dirty) noexcept -> void { is_dirty_ = dirty; }
+    constexpr auto               set_deleted(bool deleted) noexcept -> void { deleted_ = deleted; }
+    constexpr auto               pin() noexcept -> i32 { return ++pin_count_; }
+    constexpr auto               unpin() noexcept -> i32 { return --pin_count_; }
+    [[nodiscard]] constexpr auto rec_lsn() const noexcept -> stdx::option<wal::log::seq_num> {
+        return rec_lsn_;
+    }
+    constexpr auto clear_rec_lsn() noexcept -> void { rec_lsn_.reset(); }
+
+  private:
+    alignas(std::max_align_t) std::byte data_[DB_PAGE_SIZE]{};
+    rw_latch latch_;
+
+    stdx::option<page_id_t>         page_id_;
+    i32                             pin_count_{0};
+    bool                            is_dirty_{false};
+    bool                            deleted_{false};
+    stdx::option<wal::log::seq_num> page_lsn_{stdx::none};
+    stdx::option<wal::log::seq_num> rec_lsn_{stdx::none};
+};
+
+} // namespace cairn::storage
