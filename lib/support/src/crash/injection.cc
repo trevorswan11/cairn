@@ -3,6 +3,13 @@
 #include <atomic>
 #include <cstdlib>
 
+#include <cairn/config.h>
+#if CAIRN_WINDOWS
+#    define WIN32_LEAN_AND_MEAN
+#    include <processthreadsapi.h>
+#    include <windows.h>
+#endif
+
 #include <fmt/base.h>
 #include <fmt/std.h>
 #include <magic_enum/magic_enum.hpp>
@@ -21,7 +28,11 @@ constinit std::atomic<i32>  boundaries;
     fmt::println("[CRASH INJECTION] Bailing at boundary: {} (limit: {})",
                  magic_enum::enum_name(boundary),
                  boundary_limit);
+#if CAIRN_WINDOWS
+    ::TerminateProcess(::GetCurrentProcess(), 1);
+#else
     std::_Exit(1);
+#endif
 }
 
 } // namespace

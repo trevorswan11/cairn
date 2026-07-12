@@ -49,8 +49,11 @@ template <Unwrappable U>
 [[nodiscard]] auto
 mt_unwrap(mt_verifier& verifier, U&& u, std::string_view expr, std::string_view file, int line)
     -> decltype(auto) {
-    verifier.check(static_cast<bool>(u), expr, file, line);
-    VERIFY(!verifier.dump_if_error());
+    if (!u) {
+        std::println("MT_UNWRAP failed ({}): {}:{}", expr, file, line);
+        verifier.check(false, expr, file, line);
+        VERIFY(false);
+    }
     return *std::forward<U>(u);
 }
 
@@ -62,13 +65,16 @@ template <Unwrappable U>
 auto mt_unwrap_err(
     mt_verifier& verifier, U&& u, std::string_view expr, std::string_view file, int line)
     -> decltype(auto) {
-    verifier.check(!static_cast<bool>(u), expr, file, line);
+    if (u) {
+        std::println("MT_UNWRAP_ERR failed ({}): {}:{}", expr, file, line);
+        verifier.check(false, expr, file, line);
+        VERIFY(false);
+    }
 
     using T = std::remove_cvref_t<U>;
     if constexpr (stdx::Option<T>) {
-        VERIFY(!verifier.dump_if_error());
+        // Nothing to return
     } else if constexpr (stdx::Result<T>) {
-        VERIFY(!verifier.dump_if_error());
         return u.error();
     }
 }
