@@ -2,6 +2,7 @@
 
 #include <ostream>
 #include <string>
+#include <string_view>
 
 #include <fmt/base.h>
 #include <stdx/option.hh>
@@ -59,7 +60,7 @@ template <typename T> using result = stdx::result<T, error>;
 
 class diagnostic {
   public:
-    enum class level_t : u8 {
+    enum class level : u8 {
         ERROR,
         WARNING,
     };
@@ -96,22 +97,22 @@ class diagnostic {
     MAKE_GETTER(message, const stdx::option<std::string>&)
     MAKE_GETTER(loc, stdx::option<location>)
     MAKE_GETTER(err, error)
-    MAKE_GETTER(level, stdx::option<level_t>)
+    MAKE_GETTER(level, stdx::option<level>)
 
     [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept
         -> bool = default;
 
     // Diagnostics always default to `ERROR`
-    auto               set_level(stdx::option<level_t> level) noexcept -> void { level_ = level; }
-    [[nodiscard]] auto format(std::ostream&                    os,
-                              const stdx::option<std::string>& source_path = stdx::none,
-                              stdx::option<bool> in_terminal = stdx::none) const -> std::ostream&;
+    auto set_level(stdx::option<level> level) noexcept -> void { level_ = level; }
+    auto format(std::ostream&                         os,
+                const stdx::option<std::string_view>& source_path = stdx::none,
+                stdx::option<bool> in_terminal = stdx::none) const -> std::ostream&;
 
   private:
     stdx::option<std::string> message_;
     stdx::option<location>    loc_;
     error                     err_;
-    stdx::option<level_t>     level_{level_t::ERROR};
+    stdx::option<level>       level_{level::ERROR};
 };
 
 } // namespace cairn

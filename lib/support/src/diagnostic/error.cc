@@ -1,7 +1,6 @@
 #include "support/diagnostic/error.hh"
 
 #include <ostream>
-#include <string>
 #include <string_view>
 
 #include <fmt/color.h>
@@ -17,7 +16,7 @@ namespace cairn {
 
 namespace {
 
-using level_t = diagnostic::level_t;
+using level_t = diagnostic::level;
 
 [[nodiscard]] constexpr auto level_name(level_t level) noexcept -> std::string_view {
     switch (level) {
@@ -38,9 +37,9 @@ using level_t = diagnostic::level_t;
 
 } // namespace
 
-auto diagnostic::format(std::ostream&                    os,
-                        const stdx::option<std::string>& source_path,
-                        stdx::option<bool>               in_terminal) const -> std::ostream& {
+auto diagnostic::format(std::ostream&                         os,
+                        const stdx::option<std::string_view>& source_path,
+                        stdx::option<bool>                    in_terminal) const -> std::ostream& {
     const auto tty{in_terminal.value_or(stdx::is_tty())};
 
     // The source and location play nicely with one another
