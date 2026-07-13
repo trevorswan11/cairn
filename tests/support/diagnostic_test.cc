@@ -43,7 +43,7 @@ auto check_diagnostic_format(const diagnostic&              d,
 TEST_CASE("Location and error only") {
     a_something l;
     diagnostic  d{error::IO_ERROR, l};
-    check_diagnostic_format(d, "error: SAD 1:43");
+    check_diagnostic_format(d, "error: IO_ERROR 1:43");
 }
 
 TEST_CASE("Custom locateable") {
