@@ -5,7 +5,7 @@
 
 #include <stdx/result.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 #include <type_traits>
 
@@ -27,7 +27,7 @@ template <typename File, typename Fn>
         }
         if (!file.fail()) { return {}; }
         if (interrupted()) { continue; }
-        return stdx::err{error_t::IO_ERROR};
+        return stdx::err{error::IO_ERROR};
     }
 }
 

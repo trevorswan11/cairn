@@ -6,7 +6,7 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 namespace cairn::support {
 

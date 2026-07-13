@@ -22,7 +22,7 @@
 #include "storage/bplus_internal/traits.hh"
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 namespace cairn::storage::detail {
 
@@ -78,7 +78,7 @@ class bplus_base_t {
     [[nodiscard]] auto get(const Key& key) -> result<Value> {
         read_guard_t meta_guard{TRY(pool_->fetch_read(meta_page_))};
         const auto   root{meta_guard.template as<meta_node>()->root};
-        if (!root.has_value()) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
+        if (!root.has_value()) { return stdx::err{error::STORAGE_KEY_NOT_FOUND}; }
 
         read_guard_t guard{TRY(pool_->fetch_read(*root))};
         meta_guard.drop();
@@ -94,13 +94,13 @@ class bplus_base_t {
             equal_t{comp_}(LeafTrait::get_key(guard.get(), idx), key)) {
             return LeafTrait::get_value(guard.get(), idx);
         }
-        return stdx::err{error_t::STORAGE_KEY_NOT_FOUND};
+        return stdx::err{error::STORAGE_KEY_NOT_FOUND};
     }
 
     [[nodiscard]] auto contains(const Key& key) -> result<bool> {
         auto found{get(key)};
         if (found) { return true; }
-        if (found.error() == error_t::STORAGE_KEY_NOT_FOUND) { return false; }
+        if (found.error() == error::STORAGE_KEY_NOT_FOUND) { return false; }
         return stdx::err{found.error()};
     }
 
@@ -208,7 +208,7 @@ class bplus_base_t {
         const i32 idx{leaf_lower_bound(path.back(), key)};
         if (idx < LeafTrait::size(path.back().get()) &&
             equal_t{comp_}(LeafTrait::get_key(path.back().get(), idx), key)) {
-            return stdx::err{error_t::STORAGE_DUPLICATE_KEY};
+            return stdx::err{error::STORAGE_DUPLICATE_KEY};
         }
 
         if (LeafTrait::can_emplace(path.back().get(), key, value)) {
@@ -232,7 +232,7 @@ class bplus_base_t {
     [[nodiscard]] auto update(const Key& key, const Value& value) -> result<void> {
         write_guard_t meta_guard{TRY(fetch_meta_write())};
         auto          meta{meta_guard.template as<meta_node>()};
-        if (!meta->root.has_value()) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
+        if (!meta->root.has_value()) { return stdx::err{error::STORAGE_KEY_NOT_FOUND}; }
 
         path_stack                   path;
         stdx::option<write_guard_t&> meta_guard_opt{meta_guard};
@@ -251,7 +251,7 @@ class bplus_base_t {
         const i32 idx{leaf_lower_bound(path.back(), key)};
         if (idx >= LeafTrait::size(path.back().get()) ||
             !equal_t{comp_}(LeafTrait::get_key(path.back().get(), idx), key)) {
-            return stdx::err{error_t::STORAGE_KEY_NOT_FOUND};
+            return stdx::err{error::STORAGE_KEY_NOT_FOUND};
         }
 
         if (LeafTrait::can_update(path.back().get(), idx, value)) {
@@ -274,7 +274,7 @@ class bplus_base_t {
     [[nodiscard]] auto remove(const Key& key) -> result<void> {
         write_guard_t meta_guard{TRY(fetch_meta_write())};
         auto          meta{meta_guard.template as<meta_node>()};
-        if (!meta->root.has_value()) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
+        if (!meta->root.has_value()) { return stdx::err{error::STORAGE_KEY_NOT_FOUND}; }
 
         path_stack path;
         slot_stack slot; // index of path[i] inside of path[i-1]
@@ -315,7 +315,7 @@ class bplus_base_t {
         const i32 idx{leaf_lower_bound(path.back(), key)};
         if (idx >= LeafTrait::size(path.back().get()) ||
             !equal_t{comp_}(LeafTrait::get_key(path.back().get(), idx), key)) {
-            return stdx::err{error_t::STORAGE_KEY_NOT_FOUND};
+            return stdx::err{error::STORAGE_KEY_NOT_FOUND};
         }
 
         LeafTrait::remove_at(path.back().get(), idx);

@@ -14,7 +14,7 @@
 
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/seq_num.hh"
@@ -111,11 +111,11 @@ auto record::serialize(std::vector<std::byte>& dest) const -> void {
 auto record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<record> {
     PROFILE_FUNCTION();
     const auto original_span{src};
-    if (src.size() < MINIMUM_SIZE<>) { return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL}; }
+    if (src.size() < MINIMUM_SIZE<>) { return stdx::err{error::WAL_SOURCE_BUF_TOO_SMALL}; }
 
     const auto record_size{read_arbitrary<i32>(src)};
     if (original_span.size() < static_cast<usize>(record_size)) {
-        return stdx::err{error_t::WAL_SOURCE_BUF_TOO_SMALL};
+        return stdx::err{error::WAL_SOURCE_BUF_TOO_SMALL};
     }
 
     // Ensures we don't read outside of this record's data
@@ -187,13 +187,13 @@ auto record::deserialize(gsl::span<const std::byte>& src) noexcept -> result<rec
     // Decode footer
     record.checksum = read_arbitrary<u32>(record_span);
     const auto size_copy{read_arbitrary<i32>(record_span)};
-    if (record.size != size_copy) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
+    if (record.size != size_copy) { return stdx::err{error::WAL_SIZE_CORRUPT}; }
 
     // Verify the checksum matches
     const auto checksum_bytes{original_span.subspan(
         0, static_cast<usize>(record_size) - sizeof(record.checksum) - sizeof(record.size))};
     if (stdx::crc::crc32(checksum_bytes) != record.checksum) {
-        return stdx::err{error_t::WAL_CHECKSUM_CORRUPT};
+        return stdx::err{error::WAL_CHECKSUM_CORRUPT};
     }
     return record;
 }

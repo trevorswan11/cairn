@@ -5,7 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/memory.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "txn/id.hh"
 #include "txn/lock/manager.hh"
@@ -77,8 +77,8 @@ TEST_CASE("lock::manager wound-wait deadlock prevention") {
     REQUIRE(lm.lock_row_exclusive(tx_young, idx, 200));
     REQUIRE(lm.lock_row_exclusive(tx_old, idx, 100));
 
-    std::atomic<bool>    young_granted{false};
-    std::atomic<error_t> young_err{error_t::IO_ERROR};
+    std::atomic<bool>  young_granted{false};
+    std::atomic<error> young_err{error::IO_ERROR};
     {
         std::atomic<bool> young_started{false};
         std::jthread      t_young{[&] {
@@ -100,7 +100,7 @@ TEST_CASE("lock::manager wound-wait deadlock prevention") {
     }
 
     CHECK_FALSE(young_granted);
-    CHECK(young_err == error_t::TXN_DEADLOCK_DETECTED);
+    CHECK(young_err == error::TXN_DEADLOCK_DETECTED);
 }
 
 TEST_CASE("lock::manager range/gap locking") {

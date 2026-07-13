@@ -18,7 +18,7 @@
 #include <stdx/utility.hh>
 
 #include "support/crash/injection.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "support/io_utils.hh"
 #include "wal/log/record.hh"
 #include "wal/log/seq_num.hh"
@@ -86,7 +86,7 @@ auto manager::flush(seq_num lsn) -> result<void> {
     }
 
     if (!running() && flushed_lsn_.load(std::memory_order_relaxed) < lsn) {
-        return stdx::err{error_t::IO_ERROR};
+        return stdx::err{error::IO_ERROR};
     }
     return {};
 }

@@ -11,7 +11,7 @@
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -182,7 +182,7 @@ TEST_CASE("recovery crash") {
         {
             auto         guard{UNWRAP(bp->fetch_read(pid2))};
             slotted_page sp{*guard.get()};
-            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error::STORAGE_TUPLE_DELETED);
         }
     }
 }
@@ -284,7 +284,7 @@ TEST_CASE("recovery with checkpoint") {
         {
             auto         guard{UNWRAP(bp->fetch_read(pid2))};
             slotted_page sp{*guard.get()};
-            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error::STORAGE_TUPLE_DELETED);
         }
     }
 }

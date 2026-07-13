@@ -18,7 +18,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/bplus.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/manager.hh"
 #include "txn/read_set.hh"
@@ -141,10 +141,10 @@ class iot_tree {
         -> result<void> {
         if (const auto get{tree_.get(key)}) {
             if (!read_version_header(*get).is_deleted) {
-                return stdx::err{error_t::STORAGE_DUPLICATE_KEY};
+                return stdx::err{error::STORAGE_DUPLICATE_KEY};
             }
             return update_txn(id, key, payload);
-        } else if (get.error() != error_t::STORAGE_KEY_NOT_FOUND) {
+        } else if (get.error() != error::STORAGE_KEY_NOT_FOUND) {
             return stdx::err{get.error()};
         }
 
@@ -195,7 +195,7 @@ class iot_tree {
         const auto get{TRY(tree_.get(key))};
         const auto old_val{snapshot(get)};
         const auto old_header{read_version_header(old_val)};
-        if (old_header.is_deleted) { return stdx::err{error_t::STORAGE_KEY_NOT_FOUND}; }
+        if (old_header.is_deleted) { return stdx::err{error::STORAGE_KEY_NOT_FOUND}; }
         const auto old_payload{read_payload(old_val)};
 
         const auto undo_ptr{TRY(undo_mgr_.append_record(id,
@@ -329,7 +329,7 @@ class iot_tree {
 
         const auto get_res{tree_.get(key)};
         if (!get_res) {
-            if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return stdx::none; }
+            if (get_res.error() == error::STORAGE_KEY_NOT_FOUND) { return stdx::none; }
             return stdx::err{get_res.error()};
         }
 

@@ -16,7 +16,7 @@
 #include <stdx/utility.hh>
 
 #include "exec/table_scan.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/mt_verifier.hh"
 #include "testhelpers/scheduler.hh"
@@ -279,7 +279,7 @@ TEST_CASE("concurrency lost update behavior") {
             MT_REQUIRE(verifier, tm.update_txn_lsn(t2, wal::log::seq_num{3}));
             MT_CHECK(verifier,
                      MT_UNWRAP_ERR(verifier, tm.commit_txn(t2, lm)) ==
-                         error_t::TXN_SERIALIZATION_FAILURE);
+                         error::TXN_SERIALIZATION_FAILURE);
             MT_REQUIRE(verifier, tree.rollback_txn(t2));
 
             MT_REQUIRE(verifier, scheduler.yield_to_schedule(tid1));

@@ -9,7 +9,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 namespace cairn::support {
 
@@ -19,7 +19,7 @@ template <typename Json>
 [[nodiscard]] auto parse_value(const Json& json, std::string_view at)
     -> result<nlohmann::json::const_iterator> {
     if (auto it{json.find(at)}; it != json.end()) { return it; }
-    return stdx::err{error_t::SUPPORT_JSON_MISSING_FIELD};
+    return stdx::err{error::SUPPORT_JSON_MISSING_FIELD};
 }
 
 } // namespace
@@ -28,7 +28,7 @@ auto config::parse(std::string_view table, std::string contents) -> result<confi
     stdx::option<nlohmann::json> parsed;
     try {
         parsed.emplace(nlohmann::json::parse(contents, nullptr, true, true));
-    } catch (...) { return stdx::err{error_t::SUPPORT_JSON_PARSE_ERROR}; }
+    } catch (...) { return stdx::err{error::SUPPORT_JSON_PARSE_ERROR}; }
 
     try {
         const auto&               database{*TRY(parse_value(*parsed, table))};
@@ -46,7 +46,7 @@ auto config::parse(std::string_view table, std::string contents) -> result<confi
             .logfile  = std::move(logfile),
             .port     = *TRY(parse_value(database, "port")),
         };
-    } catch (...) { return stdx::err{error_t::SUPPORT_JSON_TYPE_ERROR}; }
+    } catch (...) { return stdx::err{error::SUPPORT_JSON_TYPE_ERROR}; }
 }
 
 } // namespace cairn::support

@@ -17,7 +17,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/bplus.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
 #include "txn/manager.hh"
@@ -140,7 +140,7 @@ class index_scan {
 
                 auto get_res{primary_tree_.get_raw(pk)};
                 if (!get_res) {
-                    if (get_res.error() == error_t::STORAGE_KEY_NOT_FOUND) { return true; }
+                    if (get_res.error() == error::STORAGE_KEY_NOT_FOUND) { return true; }
                     return false;
                 }
 

@@ -10,7 +10,7 @@
 #include "sql/schema.hh"
 #include "sql/value.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 namespace cairn::sql {
 

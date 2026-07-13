@@ -12,7 +12,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "wal/log/record.hh"
 #include "wal/log/seq_num.hh"
 

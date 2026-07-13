@@ -14,7 +14,7 @@
 
 #include "storage/bplus.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -50,7 +50,7 @@ TEST_CASE("bplus_tree handles an empty tree") {
 
     CHECK(UNWRAP(tree.empty()));
     CHECK_FALSE(UNWRAP(tree.contains(42)));
-    CHECK(UNWRAP_ERR(tree.get(42)) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tree.get(42)) == error::STORAGE_KEY_NOT_FOUND);
 }
 
 TEST_CASE("bplus_tree inserts and looks up sequential keys") {
@@ -64,8 +64,8 @@ TEST_CASE("bplus_tree inserts and looks up sequential keys") {
     CHECK_FALSE(UNWRAP(tree.empty()));
     for (i64 i{0}; i < n; ++i) { CHECK(UNWRAP(tree.get(i)) == static_cast<u64>(i * 10)); }
 
-    CHECK(UNWRAP_ERR(tree.emplace(123, 0)) == error_t::STORAGE_DUPLICATE_KEY);
-    CHECK(UNWRAP_ERR(tree.get(n + 1)) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tree.emplace(123, 0)) == error::STORAGE_DUPLICATE_KEY);
+    CHECK(UNWRAP_ERR(tree.get(n + 1)) == error::STORAGE_KEY_NOT_FOUND);
 }
 
 TEST_CASE("bplus_tree matches a std::map oracle under random inserts") {
@@ -164,7 +164,7 @@ TEST_CASE("bplus_tree deletes down to empty, matching the oracle") {
         REQUIRE(tree.remove(keys[i]));
         oracle.erase(keys[i]);
     }
-    CHECK(UNWRAP_ERR(tree.remove(keys[0])) == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tree.remove(keys[0])) == error::STORAGE_KEY_NOT_FOUND);
 
     for (const auto& [k, v] : oracle) { CHECK(UNWRAP(tree.get(k)) == v); }
     for (usize i{half}; i < keys.size(); ++i) { REQUIRE(tree.remove(keys[i])); }
@@ -190,7 +190,7 @@ TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
         if (op_dist(rng)) {
             const u64 v{rng()};
             if (oracle.contains(k)) {
-                CHECK(UNWRAP_ERR(tree.emplace(k, v)) == error_t::STORAGE_DUPLICATE_KEY);
+                CHECK(UNWRAP_ERR(tree.emplace(k, v)) == error::STORAGE_DUPLICATE_KEY);
             } else {
                 CHECK(tree.emplace(k, v));
                 oracle.emplace(k, v);
@@ -200,7 +200,7 @@ TEST_CASE("bplus_tree survives a randomized insert/delete against an oracle") {
                 CHECK(tree.remove(k));
                 oracle.erase(k);
             } else {
-                CHECK(UNWRAP_ERR(tree.remove(k)) == error_t::STORAGE_KEY_NOT_FOUND);
+                CHECK(UNWRAP_ERR(tree.remove(k)) == error::STORAGE_KEY_NOT_FOUND);
             }
         }
     }
@@ -262,7 +262,7 @@ TEST_CASE("bplus_tree update operations") {
     auto tree{UNWRAP(tree_t::create(*pool))};
 
     SECTION("Basic update") {
-        CHECK(UNWRAP_ERR(tree.update(42, 100)) == error_t::STORAGE_KEY_NOT_FOUND);
+        CHECK(UNWRAP_ERR(tree.update(42, 100)) == error::STORAGE_KEY_NOT_FOUND);
         REQUIRE(tree.emplace(42, 10));
         CHECK(UNWRAP(tree.get(42)) == 10);
         REQUIRE(tree.update(42, 20));

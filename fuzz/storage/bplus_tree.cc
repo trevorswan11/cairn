@@ -7,7 +7,7 @@
 #include <stdx/variant.hh>
 
 #include "storage/bplus.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -44,7 +44,7 @@ void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
                 auto res{tree.emplace(iop.key, iop.value)};
                 if (oracle.contains(iop.key)) {
                     // Key exists: B+tree must report DUPLICATE_KEY
-                    EXPECT_TRUE(UNWRAP_ERR(res) == error_t::STORAGE_DUPLICATE_KEY);
+                    EXPECT_TRUE(UNWRAP_ERR(res) == error::STORAGE_DUPLICATE_KEY);
                     return;
                 }
 

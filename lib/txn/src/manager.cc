@@ -15,7 +15,7 @@
 #include <stdx/types.hh>
 
 #include "storage/bplus.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/lock/manager.hh"
 #include "txn/lock/types.hh"
@@ -76,7 +76,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
     PROFILE_FUNCTION();
     std::unique_lock lock{mutex_};
     if (lock_manager_ && lock_manager_->is_wounded(id)) {
-        return stdx::err{error_t::TXN_DEADLOCK_DETECTED};
+        return stdx::err{error::TXN_DEADLOCK_DETECTED};
     }
 
     auto [found, it]{TRY(find_id_locked(id))};
@@ -97,7 +97,7 @@ auto manager::commit_txn(id_t id, wal::log::manager& manager) -> result<void> {
             }
         }
 
-        if (conflict) { return stdx::err{error_t::TXN_SERIALIZATION_FAILURE}; }
+        if (conflict) { return stdx::err{error::TXN_SERIALIZATION_FAILURE}; }
     }
 
     if (found->last_lsn) {
@@ -180,21 +180,21 @@ auto manager::get_read_timestamp(id_t id) const -> result<timestamp_t> {
     if (auto it{active_txns_.find(id)}; it != active_txns_.end() && it->second.read_ts) {
         return *it->second.read_ts;
     }
-    return stdx::err{error_t::TXN_NOT_FOUND};
+    return stdx::err{error::TXN_NOT_FOUND};
 }
 
 auto manager::get_commit_timestamp(id_t id) const -> result<stdx::option<timestamp_t>> {
     std::unique_lock lock{mutex_};
     if (auto it{committed_txns_.find(id)}; it != committed_txns_.end()) { return it->second; }
-    if (active_txns_.contains(id)) { return stdx::err{error_t::TXN_NOT_FOUND}; }
+    if (active_txns_.contains(id)) { return stdx::err{error::TXN_NOT_FOUND}; }
     if (id != INVALID_TXN_ID && id < next_txn_id_) { return stdx::none; }
-    return stdx::err{error_t::TXN_NOT_FOUND};
+    return stdx::err{error::TXN_NOT_FOUND};
 }
 
 auto manager::get_isolation_level(id_t id) const -> result<isolation_level_t> {
     std::unique_lock lock{mutex_};
     if (auto it{isolation_map_.find(id)}; it != isolation_map_.end()) { return it->second; }
-    return stdx::err{error_t::TXN_NOT_FOUND};
+    return stdx::err{error::TXN_NOT_FOUND};
 }
 
 auto manager::committed_before_horizon(id_t id, timestamp_t horizon) const noexcept -> bool {
@@ -227,7 +227,7 @@ auto manager::acquire_snapshot(id_t id) const -> result<snapshot_t> {
     std::unique_lock lock{mutex_};
 
     auto txn_it{active_txns_.find(id)};
-    if (txn_it == active_txns_.end()) { return stdx::err{error_t::TXN_NOT_FOUND}; }
+    if (txn_it == active_txns_.end()) { return stdx::err{error::TXN_NOT_FOUND}; }
 
     auto level{isolation_level_t::SNAPSHOT};
     if (auto it{isolation_map_.find(id)}; it != isolation_map_.end()) { level = it->second; }
@@ -309,7 +309,7 @@ auto manager::find_id_locked(id_t id) noexcept -> found_id_res_t {
     if (auto it{active_txns_.find(id)}; it != active_txns_.end()) {
         return std::make_pair(gsl::not_null{&it->second}, it);
     }
-    return stdx::err{error_t::TXN_NOT_FOUND};
+    return stdx::err{error::TXN_NOT_FOUND};
 }
 
 auto manager::prune_committed_txns_locked(timestamp_t horizon) noexcept -> void {

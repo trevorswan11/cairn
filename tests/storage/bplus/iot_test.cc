@@ -79,7 +79,7 @@ TEST_CASE("iot_tree update operations") {
 
     // Update non-existent key
     CHECK(UNWRAP_ERR(tree.update(1, helpers::span_from_string(val1))) ==
-          error_t::STORAGE_KEY_NOT_FOUND);
+          error::STORAGE_KEY_NOT_FOUND);
 
     // Emplace and update
     REQUIRE(tree.emplace(1, helpers::span_from_string(val1)));

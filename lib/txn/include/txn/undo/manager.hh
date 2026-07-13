@@ -17,7 +17,7 @@
 
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/manager.hh"
 
@@ -133,7 +133,7 @@ template <typename Key, usize PoolSize> class manager {
 
         const usize rec_size{sizeof(record_t<Key>) + payload.size_bytes()};
         if (rec_size > storage::DB_PAGE_SIZE - sizeof(page_header_t)) {
-            return stdx::err{error_t::STORAGE_TREE_CORRUPT};
+            return stdx::err{error::STORAGE_TREE_CORRUPT};
         }
 
         bool need_new{false};

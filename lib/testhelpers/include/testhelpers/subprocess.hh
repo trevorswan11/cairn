@@ -6,7 +6,7 @@
 #include <gsl/span>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/argv.hh"
 
 namespace cairn::tests::helpers {

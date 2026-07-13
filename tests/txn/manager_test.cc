@@ -4,7 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/memory.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "txn/id.hh"
@@ -116,7 +116,7 @@ TEST_CASE("txn::manager transaction and commit timestamps") {
     CHECK(UNWRAP(tm.get_commit_timestamp(id1)) == INVALID_TIMESTAMP); // pruned
     CHECK(UNWRAP(tm.get_commit_timestamp(id2)) == timestamp_t{2});    // not pruned
 
-    CHECK(UNWRAP_ERR(tm.get_read_timestamp(id1)) == error_t::TXN_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tm.get_read_timestamp(id1)) == error::TXN_NOT_FOUND);
 }
 
 TEST_CASE("txn::manager not found / error cases") {
@@ -124,10 +124,9 @@ TEST_CASE("txn::manager not found / error cases") {
     helpers::tempfile file{"txn_manager_errors"};
     wal::log::manager lm{file.path, 1_KiB};
 
-    CHECK(UNWRAP_ERR(tm.commit_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);
-    CHECK(UNWRAP_ERR(tm.abort_txn(id_t{999}, lm)) == error_t::TXN_NOT_FOUND);
-    CHECK(UNWRAP_ERR(tm.update_txn_lsn(id_t{999}, wal::log::seq_num{123})) ==
-          error_t::TXN_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tm.commit_txn(id_t{999}, lm)) == error::TXN_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tm.abort_txn(id_t{999}, lm)) == error::TXN_NOT_FOUND);
+    CHECK(UNWRAP_ERR(tm.update_txn_lsn(id_t{999}, wal::log::seq_num{123})) == error::TXN_NOT_FOUND);
 }
 
 } // namespace cairn::tests

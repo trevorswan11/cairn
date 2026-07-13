@@ -7,7 +7,7 @@
 #include <stdx/memory.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -85,7 +85,7 @@ TEST_CASE("txn::iot_tree rollback transactions") {
     // Scenario 1: Rollback insert (removes tuple)
     REQUIRE(tree.insert_txn(txn::id_t{10}, 1, helpers::span_from_string("hello")));
     REQUIRE(tree.rollback_txn(txn::id_t{10}));
-    CHECK(tree.get_raw(1).error() == error_t::STORAGE_KEY_NOT_FOUND);
+    CHECK(tree.get_raw(1).error() == error::STORAGE_KEY_NOT_FOUND);
 
     // Scenario 2: Rollback update (restores old value/header)
     const std::string_view original{"original"};

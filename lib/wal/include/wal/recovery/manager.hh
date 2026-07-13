@@ -15,7 +15,7 @@
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/manager.hh"
 #include "wal/checkpoint/manager.hh"
@@ -72,14 +72,14 @@ template <usize PoolSize> class manager {
         if (auto checkpoint_lsn_res{cm_.read_latest_checkpoint_lsn()}) {
             checkpoint_lsn.emplace(checkpoint_lsn_res.value());
         } else {
-            if (checkpoint_lsn_res.error() != error_t::WAL_CONTROL_PATH_NOT_FOUND) {
+            if (checkpoint_lsn_res.error() != error::WAL_CONTROL_PATH_NOT_FOUND) {
                 return stdx::err{checkpoint_lsn_res.error()};
             }
         }
 
         auto reader_res{log::reader::open(log_path_)};
         if (!reader_res) {
-            if (reader_res.error() == error_t::WAL_LOG_FILE_NOT_FOUND) { return res; }
+            if (reader_res.error() == error::WAL_LOG_FILE_NOT_FOUND) { return res; }
             return stdx::err{reader_res.error()};
         }
         auto& reader{reader_res.value()};
