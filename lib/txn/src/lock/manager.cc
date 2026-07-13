@@ -8,7 +8,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/lock/types.hh"
 
@@ -110,10 +110,10 @@ auto manager::release_locks_in_bucket(id_t                 id,
 auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result<void> {
     std::unique_lock lock{mutex_};
 
-    if (wounded_txns_.contains(id)) { return stdx::err{error_t::TXN_DEADLOCK_DETECTED}; }
+    if (wounded_txns_.contains(id)) { return stdx::err{error::TXN_DEADLOCK_DETECTED}; }
     if (!bucket_table_.contains(res_id)) {
         if (bucket_table_.size() >= bucket_table_.capacity()) {
-            return stdx::err{error_t::TXN_LOCK_ACQUISITION_FAILED};
+            return stdx::err{error::TXN_LOCK_ACQUISITION_FAILED};
         }
         bucket_table_.try_emplace(res_id);
     }
@@ -147,7 +147,7 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
         wait_state_t wait_state;
 
         if (bucket.requests.size() >= bucket.requests.capacity()) {
-            return stdx::err{error_t::TXN_LOCK_ACQUISITION_FAILED};
+            return stdx::err{error::TXN_LOCK_ACQUISITION_FAILED};
         }
 
         bucket.requests.emplace_back(id, mode, false, wait_state);
@@ -160,7 +160,7 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
 
         if (wait_state.aborted) {
             DISCARD(release_locks_in_bucket(id, res_id, stdx::none));
-            return stdx::err{error_t::TXN_DEADLOCK_DETECTED};
+            return stdx::err{error::TXN_DEADLOCK_DETECTED};
         }
 
         if (auto res{add_tracked_resource(id, res_id)}; !res) {
@@ -171,7 +171,7 @@ auto manager::acquire_lock(id_t id, resource_id_t res_id, mode_t mode) -> result
     }
 
     if (bucket.requests.size() >= bucket.requests.capacity()) {
-        return stdx::err{error_t::TXN_LOCK_ACQUISITION_FAILED};
+        return stdx::err{error::TXN_LOCK_ACQUISITION_FAILED};
     }
     bucket.requests.emplace_back(id, mode, true, stdx::none);
 
@@ -200,14 +200,14 @@ auto manager::wound(id_t id) -> void {
 auto manager::add_tracked_resource(id_t id, resource_id_t res_id) -> result<void> {
     if (!tracked_txn_resources_.contains(id)) {
         if (tracked_txn_resources_.size() >= tracked_txn_resources_.capacity()) {
-            return stdx::err{error_t::TXN_LOCK_ACQUISITION_FAILED};
+            return stdx::err{error::TXN_LOCK_ACQUISITION_FAILED};
         }
         tracked_txn_resources_.try_emplace(id);
     }
 
     auto& txn_res{tracked_txn_resources_.get(id)};
     if (txn_res.size() >= txn_res.capacity()) {
-        return stdx::err{error_t::TXN_LOCK_ACQUISITION_FAILED};
+        return stdx::err{error::TXN_LOCK_ACQUISITION_FAILED};
     }
     txn_res.emplace_back(res_id);
     return {};

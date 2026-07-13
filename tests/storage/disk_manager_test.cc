@@ -10,7 +10,7 @@
 
 #include "storage/disk_manager.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -57,8 +57,8 @@ TEST_CASE("Disk manager rejects invalid page IDs") {
     REQUIRE(dm->allocate_page());
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
-    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{5}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
-    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{-1}, buf)) == error_t::STORAGE_INVALID_PAGE_ID);
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{5}, buf)) == error::STORAGE_INVALID_PAGE_ID);
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{-1}, buf)) == error::STORAGE_INVALID_PAGE_ID);
 }
 
 TEST_CASE("Disk manager persists across reopens") {
@@ -93,7 +93,7 @@ TEST_CASE("Disk manager short reads are detected") {
 
     std::array<std::byte, DB_PAGE_SIZE> buf{};
     auto                                dm{UNWRAP(disk_manager::open(file.path))};
-    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{0}, buf)) == error_t::STORAGE_SHORT_READ);
+    CHECK(UNWRAP_ERR(dm->read_page(page_id_t{0}, buf)) == error::STORAGE_SHORT_READ);
 }
 
 } // namespace cairn::tests

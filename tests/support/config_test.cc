@@ -3,7 +3,7 @@
 #include <fmt/format.h>
 
 #include "support/config.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
@@ -49,14 +49,14 @@ TEST_CASE("Config not nested inside of object") {
             "password": "secretpassword",
             "logfile": "log.log"
     })"));
-    CHECK(err == error_t::SUPPORT_JSON_PARSE_ERROR);
+    CHECK(err == error::SUPPORT_JSON_PARSE_ERROR);
 }
 
 TEST_CASE("Config with missing required fields") {
     const auto err = UNWRAP_ERR(config::parse("development", R"({
         "development": {}
     })"));
-    CHECK(err == error_t::SUPPORT_JSON_MISSING_FIELD);
+    CHECK(err == error::SUPPORT_JSON_MISSING_FIELD);
 }
 
 TEST_CASE("Config with mistyped field value") {
@@ -70,7 +70,7 @@ TEST_CASE("Config with mistyped field value") {
             "logfile": "log.log"
           }
     })"));
-    CHECK(err == error_t::SUPPORT_JSON_TYPE_ERROR);
+    CHECK(err == error::SUPPORT_JSON_TYPE_ERROR);
 }
 
 } // namespace cairn::tests

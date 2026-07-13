@@ -12,7 +12,7 @@
 #include <stdx/utility.hh>
 #include <stdx/variant.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -135,7 +135,7 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 const auto val_str{std::to_string(wop.value % 1'000)};
                 auto       write_res{
                     tree.update_txn(txn_id, wop.key, helpers::span_from_string(val_str))};
-                if (!write_res && write_res.error() == error_t::STORAGE_KEY_NOT_FOUND) {
+                if (!write_res && write_res.error() == error::STORAGE_KEY_NOT_FOUND) {
                     EXPECT_TRUE(
                         tree.insert_txn(txn_id, wop.key, helpers::span_from_string(val_str)));
                 }
@@ -148,8 +148,8 @@ void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
                 const auto txn_id{txns[idx].id};
                 EXPECT_TRUE(tm.update_txn_lsn(txn_id, wal::log::seq_num{2}));
                 if (auto res{tm.commit_txn(txn_id, lm)}; !res) {
-                    EXPECT_TRUE(res.error() == error_t::TXN_SERIALIZATION_FAILURE ||
-                                res.error() == error_t::TXN_DEADLOCK_DETECTED);
+                    EXPECT_TRUE(res.error() == error::TXN_SERIALIZATION_FAILURE ||
+                                res.error() == error::TXN_DEADLOCK_DETECTED);
                     EXPECT_TRUE(tree.rollback_txn(txn_id));
                     EXPECT_TRUE(tm.abort_txn(txn_id, lm));
                 }

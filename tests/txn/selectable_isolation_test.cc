@@ -115,7 +115,7 @@ TEST_CASE("selectable isolation write skew prevention") {
 
         // T2 tries to commit but should fail
         REQUIRE(tm.update_txn_lsn(t2, wal::log::seq_num{6}));
-        CHECK(UNWRAP_ERR(tm.commit_txn(t2, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
+        CHECK(UNWRAP_ERR(tm.commit_txn(t2, lm)) == error::TXN_SERIALIZATION_FAILURE);
     }
 }
 
@@ -176,7 +176,7 @@ TEST_CASE("selectable isolation phantom read prevention") {
 
         // T1 tries to commit but should fail
         REQUIRE(tm.update_txn_lsn(t1, wal::log::seq_num{5}));
-        CHECK(UNWRAP_ERR(tm.commit_txn(t1, lm)) == error_t::TXN_SERIALIZATION_FAILURE);
+        CHECK(UNWRAP_ERR(tm.commit_txn(t1, lm)) == error::TXN_SERIALIZATION_FAILURE);
     }
 }
 

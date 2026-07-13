@@ -9,7 +9,7 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "support/io_utils.hh"
 #include "wal/log/record.hh"
 

@@ -13,7 +13,7 @@
 #include <stdx/types.hh>
 
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "wal/log/manager.hh"
 #include "wal/log/record.hh"
 
@@ -47,7 +47,7 @@ auto slotted_page::insert(gsl::span<const std::byte> tuple, log_update_params_t 
     if (id == INVALID_SLOT_ID) { required_space += SLOT_SIZE<i32>; }
     if (free_space() < required_space) {
         compact();
-        if (free_space() < required_space) { return stdx::err{error_t::STORAGE_PAGE_FULL}; }
+        if (free_space() < required_space) { return stdx::err{error::STORAGE_PAGE_FULL}; }
     }
 
     if (id == INVALID_SLOT_ID) {
@@ -120,7 +120,7 @@ auto slotted_page::update(slot_id_t                  id,
                 slot->size.emplace(slot_size);
                 slot->offset = old_offset;
                 header->deleted_slot_count--;
-                return stdx::err{error_t::STORAGE_PAGE_FULL};
+                return stdx::err{error::STORAGE_PAGE_FULL};
             }
         }
 
@@ -254,9 +254,7 @@ auto slotted_page::write_slot_raw(slot_id_t id, stdx::option<gsl::span<const std
         const auto required_slot_space{slots_to_add * SLOT_SIZE<i32>};
         if (free_space() < required_slot_space) {
             compact();
-            if (free_space() < required_slot_space) {
-                return stdx::err{error_t::STORAGE_PAGE_FULL};
-            }
+            if (free_space() < required_slot_space) { return stdx::err{error::STORAGE_PAGE_FULL}; }
         }
 
         // All new slots should be initialized as deleted
@@ -288,7 +286,7 @@ auto slotted_page::write_slot_raw(slot_id_t id, stdx::option<gsl::span<const std
 
     if (free_space() < i_tuple_size) {
         compact();
-        if (free_space() < i_tuple_size) { return stdx::err{error_t::STORAGE_PAGE_FULL}; }
+        if (free_space() < i_tuple_size) { return stdx::err{error::STORAGE_PAGE_FULL}; }
     }
 
     header->free_space_ptr -= i_tuple_size;

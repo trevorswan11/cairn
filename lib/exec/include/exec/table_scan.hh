@@ -14,7 +14,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/iot_tree.hh"
 #include "txn/manager.hh"

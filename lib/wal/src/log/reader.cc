@@ -16,7 +16,7 @@
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "support/io_utils.hh"
 #include "wal/log/record.hh"
 
@@ -25,11 +25,11 @@ namespace cairn::wal::log {
 auto reader::open(std::filesystem::path log_path) -> result<reader> {
     PROFILE_FUNCTION();
     std::ifstream file{log_path, std::ios::in | std::ios::binary};
-    if (!file.is_open()) { return stdx::err{error_t::WAL_LOG_FILE_NOT_FOUND}; }
+    if (!file.is_open()) { return stdx::err{error::WAL_LOG_FILE_NOT_FOUND}; }
 
     TRY(io_utils::seek_to_end(file));
     const auto end{file.tellg()};
-    if (end < 0) { return stdx::err{error_t::IO_ERROR}; }
+    if (end < 0) { return stdx::err{error::IO_ERROR}; }
     TRY(io_utils::seek_to_beg(file));
 
     return reader{std::move(file), end};
@@ -37,11 +37,9 @@ auto reader::open(std::filesystem::path log_path) -> result<reader> {
 
 auto reader::has_next() noexcept -> result<stdx::option<i64>> {
     const i64 pos{file_.tellg()};
-    if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
+    if (pos < 0) { return stdx::err{error::IO_ERROR}; }
     if (pos == file_size_) { return stdx::none; }
-    if (file_size_ - pos < record::MINIMUM_SIZE<i64>) {
-        return stdx::err{error_t::WAL_SIZE_CORRUPT};
-    }
+    if (file_size_ - pos < record::MINIMUM_SIZE<i64>) { return stdx::err{error::WAL_SIZE_CORRUPT}; }
     return pos;
 }
 
@@ -60,7 +58,7 @@ auto reader::next_at(i64 offset) -> result<record> {
 
         size = std::bit_cast<i32>(size_buf);
         if (size < record::MINIMUM_SIZE<i32> || (offset + size > file_size_)) {
-            return stdx::err{error_t::WAL_SIZE_CORRUPT};
+            return stdx::err{error::WAL_SIZE_CORRUPT};
         }
 
         record_buffer_.clear();
@@ -83,8 +81,8 @@ auto reader::next_record() -> result<stdx::option<record>> {
 auto reader::next_record_lenient() -> result<stdx::option<record>> {
     auto rec_res{next_record()};
     if (!rec_res) {
-        if (rec_res.error() == error_t::WAL_SIZE_CORRUPT ||
-            rec_res.error() == error_t::WAL_CHECKSUM_CORRUPT) {
+        if (rec_res.error() == error::WAL_SIZE_CORRUPT ||
+            rec_res.error() == error::WAL_CHECKSUM_CORRUPT) {
             return stdx::none;
         }
         return stdx::err{rec_res.error()};
@@ -94,9 +92,9 @@ auto reader::next_record_lenient() -> result<stdx::option<record>> {
 
 auto reader::has_prev() noexcept -> result<stdx::option<i64>> {
     const i64 pos{file_.tellg()};
-    if (pos < 0) { return stdx::err{error_t::IO_ERROR}; }
+    if (pos < 0) { return stdx::err{error::IO_ERROR}; }
     if (pos == 0) { return stdx::none; }
-    if (pos < record::MINIMUM_SIZE<i64>) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
+    if (pos < record::MINIMUM_SIZE<i64>) { return stdx::err{error::WAL_SIZE_CORRUPT}; }
     return pos;
 }
 
@@ -116,7 +114,7 @@ auto reader::prev_at(i64 offset) -> result<record> {
 
         size = std::bit_cast<i32>(size_buf);
         if (size < record::MINIMUM_SIZE<i32> || offset < size) {
-            return stdx::err{error_t::WAL_SIZE_CORRUPT};
+            return stdx::err{error::WAL_SIZE_CORRUPT};
         }
 
         record_buffer_.clear();
@@ -149,7 +147,7 @@ auto reader::deserialize_record() noexcept -> result<record> {
     PROFILE_FUNCTION();
     gsl::span<const std::byte> buf{record_buffer_};
     const auto                 record{TRY(record::deserialize(buf))};
-    if (!buf.empty()) { return stdx::err{error_t::WAL_SIZE_CORRUPT}; }
+    if (!buf.empty()) { return stdx::err{error::WAL_SIZE_CORRUPT}; }
     return std::move(record);
 }
 

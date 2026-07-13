@@ -12,7 +12,7 @@
 #include <stdx/utility.hh>
 
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 
 namespace cairn::storage {
 

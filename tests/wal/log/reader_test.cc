@@ -8,7 +8,7 @@
 #include <gsl/span>
 
 #include "helpers/mock_records.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "wal/log/reader.hh"
@@ -114,7 +114,7 @@ TEST_CASE("log::reader lenient reading with size corruption") {
     auto reader_corrupt{UNWRAP(log::reader::open(corrupt_file.path))};
     helpers::records_eq(UNWRAP(UNWRAP(reader_corrupt.next_record())), corrupt_rec1);
 
-    CHECK(UNWRAP_ERR(reader_corrupt.next_record()) == error_t::WAL_SIZE_CORRUPT);
+    CHECK(UNWRAP_ERR(reader_corrupt.next_record()) == error::WAL_SIZE_CORRUPT);
     auto reader_lenient{UNWRAP(log::reader::open(corrupt_file.path))};
     helpers::records_eq(UNWRAP(UNWRAP(reader_lenient.next_record_lenient())), corrupt_rec1);
 

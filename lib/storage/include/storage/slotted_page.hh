@@ -14,7 +14,7 @@
 #include <stdx/types.hh>
 
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "wal/log/seq_num.hh"
 
@@ -99,11 +99,11 @@ class slotted_page {
                             gsl::not_null<stdx::const_dispatch_t<Self, slot_t>*>>> {
         gsl::not_null header{self.as_header()};
         if (id < slot_id_t{0} || std::to_underlying(id) >= header->slot_count) {
-            return stdx::err{error_t::STORAGE_INVALID_SLOT};
+            return stdx::err{error::STORAGE_INVALID_SLOT};
         }
 
         gsl::not_null slot{&self.as_slots()[static_cast<usize>(id)]};
-        if (!slot->size) { return stdx::err{error_t::STORAGE_TUPLE_DELETED}; }
+        if (!slot->size) { return stdx::err{error::STORAGE_TUPLE_DELETED}; }
         return std::make_pair(header, slot);
     }
 

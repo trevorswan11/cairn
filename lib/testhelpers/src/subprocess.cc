@@ -13,7 +13,7 @@
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/argv.hh"
 #include "testhelpers/internal/safe_assertions.hh"
 
@@ -94,7 +94,7 @@ auto spawn_child(const Argv& args) -> result<u32> {
 
     if (!::CreateProcessA(
             nullptr, cmd_line.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-        return stdx::err{error_t::SUBPROCESS_FAILED};
+        return stdx::err{error::SUBPROCESS_FAILED};
     }
 
     ::WaitForSingleObject(pi.hProcess, INFINITE);
@@ -105,7 +105,7 @@ auto spawn_child(const Argv& args) -> result<u32> {
     return exit_code;
 #else
     const auto pid{::fork()};
-    if (pid < 0) { return stdx::err{error_t::SUBPROCESS_FAILED}; }
+    if (pid < 0) { return stdx::err{error::SUBPROCESS_FAILED}; }
 
     if (pid == 0) {
         // Child
@@ -114,12 +114,12 @@ auto spawn_child(const Argv& args) -> result<u32> {
     } else {
         // Parent
         i32 status;
-        if (::waitpid(pid, &status, 0) < 0) { return stdx::err{error_t::SUBPROCESS_FAILED}; }
+        if (::waitpid(pid, &status, 0) < 0) { return stdx::err{error::SUBPROCESS_FAILED}; }
 
         if (WIFEXITED(status)) { return WEXITSTATUS(status); }
         if (WIFSIGNALED(status)) { return 128 + WTERMSIG(status); }
     }
-    return stdx::err{error_t::SUBPROCESS_FAILED};
+    return stdx::err{error::SUBPROCESS_FAILED};
 #endif
 }
 

@@ -9,7 +9,7 @@
 
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/seq_num.hh"

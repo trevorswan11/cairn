@@ -4,7 +4,7 @@
 
 #include <stdx/option.hh>
 
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 
 namespace cairn::txn {

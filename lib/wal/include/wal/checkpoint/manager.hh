@@ -7,7 +7,7 @@
 #include <stdx/types.hh>
 
 #include "storage/buffer_pool.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/manager.hh"
 #include "wal/checkpoint/types.hh"
 #include "wal/log/manager.hh"

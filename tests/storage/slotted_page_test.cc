@@ -9,7 +9,7 @@
 
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -26,9 +26,9 @@ TEST_CASE("slotted_page guards when empty") {
     slotted_page sp{p};
     sp.refresh_page();
 
-    CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
-    CHECK(UNWRAP_ERR(sp.remove(slot_id_t{0})) == error_t::STORAGE_INVALID_SLOT);
-    CHECK(UNWRAP_ERR(sp.update(slot_id_t{0}, {})) == error_t::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.remove(slot_id_t{0})) == error::STORAGE_INVALID_SLOT);
+    CHECK(UNWRAP_ERR(sp.update(slot_id_t{0}, {})) == error::STORAGE_INVALID_SLOT);
 }
 
 TEST_CASE("slotted_page insert and get") {
@@ -56,7 +56,7 @@ TEST_CASE("slotted_page delete and update") {
     const auto             id2{UNWRAP(sp.insert(helpers::span_from_string(data2)))};
 
     REQUIRE(sp.remove(id1));
-    CHECK(UNWRAP_ERR(sp.get(id1)) == error_t::STORAGE_TUPLE_DELETED);
+    CHECK(UNWRAP_ERR(sp.get(id1)) == error::STORAGE_TUPLE_DELETED);
 
     // Should reuse tombstone
     const std::string_view data3{"reused tuple"};
@@ -108,7 +108,7 @@ TEST_CASE("slotted_page write_slot_raw") {
         CHECK(sp.slot_count() == 1);
 
         REQUIRE(sp.write_slot_raw(id, stdx::none));
-        CHECK(UNWRAP_ERR(sp.get(id)) == error_t::STORAGE_TUPLE_DELETED);
+        CHECK(UNWRAP_ERR(sp.get(id)) == error::STORAGE_TUPLE_DELETED);
         REQUIRE(sp.write_slot_raw(slot_id_t{10}, stdx::none));
     }
 
@@ -118,7 +118,7 @@ TEST_CASE("slotted_page write_slot_raw") {
         REQUIRE(sp.write_slot_raw(slot_id_t{5}, helpers::span_from_string(data)));
         CHECK(sp.slot_count() == 6);
         for (i32 i{0}; i < 5; ++i) {
-            CHECK(UNWRAP_ERR(sp.get(slot_id_t{i})) == error_t::STORAGE_TUPLE_DELETED);
+            CHECK(UNWRAP_ERR(sp.get(slot_id_t{i})) == error::STORAGE_TUPLE_DELETED);
         }
         CHECK(helpers::string_from_span(UNWRAP(sp.get(slot_id_t{5}))) == data);
     }
@@ -188,7 +188,7 @@ TEST_CASE("slotted_page compaction and full errors during update") {
     const std::string data1_too_large(7'000, 'y');
     auto              update_res = sp.update(id1, helpers::span_from_string(data1_too_large));
     CHECK_FALSE(update_res.has_value());
-    CHECK(update_res.error() == error_t::STORAGE_PAGE_FULL);
+    CHECK(update_res.error() == error::STORAGE_PAGE_FULL);
 }
 
 } // namespace cairn::tests

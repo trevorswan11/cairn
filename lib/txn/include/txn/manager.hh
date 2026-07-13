@@ -13,7 +13,7 @@
 #include <stdx/types.hh>
 
 #include "storage/bplus.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "txn/id.hh"
 #include "txn/lock/types.hh"
 #include "txn/read_set.hh"

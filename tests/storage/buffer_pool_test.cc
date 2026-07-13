@@ -13,7 +13,7 @@
 
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
-#include "support/error.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 
@@ -79,7 +79,7 @@ TEST_CASE("buffer pool reports exhaustion when every frame is pinned") {
     }
 
     // All frames full must error
-    REQUIRE(UNWRAP_ERR(bp->new_page()) == error_t::STORAGE_POOL_EXHAUSTED);
+    REQUIRE(UNWRAP_ERR(bp->new_page()) == error::STORAGE_POOL_EXHAUSTED);
     REQUIRE(bp->unpin_page(ids.front(), false));
     CHECK(bp->new_page());
 }
