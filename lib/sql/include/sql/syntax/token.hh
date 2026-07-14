@@ -71,8 +71,10 @@ enum class token_type_t : u8 {
     RPAREN,
     COMMENT, // # or --
 
-    INVALID,
+    ILLEGAL,
 };
+
+[[nodiscard]] auto misc_type_from_char(char c) noexcept -> stdx::option<token_type_t>;
 
 [[nodiscard]] auto max_operator_length() noexcept -> usize;
 [[nodiscard]] auto get_operator_opt(std::string_view sv) noexcept -> stdx::option<token_type_t>;

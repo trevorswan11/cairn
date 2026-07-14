@@ -18,25 +18,33 @@
 
 namespace cairn::sql::syntax {
 
+auto misc_type_from_char(char c) noexcept -> stdx::option<token_type_t> {
+    switch (c) {
+    case ',': return token_type_t::COMMA;
+    case ';': return token_type_t::SEMICOLON;
+    case '(': return token_type_t::LPAREN;
+    case ')': return token_type_t::RPAREN;
+    default:  return stdx::none;
+    }
+}
+
 namespace {
 
-using namespace std::string_view_literals;
-
 constexpr auto ALL_OPERATORS{[] {
-    constexpr std::array operators{std::pair{"+"sv, token_type_t::PLUS},
-                                   std::pair{"-"sv, token_type_t::MINUS},
-                                   std::pair{"*"sv, token_type_t::STAR},
-                                   std::pair{"/"sv, token_type_t::SLASH},
-                                   std::pair{"="sv, token_type_t::EQ},
-                                   std::pair{"!="sv, token_type_t::NEQ},
-                                   std::pair{"<"sv, token_type_t::LT},
-                                   std::pair{"<="sv, token_type_t::LT_EQ},
-                                   std::pair{">"sv, token_type_t::GT},
-                                   std::pair{">="sv, token_type_t::GT_EQ},
-                                   std::pair{","sv, token_type_t::COMMA},
-                                   std::pair{"."sv, token_type_t::DOT},
-                                   std::pair{"#"sv, token_type_t::COMMENT},
-                                   std::pair{"--"sv, token_type_t::COMMENT}};
+    constexpr std::array operators{std::pair{"+", token_type_t::PLUS},
+                                   std::pair{"-", token_type_t::MINUS},
+                                   std::pair{"*", token_type_t::STAR},
+                                   std::pair{"/", token_type_t::SLASH},
+                                   std::pair{"=", token_type_t::EQ},
+                                   std::pair{"!=", token_type_t::NEQ},
+                                   std::pair{"<", token_type_t::LT},
+                                   std::pair{"<=", token_type_t::LT_EQ},
+                                   std::pair{">", token_type_t::GT},
+                                   std::pair{">=", token_type_t::GT_EQ},
+                                   std::pair{",", token_type_t::COMMA},
+                                   std::pair{".", token_type_t::DOT},
+                                   std::pair{"#", token_type_t::COMMENT},
+                                   std::pair{"--", token_type_t::COMMENT}};
 
     stdx::fixed::hash_map<std::string_view, token_type_t, operators.size(), stdx::crc::hash> map;
     for (const auto& op : operators) { map.emplace(op.first, op.second); }
