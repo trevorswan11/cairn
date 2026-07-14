@@ -69,7 +69,7 @@ enum class token_type_t : u8 {
     SEMICOLON,
     LPAREN,
     RPAREN,
-    COMMENT, // # or --
+    COMMENT, // single or multiline
 
     ILLEGAL,
 };
