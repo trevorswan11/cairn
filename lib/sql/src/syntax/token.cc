@@ -37,6 +37,7 @@ constexpr auto ALL_OPERATORS{[] {
                                    std::pair{"/", token_type_t::SLASH},
                                    std::pair{"=", token_type_t::EQ},
                                    std::pair{"!=", token_type_t::NEQ},
+                                   std::pair{"<>", token_type_t::NEQ},
                                    std::pair{"<", token_type_t::LT},
                                    std::pair{"<=", token_type_t::LT_EQ},
                                    std::pair{">", token_type_t::GT},
@@ -44,6 +45,7 @@ constexpr auto ALL_OPERATORS{[] {
                                    std::pair{",", token_type_t::COMMA},
                                    std::pair{".", token_type_t::DOT},
                                    std::pair{"#", token_type_t::COMMENT},
+                                   std::pair{"/*", token_type_t::COMMENT},
                                    std::pair{"--", token_type_t::COMMENT}};
 
     stdx::fixed::hash_map<std::string_view, token_type_t, operators.size(), stdx::crc::hash> map;
@@ -51,15 +53,27 @@ constexpr auto ALL_OPERATORS{[] {
     return map;
 }()};
 
+[[nodiscard]] constexpr auto to_lower(char c) noexcept -> char {
+    if (c >= 'A' && c <= 'Z') { return c + ('a' - 'A'); }
+    return c;
+}
+
 // Case insensitive equality for SQL keyword comparison
 struct keyword_equals {
     [[nodiscard]] static constexpr auto operator()(std::string_view lhs,
                                                    std::string_view rhs) noexcept -> bool {
         if (lhs.size() != rhs.size()) { return false; }
         for (const auto [l, r] : std::views::zip(lhs, rhs)) {
-            if (std::tolower(l) != std::tolower(r)) { return false; }
+            if (to_lower(l) != to_lower(r)) { return false; }
         }
         return true;
+    }
+};
+
+// Case insensitive hash for SQL keyword comparison
+struct keyword_hash {
+    [[nodiscard]] static constexpr auto operator()(std::string_view sv) noexcept {
+        return stdx::crc::crc32(sv | std::views::transform(to_lower));
     }
 };
 
@@ -68,11 +82,17 @@ constexpr auto ALL_KEYWORD_TYPES{stdx::enum_range<token_type_t::SELECT, token_ty
 constexpr auto ALL_KEYWORDS{[] {
     stdx::fixed::hash_map<std::string_view,
                           token_type_t,
-                          ALL_KEYWORD_TYPES.size(),
-                          stdx::crc::hash,
+                          ALL_KEYWORD_TYPES.size() + 1,
+                          keyword_hash,
                           keyword_equals>
         map;
-    for (const auto& type : ALL_KEYWORD_TYPES) { map.emplace(magic_enum::enum_name(type), type); }
+
+    for (const auto& type : ALL_KEYWORD_TYPES) {
+        std::string_view name{magic_enum::enum_name(type)};
+        if (name.starts_with("KW_")) { name.remove_prefix(3); }
+        map.emplace(name, type);
+    }
+    map.emplace("INT", token_type_t::INTEGER);
     return map;
 }()};
 

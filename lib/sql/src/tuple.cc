@@ -3,14 +3,15 @@
 #include <cstddef>
 #include <cstring>
 #include <ranges>
-#include <stdx/variant.hh>
 #include <string_view>
 #include <utility>
 
 #include <gsl/span>
 #include <stdx/assert.hh>
+#include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
+#include <stdx/variant.hh>
 
 #include "sql/schema.hh"
 #include "sql/type.hh"
@@ -20,6 +21,7 @@
 namespace cairn::sql {
 
 auto tuple::serialize(const schema& sch, gsl::span<const value_t> values) -> result<tuple> {
+    PROFILE_FUNCTION();
     if (values.size() != sch.column_count()) {
         return stdx::err{error::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }
@@ -90,6 +92,7 @@ auto tuple::serialize(const schema& sch, gsl::span<const value_t> values) -> res
 }
 
 auto tuple::get_value(const schema& sch, usize column_index) const -> result<value_t> {
+    PROFILE_FUNCTION();
     if (column_index >= sch.column_count()) { return stdx::err{error::SQL_INVALID_COLUMN_INDEX}; }
 
     const usize byte_idx{column_index / 8};
@@ -167,6 +170,7 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
 }
 
 auto tuple::deserialize(const schema& sch, gsl::span<value_t> buf) const -> result<void> {
+    PROFILE_FUNCTION();
     if (buf.size() != sch.column_count()) {
         return stdx::err{error::SQL_VALUE_SCHEMA_COUNT_MISMATCH};
     }
