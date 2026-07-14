@@ -5,7 +5,11 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-namespace cairn::sql::syntax {
+#include "support/diagnostic/location.hh"
+
+namespace cairn {
+
+namespace sql::syntax {
 
 enum class token_type_t : u8 {
     END_OF_FILE,
@@ -74,4 +78,25 @@ enum class token_type_t : u8 {
 [[nodiscard]] auto get_operator_opt(std::string_view sv) noexcept -> stdx::option<token_type_t>;
 [[nodiscard]] auto get_keyword_opt(std::string_view sv) noexcept -> stdx::option<token_type_t>;
 
-} // namespace cairn::sql::syntax
+struct token_t {
+    token_type_t     type;
+    std::string_view lexeme;
+    location         loc;
+
+    constexpr token_t() noexcept = default;
+    constexpr token_t(token_type_t tt, std::string_view lexeme) noexcept
+        : type{tt}, lexeme{lexeme} {}
+    constexpr token_t(token_type_t tt, std::string_view slice, usize line, usize column) noexcept
+        : type{tt}, lexeme{slice}, loc{line, column} {}
+
+    [[nodiscard]] auto           is_valid_ident() const noexcept -> bool;
+    [[nodiscard]] constexpr auto operator==(const token_t&) const noexcept -> bool = default;
+};
+
+} // namespace sql::syntax
+
+template <> struct source_info<sql::syntax::token_t> {
+    static auto get(const sql::syntax::token_t& tok) -> location { return tok.loc; }
+};
+
+} // namespace cairn

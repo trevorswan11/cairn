@@ -8,10 +8,12 @@
 #include <utility>
 
 #include <magic_enum/magic_enum.hpp>
+#include <stdx/assert.hh>
 #include <stdx/enum.hh>
 #include <stdx/fixed/hash_table.hh>
 #include <stdx/hash.hh>
 #include <stdx/option.hh>
+#include <stdx/profiler.hh>
 #include <stdx/types.hh>
 
 namespace cairn::sql::syntax {
@@ -53,12 +55,16 @@ struct keyword_equals {
     }
 };
 
+constexpr auto ALL_KEYWORD_TYPES{stdx::enum_range<token_type_t::SELECT, token_type_t::KW_OR>()};
+
 constexpr auto ALL_KEYWORDS{[] {
-    constexpr auto types{stdx::enum_range<token_type_t::SELECT, token_type_t::KW_OR>()};
-    stdx::fixed::
-        hash_map<std::string_view, token_type_t, types.size(), stdx::crc::hash, keyword_equals>
-            map;
-    for (const auto& type : types) { map.emplace(magic_enum::enum_name(type), type); }
+    stdx::fixed::hash_map<std::string_view,
+                          token_type_t,
+                          ALL_KEYWORD_TYPES.size(),
+                          stdx::crc::hash,
+                          keyword_equals>
+        map;
+    for (const auto& type : ALL_KEYWORD_TYPES) { map.emplace(magic_enum::enum_name(type), type); }
     return map;
 }()};
 
@@ -72,11 +78,18 @@ auto max_operator_length() noexcept -> usize {
 }
 
 auto get_operator_opt(std::string_view sv) noexcept -> stdx::option<token_type_t> {
+    PROFILE_FUNCTION();
     return ALL_OPERATORS.get_opt(sv).materialize();
 }
 
 auto get_keyword_opt(std::string_view sv) noexcept -> stdx::option<token_type_t> {
+    PROFILE_FUNCTION();
     return ALL_KEYWORDS.get_opt(sv).materialize();
+}
+
+auto token_t::is_valid_ident() const noexcept -> bool {
+    PROFILE_FUNCTION();
+    return type == token_type_t::IDENTIFIER || std::ranges::binary_search(ALL_KEYWORD_TYPES, type);
 }
 
 } // namespace cairn::sql::syntax
