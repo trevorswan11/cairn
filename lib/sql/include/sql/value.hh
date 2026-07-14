@@ -14,8 +14,16 @@ namespace cairn::sql {
 // The main value abstraction over SQL data types
 class value_t {
   public:
-    using variant_t =
-        stdx::variant<stdx::monostate, bool, i8, i16, i32, i64, f32, f64, std::string_view>;
+    using variant_t = stdx::variant<stdx::monostate,
+                                    bool,
+                                    i8,
+                                    i16,
+                                    i32,
+                                    i64,
+                                    f32,
+                                    f64,
+                                    std::string_view,
+                                    type::datetime_t>;
 
   public:
     value_t() noexcept = default;
@@ -52,7 +60,8 @@ class value_t {
                          [](i64) { return type::id_t::BIGINT; },
                          [](f32) { return type::id_t::FLOAT; },
                          [](f64) { return type::id_t::DOUBLE; },
-                         [](std::string_view) { return type::id_t::VARCHAR; });
+                         [](std::string_view) { return type::id_t::VARCHAR; },
+                         [](type::datetime_t) { return type::id_t::DATETIME; });
     }
 
   private:

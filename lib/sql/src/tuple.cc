@@ -116,37 +116,42 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
         case type::id_t::BOOLEAN: {
             i8 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out != 0);
+            return value_t{out != 0};
         }
         case type::id_t::TINYINT: {
             i8 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
         }
         case type::id_t::SMALLINT: {
             i16 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
         }
         case type::id_t::INTEGER: {
             i32 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
         }
         case type::id_t::BIGINT: {
             i64 out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
         }
         case type::id_t::FLOAT: {
             float out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
         }
         case type::id_t::DOUBLE: {
             double out;
             std::memcpy(&out, data_.data() + fixed_offset, *col_size);
-            return value_t(out);
+            return value_t{out};
+        }
+        case type::id_t::DATETIME: {
+            type::datetime_t::underlying_type_t out;
+            std::memcpy(&out, data_.data() + fixed_offset, *col_size);
+            return value_t{type::datetime_t{out}};
         }
         default: return stdx::err{error::SQL_UNSUPPORTED_FIXED_TYPE};
         }
@@ -158,7 +163,7 @@ auto tuple::get_value(const schema& sch, usize column_index) const -> result<val
     std::memcpy(&len, data_.data() + varlen_dir_offset + 2, 2);
 
     std::string_view str{reinterpret_cast<const char*>(data_.data() + offset), len};
-    return value_t(str);
+    return value_t{str};
 }
 
 auto tuple::deserialize(const schema& sch, gsl::span<value_t> buf) const -> result<void> {

@@ -15,6 +15,22 @@ enum class id_t : u8 {
     FLOAT,
     DOUBLE,
     VARCHAR,
+    DATETIME,
+};
+
+class datetime_t {
+  public:
+    using underlying_type_t = i64;
+
+  public:
+    constexpr explicit datetime_t(underlying_type_t raw) noexcept : raw_{raw} {}
+
+    [[nodiscard]] constexpr auto operator==(const datetime_t&) const noexcept -> bool = default;
+
+  private:
+    underlying_type_t raw_;
+
+    friend class tuple;
 };
 
 [[nodiscard]] constexpr auto get_size_of(id_t type) noexcept -> stdx::option<u32> {
@@ -26,6 +42,7 @@ enum class id_t : u8 {
     case id_t::BIGINT:   return 8;
     case id_t::FLOAT:    return 4;
     case id_t::DOUBLE:   return 8;
+    case id_t::DATETIME: return sizeof(datetime_t);
     case id_t::VARCHAR:  return stdx::none;
     case id_t::INVALID:  return stdx::none;
     }

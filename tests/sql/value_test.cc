@@ -65,6 +65,13 @@ TEST_CASE("sql::value basics") {
         CHECK(v.get_value().as<std::string_view>() == "hello");
     }
 
+    SECTION("Datetime") {
+        value_t v{type::datetime_t{4}};
+        CHECK(v.type() == type::id_t::DATETIME);
+        CHECK(!v.is_null());
+        CHECK(v.get_value().as<type::datetime_t>() == type::datetime_t{4});
+    }
+
     SECTION("Make Null") {
         value_t v{value_t::make_null(type::id_t::INTEGER)};
         CHECK(v.type() == type::id_t::INTEGER);
