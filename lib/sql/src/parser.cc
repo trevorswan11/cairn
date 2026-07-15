@@ -33,20 +33,20 @@ namespace peg = tao::pegtl;
 namespace {
 
 struct parser_state_t {
-    stdx::box<ast::stmt_node_t> statement;
+    ast::ast_t tree{};
 
     struct expr_scope_t {
-        std::vector<stdx::box<ast::expr_node_t>> operands;
-        std::vector<ast::binary_op_t>            operators;
+        std::vector<ast::node_id_t>   operands{};
+        std::vector<ast::binary_op_t> operators{};
     };
-    std::vector<expr_scope_t> expr_scopes;
+    std::vector<expr_scope_t> expr_scopes{};
 
-    std::vector<ast::select_item_t> select_list;
-    std::string                     table_name;
-    std::string                     index_name;
-    std::vector<std::string>        index_columns;
-    std::vector<ast::column_def_t>  column_defs;
-    ast::column_def_t               current_column_def;
+    std::vector<ast::select_item_t> select_list{};
+    std::string                     table_name{""};
+    std::string                     index_name{""};
+    std::vector<std::string>        index_columns{};
+    std::vector<ast::column_def_t>  column_defs{};
+    ast::column_def_t               current_column_def{};
     type::id_t                      current_data_type{type::id_t::INVALID};
     bool                            column_nullable{true};
 
@@ -107,33 +107,35 @@ template <typename Rule> struct action_t : peg::nothing<Rule> {};
 
 template <> struct action_t<grammar::null_kw> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.active_scope().operands.push_back(
-            stdx::make_box<ast::literal_expr_t>(stdx::monostate{}));
+        auto id{state.tree.add_node(ast::literal_expr_t{stdx::monostate{}})};
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::true_kw> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.active_scope().operands.push_back(stdx::make_box<ast::literal_expr_t>(true));
+        auto id{state.tree.add_node(ast::literal_expr_t{true})};
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::false_kw> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.active_scope().operands.push_back(stdx::make_box<ast::literal_expr_t>(false));
+        auto id{state.tree.add_node(ast::literal_expr_t{false})};
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::string_literal> {
     template <typename ActionInput>
     static void apply(const ActionInput& in, parser_state_t& state) {
-        auto str = in.string();
+        auto str{in.string()};
         if (str.size() >= 2 && str.front() == '\'' && str.back() == '\'') {
             str = str.substr(1, str.size() - 2);
         }
-        std::string unescaped;
+        std::string unescaped{""};
         unescaped.reserve(str.size());
-        for (usize i = 0; i < str.size(); ++i) {
+        for (usize i{0}; i < str.size(); ++i) {
             if (str[i] == '\\' && i + 1 < str.size() && str[i + 1] == '\'') {
                 unescaped += '\'';
                 ++i;
@@ -141,32 +143,33 @@ template <> struct action_t<grammar::string_literal> {
                 unescaped += str[i];
             }
         }
-        state.active_scope().operands.push_back(
-            stdx::make_box<ast::literal_expr_t>(std::move(unescaped)));
+        auto id{state.tree.add_node(ast::literal_expr_t{std::move(unescaped)})};
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::numeric_literal> {
     template <typename ActionInput>
     static void apply(const ActionInput& in, parser_state_t& state) {
-        auto str = in.string();
+        auto           str{in.string()};
+        ast::node_id_t id{};
         if (str.find('.') != std::string::npos || str.find('e') != std::string::npos ||
             str.find('E') != std::string::npos) {
-            double val = std::stod(str);
-            state.active_scope().operands.push_back(stdx::make_box<ast::literal_expr_t>(val));
+            double val{std::stod(str)};
+            id = state.tree.add_node(ast::literal_expr_t{val});
         } else {
-            long long val = std::stoll(str);
-            state.active_scope().operands.push_back(
-                stdx::make_box<ast::literal_expr_t>(static_cast<i64>(val)));
+            long long val{std::stoll(str)};
+            id = state.tree.add_node(ast::literal_expr_t{static_cast<i64>(val)});
         }
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::expr_identifier> {
     template <typename ActionInput>
     static void apply(const ActionInput& in, parser_state_t& state) {
-        state.active_scope().operands.push_back(
-            stdx::make_box<ast::identifier_expr_t>(clean_identifier(in.string_view())));
+        auto id{state.tree.add_node(ast::identifier_expr_t{clean_identifier(in.string_view())})};
+        state.active_scope().operands.emplace_back(id);
     }
 };
 
@@ -179,52 +182,52 @@ template <> struct action_t<grammar::open_paren> {
 template <> struct action_t<grammar::close_paren> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
         ASSERT(!state.expr_scopes.empty());
-        auto scope = std::move(state.expr_scopes.back());
+        auto scope{std::move(state.expr_scopes.back())};
         state.expr_scopes.pop_back();
 
         ASSERT(scope.operands.size() == 1);
-        state.active_scope().operands.push_back(std::move(scope.operands.front()));
+        state.active_scope().operands.emplace_back(scope.operands.front());
     }
 };
 
 template <> struct action_t<grammar::binary_op> {
     template <typename ActionInput>
     static void apply(const ActionInput& in, parser_state_t& state) {
-        auto  op    = parse_binary_op(in.string_view());
-        auto& scope = state.active_scope();
+        auto  op{parse_binary_op(in.string_view())};
+        auto& scope{state.active_scope()};
         while (!scope.operators.empty() &&
                get_precedence(scope.operators.back()) >= get_precedence(op)) {
-            auto top_op = scope.operators.back();
+            auto top_op{scope.operators.back()};
             scope.operators.pop_back();
 
             ASSERT(scope.operands.size() >= 2);
-            auto rhs = std::move(scope.operands.back());
+            auto rhs{scope.operands.back()};
             scope.operands.pop_back();
-            auto lhs = std::move(scope.operands.back());
+            auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            scope.operands.push_back(
-                stdx::make_box<ast::binary_expr_t>(top_op, std::move(lhs), std::move(rhs)));
+            auto id{state.tree.add_node(ast::binary_expr_t{top_op, lhs, rhs})};
+            scope.operands.emplace_back(id);
         }
-        scope.operators.push_back(op);
+        scope.operators.emplace_back(op);
     }
 };
 
 template <> struct action_t<grammar::expression> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        auto& scope = state.active_scope();
+        auto& scope{state.active_scope()};
         while (!scope.operators.empty()) {
-            auto op = scope.operators.back();
+            auto op{scope.operators.back()};
             scope.operators.pop_back();
 
             ASSERT(scope.operands.size() >= 2);
-            auto rhs = std::move(scope.operands.back());
+            auto rhs{scope.operands.back()};
             scope.operands.pop_back();
-            auto lhs = std::move(scope.operands.back());
+            auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            scope.operands.push_back(
-                stdx::make_box<ast::binary_expr_t>(op, std::move(lhs), std::move(rhs)));
+            auto id{state.tree.add_node(ast::binary_expr_t{op, lhs, rhs})};
+            scope.operands.emplace_back(id);
         }
     }
 };
@@ -280,7 +283,7 @@ template <> struct action_t<grammar::column_def> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
         state.current_column_def.type     = state.current_data_type;
         state.current_column_def.nullable = state.column_nullable;
-        state.column_defs.push_back(std::move(state.current_column_def));
+        state.column_defs.emplace_back(std::move(state.current_column_def));
     }
 };
 
@@ -343,96 +346,98 @@ template <> struct action_t<grammar::drop_index_table_name> {
 template <> struct action_t<grammar::index_column> {
     template <typename ActionInput>
     static void apply(const ActionInput& in, parser_state_t& state) {
-        state.index_columns.push_back(clean_identifier(in.string_view()));
+        state.index_columns.emplace_back(clean_identifier(in.string_view()));
     }
 };
 
 template <> struct action_t<grammar::select_all> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.select_list.emplace_back(true, nullptr);
+        state.select_list.emplace_back(true, ast::node_id_t::make_invalid());
     }
 };
 
 template <> struct action_t<grammar::select_item> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
         if (!state.active_scope().operands.empty()) {
-            auto expr = std::move(state.active_scope().operands.back());
+            auto expr{state.active_scope().operands.back()};
             state.active_scope().operands.pop_back();
-            state.select_list.emplace_back(false,
-                                           stdx::nullable_box<ast::expr_node_t>{expr.release()});
+            state.select_list.emplace_back(false, expr);
         }
     }
 };
 
 template <> struct action_t<grammar::select_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        stdx::nullable_box<ast::expr_node_t> where_clause;
+        auto where_clause{ast::node_id_t::make_invalid()};
         if (!state.active_scope().operands.empty()) {
-            where_clause.reset(state.active_scope().operands.back().release());
+            where_clause = state.active_scope().operands.back();
             state.active_scope().operands.pop_back();
         }
-        state.statement = stdx::make_box<ast::select_stmt_t>(
-            std::move(state.select_list), std::move(state.table_name), std::move(where_clause));
+        auto id{state.tree.add_node(ast::select_stmt_t{
+            std::move(state.select_list), std::move(state.table_name), where_clause})};
+        state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::create_table_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.statement = stdx::make_box<ast::create_table_stmt_t>(std::move(state.table_name),
-                                                                   std::move(state.column_defs));
+        auto id{state.tree.add_node(
+            ast::create_table_stmt_t{std::move(state.table_name), std::move(state.column_defs)})};
+        state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::drop_table_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.statement = stdx::make_box<ast::drop_table_stmt_t>(std::move(state.table_name));
+        auto id{state.tree.add_node(ast::drop_table_stmt_t{std::move(state.table_name)})};
+        state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::alter_table_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
         ASSERT(!state.column_defs.empty());
-        auto col_def = std::move(state.column_defs.back());
+        auto col_def{std::move(state.column_defs.back())};
         state.column_defs.pop_back();
-        state.statement = stdx::make_box<ast::alter_table_stmt_t>(std::move(state.table_name),
-                                                                  std::move(col_def));
+        auto id{state.tree.add_node(
+            ast::alter_table_stmt_t{std::move(state.table_name), std::move(col_def)})};
+        state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::create_index_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.statement = stdx::make_box<ast::create_index_stmt_t>(std::move(state.index_name),
-                                                                   std::move(state.table_name),
-                                                                   std::move(state.index_columns));
+        auto id{state.tree.add_node(ast::create_index_stmt_t{std::move(state.index_name),
+                                                             std::move(state.table_name),
+                                                             std::move(state.index_columns)})};
+        state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::drop_index_stmt> {
     template <typename ActionInput> static void apply(const ActionInput&, parser_state_t& state) {
-        state.statement = stdx::make_box<ast::drop_index_stmt_t>(std::move(state.index_name),
-                                                                 std::move(state.table_name));
+        auto id{state.tree.add_node(
+            ast::drop_index_stmt_t{std::move(state.index_name), std::move(state.table_name)})};
+        state.tree.add_root(id);
     }
 };
 
 } // namespace
 
-auto parse(const file& source_file, diagnostic_list& diags) noexcept
-    -> result<stdx::box<ast::stmt_node_t>> {
+auto parse(const file& source_file, diagnostic_list& diags) noexcept -> result<ast::ast_t> {
     PROFILE_FUNCTION();
 
-    std::string_view     query_view = source_file;
-    peg::text_view_input in("SQL Query", query_view);
-    parser_state_t       state;
+    std::string_view     query_view{source_file};
+    peg::text_view_input in{"SQL Query", query_view};
+    parser_state_t       state{};
 
     try {
-        if (peg::parse<grammar::sql_grammar, action_t>(in, state)) {
-            return std::move(state.statement);
-        }
+        if (peg::parse<grammar::sql_grammar, action_t>(in, state)) { return std::move(state.tree); }
         diags.emplace_back("Syntax error", error::SQL_EOF, 0, 0);
         return stdx::err{error::SQL_EOF};
     } catch (
         const peg::parse_error<peg::position_with_source<std::string, peg::text_position>>& e) {
-        const auto& pos = e.position_object();
+        const auto& pos{e.position_object()};
         diags.emplace_back(std::string{e.message()}, error::SQL_EOF, pos.line - 1, pos.column - 1);
         return stdx::err{error::SQL_EOF};
     } catch (...) {
