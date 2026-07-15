@@ -69,19 +69,62 @@ struct numeric_literal
                         decimal_digits>,
                peg::opt<float_exponent>> {};
 
-struct unquoted_ident : peg::ascii::identifier {};
+struct reserved_keyword : peg::sor<select_kw,
+                                   from_kw,
+                                   where_kw,
+                                   create_kw,
+                                   drop_kw,
+                                   alter_kw,
+                                   table_kw,
+                                   index_kw,
+                                   add_kw,
+                                   column_kw,
+                                   on_kw,
+                                   null_kw,
+                                   not_kw,
+                                   and_kw,
+                                   or_kw,
+                                   true_kw,
+                                   false_kw,
+                                   boolean_kw,
+                                   tinyint_kw,
+                                   smallint_kw,
+                                   integer_kw,
+                                   int_kw,
+                                   bigint_kw,
+                                   float_kw,
+                                   double_kw,
+                                   varchar_kw,
+                                   datetime_kw> {};
+
+struct unquoted_ident : peg::minus<peg::ascii::identifier, reserved_keyword> {};
 struct backticked_ident : peg::seq<peg::one<'`'>, peg::until<peg::one<'`'>>> {};
 struct double_quoted_ident : peg::seq<peg::one<'"'>, peg::until<peg::one<'"'>>> {};
 struct identifier : peg::sor<unquoted_ident, backticked_ident, double_quoted_ident> {};
 
 struct expression;
 
+struct open_paren : peg::one<'('> {};
+struct close_paren : peg::one<')'> {};
+
+struct expr_identifier : identifier {};
+struct select_table : identifier {};
+struct create_table_name : identifier {};
+struct drop_table_name : identifier {};
+struct alter_table_name : identifier {};
+struct create_index_name : identifier {};
+struct create_index_table_name : identifier {};
+struct drop_index_name : identifier {};
+struct drop_index_table_name : identifier {};
+struct column_name : identifier {};
+struct index_column : identifier {};
+
 struct primary_expr : peg::sor<boolean_kw,
                                null_kw,
                                string_literal,
                                numeric_literal,
-                               identifier,
-                               peg::seq<peg::one<'('>, padded<expression>, peg::one<')'>>> {};
+                               expr_identifier,
+                               peg::seq<open_paren, padded<expression>, close_paren>> {};
 
 struct op_plus : peg::one<'+'> {};
 struct op_minus : peg::one<'-'> {};
@@ -114,11 +157,7 @@ struct select_list : peg::list<select_item, padded<peg::one<','>>> {};
 
 struct select_stmt : peg::seq<select_kw,
                               mand_space,
-                              select_list,
-                              mand_space,
-                              from_kw,
-                              mand_space,
-                              identifier,
+                              peg::must<select_list, mand_space, from_kw, mand_space, select_table>,
                               peg::opt<peg::seq<mand_space, where_kw, mand_space, expression>>> {};
 
 struct data_type : peg::sor<boolean_kw,
@@ -132,7 +171,7 @@ struct data_type : peg::sor<boolean_kw,
                             varchar_kw,
                             datetime_kw> {};
 
-struct column_def : peg::seq<identifier,
+struct column_def : peg::seq<column_name,
                              mand_space,
                              data_type,
                              peg::opt<peg::seq<mand_space, not_kw, mand_space, null_kw>>,
@@ -143,43 +182,43 @@ struct create_table_stmt : peg::seq<create_kw,
                                     mand_space,
                                     table_kw,
                                     mand_space,
-                                    identifier,
+                                    create_table_name,
                                     padded<peg::one<'('>>,
                                     column_defs,
                                     padded<peg::one<')'>>> {};
 
-struct drop_table_stmt : peg::seq<drop_kw, mand_space, table_kw, mand_space, identifier> {};
+struct drop_table_stmt : peg::seq<drop_kw, mand_space, table_kw, mand_space, drop_table_name> {};
 struct drop_index_stmt : peg::seq<drop_kw,
                                   mand_space,
                                   index_kw,
                                   mand_space,
-                                  identifier,
+                                  drop_index_name,
                                   mand_space,
                                   on_kw,
                                   mand_space,
-                                  identifier> {};
+                                  drop_index_table_name> {};
 
 struct alter_table_stmt : peg::seq<alter_kw,
                                    mand_space,
                                    table_kw,
                                    mand_space,
-                                   identifier,
+                                   alter_table_name,
                                    mand_space,
                                    add_kw,
                                    mand_space,
                                    peg::opt<peg::seq<column_kw, mand_space>>,
                                    column_def> {};
 
-struct index_columns : peg::list<identifier, padded<peg::one<','>>> {};
+struct index_columns : peg::list<index_column, padded<peg::one<','>>> {};
 struct create_index_stmt : peg::seq<create_kw,
                                     mand_space,
                                     index_kw,
                                     mand_space,
-                                    identifier,
+                                    create_index_name,
                                     mand_space,
                                     on_kw,
                                     mand_space,
-                                    identifier,
+                                    create_index_table_name,
                                     padded<peg::one<'('>>,
                                     index_columns,
                                     padded<peg::one<')'>>> {};
@@ -190,7 +229,11 @@ struct statement : peg::sor<select_stmt,
                             alter_table_stmt,
                             create_index_stmt,
                             drop_index_stmt> {};
-struct sql_grammar
-    : peg::seq<opt_space, statement, opt_space, peg::opt<peg::one<';'>>, opt_space, peg::eof> {};
+struct sql_grammar : peg::seq<opt_space,
+                              peg::must<statement>,
+                              opt_space,
+                              peg::opt<peg::one<';'>>,
+                              opt_space,
+                              peg::must<peg::eof>> {};
 
 } // namespace cairn::sql::grammar

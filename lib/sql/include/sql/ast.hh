@@ -81,7 +81,7 @@ class stmt_node_t : public ast_node_t {};
 
 struct select_item_t {
     bool                   is_star{false};
-    stdx::box<expr_node_t> expr;
+    stdx::nullable_box<expr_node_t> expr;
 };
 
 class select_stmt_t final : public stmt_node_t {
