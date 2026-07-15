@@ -1,14 +1,7 @@
 #pragma once
 
-#include <ostream>
-#include <string>
-#include <string_view>
-
-#include <fmt/base.h>
-#include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
-#include <stdx/utility.hh>
 
 #include "support/diagnostic/location.hh"
 
@@ -54,65 +47,24 @@ enum class error : u8 {
     TXN_SERIALIZATION_FAILURE,   // validation failure
 
     SQL_EOF, // The sql lexer/parser reached the end of the token stream
+    SQL_SYNTAX_ERROR, // General SQL syntax error
 };
 
 template <typename T> using result = stdx::result<T, error>;
 
 class diagnostic {
   public:
-    enum class level : u8 {
-        ERROR,
-        WARNING,
-    };
-
-  public:
-    constexpr explicit diagnostic(error err) noexcept : err_{err} {}
     constexpr diagnostic(error err, usize line, usize column) noexcept
-        : loc_{{line, column}}, err_{err} {}
-    template <Locateable T>
-    constexpr diagnostic(error err, T t) : loc_{source_info<T>::get(t)}, err_{err} {}
+        : loc_{line, column}, err_{err} {}
 
-    constexpr diagnostic(stdx::option<std::string> msg,
-                         error                     err,
-                         usize                     line,
-                         usize                     column) noexcept
-        : message_{std::move(msg)}, loc_{{line, column}}, err_{err} {}
-    constexpr diagnostic(stdx::option<std::string> msg, error err) noexcept
-        : message_{std::move(msg)}, err_{err} {}
+    [[nodiscard]] constexpr auto loc() const noexcept -> location { return loc_; }
+    [[nodiscard]] constexpr auto err() const noexcept -> error { return err_; }
 
-    template <Locateable T>
-    diagnostic(stdx::option<std::string> msg, error err, const T& t)
-        : message_{std::move(msg)}, loc_{source_info<T>::get(t)}, err_{err} {}
-
-    // Moves the passed diagnostic into a new one with an error code
-    diagnostic(diagnostic&& other, error err) noexcept
-        : message_{std::move(other.message_)}, loc_{other.loc_}, err_{err}, level_{other.level_} {}
-
-    // Moves the passed diagnostic into a new one with a specified source location
-    template <Locateable T>
-    diagnostic(diagnostic&& other, const T& t)
-        : message_{std::move(other.message_)}, loc_{source_info<T>::get(t)}, err_{other.err_},
-          level_{other.level_} {}
-
-    MAKE_GETTER(message, const stdx::option<std::string>&)
-    MAKE_GETTER(loc, stdx::option<location>)
-    MAKE_GETTER(err, error)
-    MAKE_GETTER(level, stdx::option<level>)
-
-    [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept
-        -> bool = default;
-
-    // Diagnostics always default to `ERROR`
-    auto set_level(stdx::option<level> level) noexcept -> void { level_ = level; }
-    auto format(std::ostream&                         os,
-                const stdx::option<std::string_view>& source_path = stdx::none,
-                stdx::option<bool> in_terminal = stdx::none) const -> std::ostream&;
+    [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept -> bool = default;
 
   private:
-    stdx::option<std::string> message_;
-    stdx::option<location>    loc_;
-    error                     err_;
-    stdx::option<level>       level_{level::ERROR};
+    location loc_;
+    error    err_;
 };
 
 } // namespace cairn

@@ -1,4 +1,5 @@
 #include <string_view>
+#include <utility>
 
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
@@ -11,7 +12,7 @@
 #include "sql/parser.hh"
 #include "sql/type.hh"
 #include "support/diagnostic/error.hh"
-#include "support/diagnostic/list.hh"
+#include "support/diagnostic/location.hh"
 #include "testhelpers/unwrap.hh"
 
 namespace cairn::tests {
@@ -20,20 +21,20 @@ using namespace cairn::sql;
 
 namespace {
 
-auto parse_sql(std::string_view query, diagnostic_list& diags) {
+auto parse_sql(std::string_view query) {
     const file f{query};
-    return parse(f, diags);
+    return parse(f);
 }
 
 } // namespace
 
 TEST_CASE("Parse SELECT statement") {
-    diagnostic_list diags;
-    auto            tree  = UNWRAP(parse_sql("SELECT * FROM users;", diags));
-    auto            roots = tree.roots();
+    auto [res, diags]{parse_sql("SELECT * FROM users;")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::SELECT_STMT);
     const auto& select{UNWRAP(tree.get_as_opt<ast::select_stmt_t>(root_id))};
     CHECK(select.table_name == "users");
@@ -44,12 +45,12 @@ TEST_CASE("Parse SELECT statement") {
 }
 
 TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
-    diagnostic_list diags;
-    auto tree  = UNWRAP(parse_sql("SELECT id, name FROM users WHERE id = 5 AND age > 21;", diags));
-    auto roots = tree.roots();
+    auto [res, diags]{parse_sql("SELECT id, name FROM users WHERE id = 5 AND age > 21;")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::SELECT_STMT);
     const auto& select{UNWRAP(tree.get_as_opt<ast::select_stmt_t>(root_id))};
     CHECK(select.table_name == "users");
@@ -59,7 +60,7 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
     CHECK_FALSE(select.select_list[1].is_star);
 
     REQUIRE(select.where_clause.is_valid());
-    auto where_id = select.where_clause;
+    auto where_id{select.where_clause};
     REQUIRE(where_id.kind == ast::node_kind_t::BINARY_EXPR);
     const auto& binary_and{UNWRAP(tree.get_as_opt<ast::binary_expr_t>(where_id))};
     CHECK(binary_and.op == ast::binary_op_t::AND);
@@ -76,18 +77,18 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
 }
 
 TEST_CASE("Parse CREATE TABLE statement") {
-    diagnostic_list diags;
-    auto            tree  = UNWRAP(parse_sql(
-        "CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);", diags));
-    auto            roots = tree.roots();
+    auto [res, diags]{parse_sql(
+        "CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::CREATE_TABLE_STMT);
     const auto& create{UNWRAP(tree.get_as_opt<ast::create_table_stmt_t>(root_id))};
     CHECK(create.table_name == "customers");
 
-    auto column_defs = create.column_defs;
+    auto column_defs{create.column_defs};
     REQUIRE(column_defs.size() == 3);
 
     CHECK(column_defs[0].name == "id");
@@ -104,24 +105,24 @@ TEST_CASE("Parse CREATE TABLE statement") {
 }
 
 TEST_CASE("Parse DROP TABLE statement") {
-    diagnostic_list diags;
-    auto            tree  = UNWRAP(parse_sql("DROP TABLE customers;", diags));
-    auto            roots = tree.roots();
+    auto [res, diags]{parse_sql("DROP TABLE customers;")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::DROP_TABLE_STMT);
     const auto& drop{UNWRAP(tree.get_as_opt<ast::drop_table_stmt_t>(root_id))};
     CHECK(drop.table_name == "customers");
 }
 
 TEST_CASE("Parse ALTER TABLE statement") {
-    diagnostic_list diags;
-    auto tree  = UNWRAP(parse_sql("ALTER TABLE employees ADD email VARCHAR NOT NULL;", diags));
-    auto roots = tree.roots();
+    auto [res, diags]{parse_sql("ALTER TABLE employees ADD email VARCHAR NOT NULL;")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::ALTER_TABLE_STMT);
     const auto& alter{UNWRAP(tree.get_as_opt<ast::alter_table_stmt_t>(root_id))};
     CHECK(alter.table_name == "employees");
@@ -131,31 +132,30 @@ TEST_CASE("Parse ALTER TABLE statement") {
 }
 
 TEST_CASE("Parse CREATE INDEX statement") {
-    diagnostic_list diags;
-    auto            tree =
-        UNWRAP(parse_sql("CREATE INDEX idx_emp_name ON employees (last_name, first_name);", diags));
-    auto roots = tree.roots();
+    auto [res, diags]{parse_sql("CREATE INDEX idx_emp_name ON employees (last_name, first_name);")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::CREATE_INDEX_STMT);
     const auto& idx{UNWRAP(tree.get_as_opt<ast::create_index_stmt_t>(root_id))};
     CHECK(idx.index_name == "idx_emp_name");
     CHECK(idx.table_name == "employees");
 
-    auto cols = idx.columns;
+    auto cols{idx.columns};
     REQUIRE(cols.size() == 2);
     CHECK(cols[0] == "last_name");
     CHECK(cols[1] == "first_name");
 }
 
 TEST_CASE("Parse DROP INDEX statement") {
-    diagnostic_list diags;
-    auto            tree  = UNWRAP(parse_sql("DROP INDEX idx_emp_name ON employees;", diags));
-    auto            roots = tree.roots();
+    auto [res, diags]{parse_sql("DROP INDEX idx_emp_name ON employees;")};
+    auto tree{UNWRAP(std::move(res))};
+    auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
-    auto root_id = roots[0];
+    auto root_id{roots[0]};
     REQUIRE(root_id.kind == ast::node_kind_t::DROP_INDEX_STMT);
     const auto& drop_idx{UNWRAP(tree.get_as_opt<ast::drop_index_stmt_t>(root_id))};
     CHECK(drop_idx.index_name == "idx_emp_name");
@@ -163,17 +163,14 @@ TEST_CASE("Parse DROP INDEX statement") {
 }
 
 TEST_CASE("Parse error diagnostics") {
-    diagnostic_list diags;
-    auto            err = UNWRAP_ERR(parse_sql("SELECT FROM users;", diags));
-    CHECK(err == error::SQL_EOF);
+    auto [res, diags]{parse_sql("SELECT FROM users;")};
+    auto err{UNWRAP_ERR(std::move(res))};
+    CHECK(err == error::SQL_SYNTAX_ERROR);
 
-    auto span = gsl::span<const diagnostic>(diags);
+    gsl::span<const location> span{diags};
     REQUIRE(span.size() == 1);
-    CHECK(span[0].get_err() == error::SQL_EOF);
-
-    const auto& loc = UNWRAP(span[0].get_loc());
-    CHECK(loc.line == 0);
-    CHECK(loc.column == 7);
+    CHECK(span[0].line == 0);
+    CHECK(span[0].column == 7);
 }
 
 } // namespace cairn::tests
