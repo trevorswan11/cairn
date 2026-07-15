@@ -5,8 +5,12 @@
     .fingerprint = 0x6b2fcd62bcf49471,
     .dependencies = .{
         .stdx = .{
-            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v2.0.1.tar.gz",
-            .hash = "stdx-2.0.1-dNitgxLxCABg-T0YVtCFXDGWS91hgqb_cJe1SITZbWGM",
+            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v2.1.0.tar.gz",
+            .hash = "stdx-2.1.0-dNitgy-DCAAJYVy5aSY310ADcWK9pGhSExCScfS7RDfs",
+        },
+        .pegtl = .{
+            .url = "https://github.com/taocpp/PEGTL/archive/refs/tags/4.0.0.tar.gz",
+            .hash = "N-V-__8AALe2JwDN7BNjMS632AxLxU3E40_4cDK10mfdcMnY",
         },
     },
     .paths = .{
