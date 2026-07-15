@@ -472,9 +472,14 @@ fn addArtifacts(b: *std.Build, config: struct {
     }));
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
     const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
+
+    const pegtl = b.dependency("pegtl", .{});
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
         .link_libraries = &.{ libstorage.artifact, libwal.artifact },
+        .system_include_paths = &.{pegtl.path("include")},
     }));
+    libsql.artifact.installHeadersDirectory(pegtl.path("include"), "", .{ .include_extensions = &.{".hpp"} });
+
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{
         .include_paths = &.{
             ArtifactConfig.libraryInclude(b, "wal").@"1",
