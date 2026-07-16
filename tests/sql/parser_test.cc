@@ -1,16 +1,11 @@
-#include <string_view>
-#include <utility>
-
 #include <catch2/catch_test_macros.hpp>
-#include <gsl/span>
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "sql/ast.hh"
 #include "sql/file.hh"
+#include "sql/ast.hh"
 #include "sql/parser.hh"
-#include "sql/type.hh"
 #include "support/diagnostic/error.hh"
 #include "support/diagnostic/location.hh"
 #include "testhelpers/unwrap.hh"
@@ -29,8 +24,7 @@ auto parse_sql(std::string_view query) {
 } // namespace
 
 TEST_CASE("Parse SELECT statement") {
-    auto [res, diags]{parse_sql("SELECT * FROM users;")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("SELECT * FROM users;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -38,15 +32,14 @@ TEST_CASE("Parse SELECT statement") {
     REQUIRE(root_id.kind == ast::node_kind_t::SELECT_STMT);
     const auto& select{UNWRAP(tree.get_as_opt<ast::select_stmt_t>(root_id))};
     CHECK(select.table_name == "users");
-
+    
     REQUIRE(select.select_list.size() == 1);
     CHECK(select.select_list[0].is_star);
     CHECK_FALSE(select.where_clause.is_valid());
 }
 
 TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
-    auto [res, diags]{parse_sql("SELECT id, name FROM users WHERE id = 5 AND age > 21;")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("SELECT id, name FROM users WHERE id = 5 AND age > 21;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -77,9 +70,7 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
 }
 
 TEST_CASE("Parse CREATE TABLE statement") {
-    auto [res, diags]{parse_sql(
-        "CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -90,7 +81,7 @@ TEST_CASE("Parse CREATE TABLE statement") {
 
     auto column_defs{create.column_defs};
     REQUIRE(column_defs.size() == 3);
-
+    
     CHECK(column_defs[0].name == "id");
     CHECK(column_defs[0].type == type::id_t::INTEGER);
     CHECK_FALSE(column_defs[0].nullable);
@@ -105,8 +96,7 @@ TEST_CASE("Parse CREATE TABLE statement") {
 }
 
 TEST_CASE("Parse DROP TABLE statement") {
-    auto [res, diags]{parse_sql("DROP TABLE customers;")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("DROP TABLE customers;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -117,8 +107,7 @@ TEST_CASE("Parse DROP TABLE statement") {
 }
 
 TEST_CASE("Parse ALTER TABLE statement") {
-    auto [res, diags]{parse_sql("ALTER TABLE employees ADD email VARCHAR NOT NULL;")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("ALTER TABLE employees ADD email VARCHAR NOT NULL;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -132,8 +121,7 @@ TEST_CASE("Parse ALTER TABLE statement") {
 }
 
 TEST_CASE("Parse CREATE INDEX statement") {
-    auto [res, diags]{parse_sql("CREATE INDEX idx_emp_name ON employees (last_name, first_name);")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("CREATE INDEX idx_emp_name ON employees (last_name, first_name);"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -142,7 +130,7 @@ TEST_CASE("Parse CREATE INDEX statement") {
     const auto& idx{UNWRAP(tree.get_as_opt<ast::create_index_stmt_t>(root_id))};
     CHECK(idx.index_name == "idx_emp_name");
     CHECK(idx.table_name == "employees");
-
+    
     auto cols{idx.columns};
     REQUIRE(cols.size() == 2);
     CHECK(cols[0] == "last_name");
@@ -150,8 +138,7 @@ TEST_CASE("Parse CREATE INDEX statement") {
 }
 
 TEST_CASE("Parse DROP INDEX statement") {
-    auto [res, diags]{parse_sql("DROP INDEX idx_emp_name ON employees;")};
-    auto tree{UNWRAP(std::move(res))};
+    auto tree{UNWRAP(parse_sql("DROP INDEX idx_emp_name ON employees;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -163,14 +150,10 @@ TEST_CASE("Parse DROP INDEX statement") {
 }
 
 TEST_CASE("Parse error diagnostics") {
-    auto [res, diags]{parse_sql("SELECT FROM users;")};
-    auto err{UNWRAP_ERR(std::move(res))};
-    CHECK(err == error::SQL_SYNTAX_ERROR);
-
-    gsl::span<const location> span{diags};
-    REQUIRE(span.size() == 1);
-    CHECK(span[0].line == 0);
-    CHECK(span[0].column == 7);
+    auto res{parse_sql("SELECT FROM users;")};
+    auto loc{UNWRAP_ERR(std::move(res))};
+    CHECK(loc.line == 0);
+    CHECK(loc.column == 7);
 }
 
 } // namespace cairn::tests

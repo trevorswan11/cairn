@@ -1,17 +1,13 @@
 #pragma once
 
-#include <vector>
-#include <utility>
-
+#include <stdx/result.hh>
 #include "sql/file.hh"
 #include "sql/ast.hh"
 #include "support/diagnostic/location.hh"
-#include "support/diagnostic/error.hh"
 
 namespace cairn::sql {
 
-using parse_diags_t = std::vector<location>;
-using parse_result_t = std::pair<result<ast::ast_t>, parse_diags_t>;
+using parse_result_t = stdx::result<ast::ast_t, location>;
 
 [[nodiscard]] auto parse(const file& source_file) noexcept -> parse_result_t;
 
