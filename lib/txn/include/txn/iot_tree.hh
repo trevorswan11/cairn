@@ -130,7 +130,7 @@ class iot_tree {
   public:
     using tree_t =
         storage::iot_tree<Key, MaxTupleSize + sizeof(tuple_version_header_t), PoolSize, Compare>;
-    using buf_t               = stdx::fixed::vector<std::byte, tree_t::pool_size>;
+    using buf_t = stdx::fixed::vector<std::byte, MaxTupleSize + sizeof(tuple_version_header_t)>;
     using iot_tree_read_set_t = iot_tree_read_set<Key, MaxTupleSize, PoolSize, Compare>;
 
   public:
