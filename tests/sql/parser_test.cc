@@ -3,8 +3,8 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "sql/file.hh"
 #include "sql/ast.hh"
+#include "sql/file.hh"
 #include "sql/parser.hh"
 #include "support/diagnostic/error.hh"
 #include "support/diagnostic/location.hh"
@@ -29,13 +29,13 @@ TEST_CASE("Parse SELECT statement") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::SELECT_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::SELECT_STMT);
     const auto& select{UNWRAP(tree.get_as_opt<ast::select_stmt_t>(root_id))};
     CHECK(select.table_name == "users");
-    
+
     REQUIRE(select.select_list.size() == 1);
-    CHECK(select.select_list[0].is_star);
-    CHECK_FALSE(select.where_clause.is_valid());
+    CHECK_FALSE(select.select_list[0].expr.has_value());
+    CHECK_FALSE(select.where_clause.has_value());
 }
 
 TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
@@ -44,44 +44,45 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::SELECT_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::SELECT_STMT);
     const auto& select{UNWRAP(tree.get_as_opt<ast::select_stmt_t>(root_id))};
     CHECK(select.table_name == "users");
 
     REQUIRE(select.select_list.size() == 2);
-    CHECK_FALSE(select.select_list[0].is_star);
-    CHECK_FALSE(select.select_list[1].is_star);
+    CHECK(select.select_list[0].expr.has_value());
+    CHECK(select.select_list[1].expr.has_value());
 
-    REQUIRE(select.where_clause.is_valid());
-    auto where_id{select.where_clause};
-    REQUIRE(where_id.kind == ast::node_kind_t::BINARY_EXPR);
+    REQUIRE(select.where_clause.has_value());
+    auto where_id{*select.where_clause};
+    REQUIRE(where_id.kind() == ast::node_kind_t::BINARY_EXPR);
     const auto& binary_and{UNWRAP(tree.get_as_opt<ast::binary_expr_t>(where_id))};
     CHECK(binary_and.op == ast::binary_op_t::AND);
 
     // LHS of AND (id = 5)
-    REQUIRE(binary_and.lhs.kind == ast::node_kind_t::BINARY_EXPR);
+    REQUIRE(binary_and.lhs.kind() == ast::node_kind_t::BINARY_EXPR);
     const auto& eq{UNWRAP(tree.get_as_opt<ast::binary_expr_t>(binary_and.lhs))};
     CHECK(eq.op == ast::binary_op_t::EQUAL);
 
     // RHS of AND (age > 21)
-    REQUIRE(binary_and.rhs.kind == ast::node_kind_t::BINARY_EXPR);
+    REQUIRE(binary_and.rhs.kind() == ast::node_kind_t::BINARY_EXPR);
     const auto& gt{UNWRAP(tree.get_as_opt<ast::binary_expr_t>(binary_and.rhs))};
     CHECK(gt.op == ast::binary_op_t::GREATER_THAN);
 }
 
 TEST_CASE("Parse CREATE TABLE statement") {
-    auto tree{UNWRAP(parse_sql("CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);"))};
+    auto tree{UNWRAP(parse_sql(
+        "CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::CREATE_TABLE_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::CREATE_TABLE_STMT);
     const auto& create{UNWRAP(tree.get_as_opt<ast::create_table_stmt_t>(root_id))};
     CHECK(create.table_name == "customers");
 
     auto column_defs{create.column_defs};
     REQUIRE(column_defs.size() == 3);
-    
+
     CHECK(column_defs[0].name == "id");
     CHECK(column_defs[0].type == type::id_t::INTEGER);
     CHECK_FALSE(column_defs[0].nullable);
@@ -101,7 +102,7 @@ TEST_CASE("Parse DROP TABLE statement") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::DROP_TABLE_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::DROP_TABLE_STMT);
     const auto& drop{UNWRAP(tree.get_as_opt<ast::drop_table_stmt_t>(root_id))};
     CHECK(drop.table_name == "customers");
 }
@@ -112,7 +113,7 @@ TEST_CASE("Parse ALTER TABLE statement") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::ALTER_TABLE_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::ALTER_TABLE_STMT);
     const auto& alter{UNWRAP(tree.get_as_opt<ast::alter_table_stmt_t>(root_id))};
     CHECK(alter.table_name == "employees");
     CHECK(alter.column_def.name == "email");
@@ -126,11 +127,11 @@ TEST_CASE("Parse CREATE INDEX statement") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::CREATE_INDEX_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::CREATE_INDEX_STMT);
     const auto& idx{UNWRAP(tree.get_as_opt<ast::create_index_stmt_t>(root_id))};
     CHECK(idx.index_name == "idx_emp_name");
     CHECK(idx.table_name == "employees");
-    
+
     auto cols{idx.columns};
     REQUIRE(cols.size() == 2);
     CHECK(cols[0] == "last_name");
@@ -143,7 +144,7 @@ TEST_CASE("Parse DROP INDEX statement") {
     REQUIRE(roots.size() == 1);
 
     auto root_id{roots[0]};
-    REQUIRE(root_id.kind == ast::node_kind_t::DROP_INDEX_STMT);
+    REQUIRE(root_id.kind() == ast::node_kind_t::DROP_INDEX_STMT);
     const auto& drop_idx{UNWRAP(tree.get_as_opt<ast::drop_index_stmt_t>(root_id))};
     CHECK(drop_idx.index_name == "idx_emp_name");
     CHECK(drop_idx.table_name == "employees");

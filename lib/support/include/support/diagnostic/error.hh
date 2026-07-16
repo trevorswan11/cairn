@@ -46,7 +46,7 @@ enum class error : u8 {
     TXN_LOCK_ACQUISITION_FAILED, // lock manager limits exceeded
     TXN_SERIALIZATION_FAILURE,   // validation failure
 
-    SQL_EOF, // The sql lexer/parser reached the end of the token stream
+    SQL_EOF,          // The sql lexer/parser reached the end of the token stream
     SQL_SYNTAX_ERROR, // General SQL syntax error
 };
 
@@ -60,7 +60,8 @@ class diagnostic {
     [[nodiscard]] constexpr auto loc() const noexcept -> location { return loc_; }
     [[nodiscard]] constexpr auto err() const noexcept -> error { return err_; }
 
-    [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept -> bool = default;
+    [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept
+        -> bool = default;
 
   private:
     location loc_;
