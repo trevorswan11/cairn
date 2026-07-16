@@ -167,7 +167,7 @@ class ast_t {
     }
 
     template <typename T, typename... Args> auto add_node(Args&&... args) -> node_id_t {
-        const u32 index{static_cast<u32>(pool_.size())};
+        const u64 index{static_cast<u64>(pool_.size())};
         pool_.emplace_back(std::in_place_type<T>, std::forward<Args>(args)...);
         return node_id_t{get_kind<T>(), index};
     }
@@ -224,12 +224,12 @@ class ast_t {
 } // namespace cairn::sql::ast
 
 template <> struct stdx::nullable<cairn::sql::ast::node_id_t> {
-    [[nodiscard]] static constexpr auto invalid() noexcept -> cairn::sql::ast::node_id_t {
-        return cairn::sql::ast::node_id_t::make_invalid();
+    using nid_t = cairn::sql::ast::node_id_t;
+    [[nodiscard]] static constexpr auto invalid() noexcept -> nid_t {
+        return nid_t::make_invalid();
     }
 
-    [[nodiscard]] static constexpr auto is_valid(const cairn::sql::ast::node_id_t& id) noexcept
-        -> bool {
+    [[nodiscard]] static constexpr auto is_valid(const nid_t& id) noexcept -> bool {
         return id.is_valid();
     }
 };
