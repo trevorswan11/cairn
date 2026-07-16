@@ -473,13 +473,6 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libnet: Library = .init(b, base_lib_config.with("net", .{}));
     const libopt: Library = .init(b, base_lib_config.with("opt", .{}));
 
-    const pegtl = b.dependency("pegtl", .{});
-    const libsql: Library = .init(b, base_lib_config.with("sql", .{
-        .link_libraries = &.{ libstorage.artifact, libwal.artifact },
-        .system_include_paths = &.{pegtl.path("include")},
-    }));
-    libsql.artifact.installHeadersDirectory(pegtl.path("include"), "", .{ .include_extensions = &.{".hpp"} });
-
     const libtxn: Library = .init(b, base_lib_config.with("txn", .{
         .include_paths = &.{
             ArtifactConfig.libraryInclude(b, "wal").@"1",
@@ -490,6 +483,13 @@ fn addArtifacts(b: *std.Build, config: struct {
     const libexec: Library = .init(b, base_lib_config.with("exec", .{
         .link_libraries = &.{ libstorage.artifact, libwal.artifact, libtxn.artifact },
     }));
+
+    const pegtl = b.dependency("pegtl", .{});
+    const libsql: Library = .init(b, base_lib_config.with("sql", .{
+        .link_libraries = &.{ libstorage.artifact, libwal.artifact, libexec.artifact },
+        .system_include_paths = &.{pegtl.path("include")},
+    }));
+    libsql.artifact.installHeadersDirectory(pegtl.path("include"), "", .{ .include_extensions = &.{".hpp"} });
 
     const all_cairn_libraries = [_]*std.Build.Step.Compile{
         libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
@@ -583,7 +583,13 @@ fn addArtifacts(b: *std.Build, config: struct {
             },
         })));
         unit_suites.append(.init(b, base_test_config.with("sql", .{
-            .link_libraries = &.{ libsql.artifact, libstorage.artifact, libwal.artifact },
+            .link_libraries = &.{
+                libsql.artifact,
+                libstorage.artifact,
+                libwal.artifact,
+                libexec.artifact,
+                libtxn.artifact,
+            },
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
             .link_libraries = &.{
