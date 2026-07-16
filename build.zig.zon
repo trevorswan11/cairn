@@ -5,8 +5,8 @@
     .fingerprint = 0x6b2fcd62bcf49471,
     .dependencies = .{
         .stdx = .{
-            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v2.1.0.tar.gz",
-            .hash = "stdx-2.1.0-dNitgy-DCAAJYVy5aSY310ADcWK9pGhSExCScfS7RDfs",
+            .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v2.2.0.tar.gz",
+            .hash = "stdx-2.2.0-dNitg824CACCUj9iYw_hKJCHsNEAA1INE7zhu4cmybMk",
         },
         .pegtl = .{
             .url = "https://github.com/taocpp/PEGTL/archive/refs/tags/4.0.0.tar.gz",
