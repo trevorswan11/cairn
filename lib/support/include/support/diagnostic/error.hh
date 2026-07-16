@@ -46,8 +46,10 @@ enum class error : u8 {
     TXN_LOCK_ACQUISITION_FAILED, // lock manager limits exceeded
     TXN_SERIALIZATION_FAILURE,   // validation failure
 
-    SQL_EOF,          // The sql lexer/parser reached the end of the token stream
-    SQL_SYNTAX_ERROR, // General SQL syntax error
+    SQL_TABLE_ALREADY_EXISTS,
+    SQL_TABLE_NOT_FOUND,
+    SQL_INDEX_ALREADY_EXISTS,
+    SQL_INDEX_NOT_FOUND,
 };
 
 template <typename T> using result = stdx::result<T, error>;
