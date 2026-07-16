@@ -1,15 +1,22 @@
 #include "sql/parser.hh"
 
+#include <array>
+#include <charconv>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 #include <stdx/assert.hh>
+#include <stdx/fixed/enum_map.hh>
+#include <stdx/fixed/hash_table.hh>
 #include <stdx/fixed/string.hh>
+#include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/profiler.hh>
 #include <stdx/result.hh>
+#include <stdx/string.hh>
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
 #include <tao/pegtl.hpp>
@@ -26,6 +33,7 @@
 #include "sql/type.hh"
 #include "stdx/option.hh"
 #include "support/diagnostic/location.hh"
+#include "support/string_utils.hh"
 
 namespace cairn::sql {
 
@@ -51,58 +59,59 @@ struct parser_state_t {
     stdx::option<type::id_t>         current_data_type;
     bool                             column_nullable{true};
 
-    auto active_scope() -> expr_scope_t& {
-        if (expr_scopes.empty()) { expr_scopes.emplace_back(); }
-        return expr_scopes.back();
+    [[nodiscard]] auto active_scope() -> expr_scope_t& {
+        return expr_scopes.empty() ? expr_scopes.emplace_back() : expr_scopes.back();
     }
 };
 
-auto clean_identifier(std::string_view sv) -> stdx::fixed::string {
-    if (sv.size() >= 2 && (sv.front() == '`' || sv.front() == '"') && sv.back() == sv.front()) {
-        return stdx::fixed::string{sv.substr(1, sv.size() - 2)};
+[[nodiscard]] auto clean_identifier(std::string_view sv) -> stdx::fixed::string {
+    if (sv.size() >= 2 && (sv.starts_with('`') || sv.starts_with('"')) && sv.back() == sv.front()) {
+        return stdx::fixed::string{stdx::string::substr(sv, 1, sv.size() - 2)};
     }
     return stdx::fixed::string{sv};
 }
 
-constexpr auto get_precedence(ast::binary_op_t op) noexcept -> int {
-    switch (op) {
-    case ast::binary_op_t::OR:                    return 1;
-    case ast::binary_op_t::AND:                   return 2;
-    case ast::binary_op_t::EQUAL:
-    case ast::binary_op_t::NOT_EQUAL:
-    case ast::binary_op_t::LESS_THAN:
-    case ast::binary_op_t::LESS_THAN_OR_EQUAL:
-    case ast::binary_op_t::GREATER_THAN:
-    case ast::binary_op_t::GREATER_THAN_OR_EQUAL: return 3;
-    case ast::binary_op_t::ADD:
-    case ast::binary_op_t::SUBTRACT:              return 4;
-    case ast::binary_op_t::MULTIPLY:
-    case ast::binary_op_t::DIVIDE:                return 5;
-    }
-    return 0;
-}
+constexpr auto precedence_map{[] {
+    stdx::fixed::enum_map<ast::binary_op_t, i32> map{0};
+    map[ast::binary_op_t::OR]                    = 1;
+    map[ast::binary_op_t::AND]                   = 2;
+    map[ast::binary_op_t::EQUAL]                 = 3;
+    map[ast::binary_op_t::NOT_EQUAL]             = 3;
+    map[ast::binary_op_t::LESS_THAN]             = 3;
+    map[ast::binary_op_t::LESS_THAN_OR_EQUAL]    = 3;
+    map[ast::binary_op_t::GREATER_THAN]          = 3;
+    map[ast::binary_op_t::GREATER_THAN_OR_EQUAL] = 3;
+    map[ast::binary_op_t::ADD]                   = 4;
+    map[ast::binary_op_t::SUBTRACT]              = 4;
+    map[ast::binary_op_t::MULTIPLY]              = 5;
+    map[ast::binary_op_t::DIVIDE]                = 5;
+    return map;
+}()};
 
-auto parse_binary_op(std::string_view sv) noexcept -> ast::binary_op_t {
-    if (sv == "+") { return ast::binary_op_t::ADD; }
-    if (sv == "-") { return ast::binary_op_t::SUBTRACT; }
-    if (sv == "*") { return ast::binary_op_t::MULTIPLY; }
-    if (sv == "/") { return ast::binary_op_t::DIVIDE; }
-    if (sv == "=") { return ast::binary_op_t::EQUAL; }
-    if (sv == "!=" || sv == "<>") { return ast::binary_op_t::NOT_EQUAL; }
-    if (sv == "<=") { return ast::binary_op_t::LESS_THAN_OR_EQUAL; }
-    if (sv == ">=") { return ast::binary_op_t::GREATER_THAN_OR_EQUAL; }
-    if (sv == "<") { return ast::binary_op_t::LESS_THAN; }
-    if (sv == ">") { return ast::binary_op_t::GREATER_THAN; }
+constexpr auto binary_ops{[] {
+    constexpr std::array operators{std::pair{"+", ast::binary_op_t::ADD},
+                                   std::pair{"-", ast::binary_op_t::SUBTRACT},
+                                   std::pair{"*", ast::binary_op_t::MULTIPLY},
+                                   std::pair{"/", ast::binary_op_t::DIVIDE},
+                                   std::pair{"=", ast::binary_op_t::EQUAL},
+                                   std::pair{"!=", ast::binary_op_t::NOT_EQUAL},
+                                   std::pair{"<>", ast::binary_op_t::NOT_EQUAL},
+                                   std::pair{"<=", ast::binary_op_t::LESS_THAN_OR_EQUAL},
+                                   std::pair{">=", ast::binary_op_t::GREATER_THAN_OR_EQUAL},
+                                   std::pair{"<", ast::binary_op_t::LESS_THAN},
+                                   std::pair{">", ast::binary_op_t::GREATER_THAN},
+                                   std::pair{"and", ast::binary_op_t::AND},
+                                   std::pair{"or", ast::binary_op_t::OR}};
 
-    if (sv.size() == 3 && (sv[0] == 'a' || sv[0] == 'A') && (sv[1] == 'n' || sv[1] == 'N') &&
-        (sv[2] == 'd' || sv[2] == 'D')) {
-        return ast::binary_op_t::AND;
-    }
-    if (sv.size() == 2 && (sv[0] == 'o' || sv[0] == 'O') && (sv[1] == 'r' || sv[1] == 'R')) {
-        return ast::binary_op_t::OR;
-    }
-    return ast::binary_op_t::ADD;
-}
+    stdx::fixed::hash_map<std::string_view,
+                          ast::binary_op_t,
+                          operators.size(),
+                          string_utils::ihash,
+                          string_utils::iequals>
+        map;
+    for (const auto& op : operators) { map.emplace(op.first, op.second); }
+    return map;
+}()};
 
 template <typename Rule> struct action_t : peg::nothing<Rule> {};
 
@@ -133,22 +142,21 @@ template <> struct action_t<grammar::false_kw> {
 template <> struct action_t<grammar::string_literal> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
-        auto str{in.string()};
-        if (str.size() >= 2 && str.front() == '\'' && str.back() == '\'') {
-            str = str.substr(1, str.size() - 2);
+        auto str{in.string_view()};
+        if (str.size() >= 2 && str.starts_with('\'') && str.front() == str.back()) {
+            str = stdx::string::substr(str, 1, str.size() - 2);
         }
-        std::string unescaped;
-        unescaped.reserve(str.size());
+
+        stdx::fixed::string unescaped{str.size()};
         for (usize i{0}; i < str.size(); ++i) {
             if (str[i] == '\\' && i + 1 < str.size() && str[i + 1] == '\'') {
-                unescaped += '\'';
+                unescaped[i] = '\'';
                 ++i;
             } else {
-                unescaped += str[i];
+                unescaped[i] = str[i];
             }
         }
-        auto id{
-            state.tree.add_node<ast::literal_expr_t>(stdx::fixed::string{std::move(unescaped)})};
+        auto id{state.tree.add_node<ast::literal_expr_t>(std::move(unescaped))};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -156,15 +164,18 @@ template <> struct action_t<grammar::string_literal> {
 template <> struct action_t<grammar::numeric_literal> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
-        auto           str{in.string()};
+        auto           str{in.string_view()};
         ast::node_id_t id;
-        if (str.find('.') != std::string::npos || str.find('e') != std::string::npos ||
-            str.find('E') != std::string::npos) {
-            double val{std::stod(str)};
-            id = state.tree.add_node<ast::literal_expr_t>(val);
+        if (str.contains('.') || str.contains('e') || str.contains('E')) {
+            double value;
+            auto   result{std::from_chars(str.begin(), str.end(), value)};
+            VERIFY(result.ec == std::errc{} && result.ptr == str.end());
+            id = state.tree.add_node<ast::literal_expr_t>(value);
         } else {
-            long long val{std::stoll(str)};
-            id = state.tree.add_node<ast::literal_expr_t>(static_cast<i64>(val));
+            i64  value;
+            auto result{std::from_chars(str.begin(), str.end(), value)};
+            VERIFY(result.ec == std::errc{} && result.ptr == str.end());
+            id = state.tree.add_node<ast::literal_expr_t>(value);
         }
         state.active_scope().operands.emplace_back(id);
     }
@@ -200,10 +211,10 @@ template <> struct action_t<grammar::close_paren> {
 template <> struct action_t<grammar::binary_op> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
-        auto  op{parse_binary_op(in.string_view())};
+        auto op{binary_ops.get_opt(in.string_view()).materialize().value_or(ast::binary_op_t::ADD)};
         auto& scope{state.active_scope()};
-        while (!scope.operators.empty() &&
-               get_precedence(scope.operators.back()) >= get_precedence(op)) {
+        while (!scope.operators.empty()) {
+            if (precedence_map[scope.operators.back()] < precedence_map[op]) { break; }
             auto top_op{scope.operators.back()};
             scope.operators.pop_back();
 
