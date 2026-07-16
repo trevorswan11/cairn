@@ -66,9 +66,9 @@ struct parser_state_t {
 
 [[nodiscard]] auto clean_identifier(std::string_view sv) -> stdx::fixed::string {
     if (sv.size() >= 2 && (sv.starts_with('`') || sv.starts_with('"')) && sv.back() == sv.front()) {
-        return stdx::fixed::string{stdx::string::substr(sv, 1, sv.size() - 2)};
+        return stdx::string::substr(sv, 1, sv.size() - 2);
     }
-    return stdx::fixed::string{sv};
+    return sv;
 }
 
 constexpr auto precedence_map{[] {
@@ -169,12 +169,12 @@ template <> struct action_t<grammar::numeric_literal> {
         if (str.contains('.') || str.contains('e') || str.contains('E')) {
             double value;
             auto   result{std::from_chars(str.begin(), str.end(), value)};
-            VERIFY(result.ec == std::errc{} && result.ptr == str.end());
+            ASSERT(result.ec == std::errc{} && result.ptr == str.end());
             id = state.tree.add_node<ast::literal_expr_t>(value);
         } else {
             i64  value;
             auto result{std::from_chars(str.begin(), str.end(), value)};
-            VERIFY(result.ec == std::errc{} && result.ptr == str.end());
+            ASSERT(result.ec == std::errc{} && result.ptr == str.end());
             id = state.tree.add_node<ast::literal_expr_t>(value);
         }
         state.active_scope().operands.emplace_back(id);
@@ -258,32 +258,18 @@ template <typename Rule, type::id_t TypeID> struct data_type_action {
     }
 };
 
-template <>
-struct action_t<grammar::boolean_kw> : data_type_action<grammar::boolean_kw, type::id_t::BOOLEAN> {
-};
-template <>
-struct action_t<grammar::tinyint_kw> : data_type_action<grammar::tinyint_kw, type::id_t::TINYINT> {
-};
-template <>
-struct action_t<grammar::smallint_kw>
-    : data_type_action<grammar::smallint_kw, type::id_t::SMALLINT> {};
-template <>
-struct action_t<grammar::integer_kw> : data_type_action<grammar::integer_kw, type::id_t::INTEGER> {
-};
-template <>
-struct action_t<grammar::int_kw> : data_type_action<grammar::int_kw, type::id_t::INTEGER> {};
-template <>
-struct action_t<grammar::bigint_kw> : data_type_action<grammar::bigint_kw, type::id_t::BIGINT> {};
-template <>
-struct action_t<grammar::float_kw> : data_type_action<grammar::float_kw, type::id_t::FLOAT> {};
-template <>
-struct action_t<grammar::double_kw> : data_type_action<grammar::double_kw, type::id_t::DOUBLE> {};
-template <>
-struct action_t<grammar::varchar_kw> : data_type_action<grammar::varchar_kw, type::id_t::VARCHAR> {
-};
-template <>
-struct action_t<grammar::datetime_kw>
-    : data_type_action<grammar::datetime_kw, type::id_t::DATETIME> {};
+// clang-format off
+template <> struct action_t<grammar::boolean_kw> : data_type_action<grammar::boolean_kw, type::id_t::BOOLEAN> {};
+template <> struct action_t<grammar::tinyint_kw> : data_type_action<grammar::tinyint_kw, type::id_t::TINYINT> {};
+template <> struct action_t<grammar::smallint_kw> : data_type_action<grammar::smallint_kw, type::id_t::SMALLINT> {};
+template <> struct action_t<grammar::integer_kw> : data_type_action<grammar::integer_kw, type::id_t::INTEGER> {};
+template <> struct action_t<grammar::int_kw> : data_type_action<grammar::int_kw, type::id_t::INTEGER> {};
+template <> struct action_t<grammar::bigint_kw> : data_type_action<grammar::bigint_kw, type::id_t::BIGINT> {};
+template <> struct action_t<grammar::float_kw> : data_type_action<grammar::float_kw, type::id_t::FLOAT> {};
+template <> struct action_t<grammar::double_kw> : data_type_action<grammar::double_kw, type::id_t::DOUBLE> {};
+template <> struct action_t<grammar::varchar_kw> : data_type_action<grammar::varchar_kw, type::id_t::VARCHAR> {};
+template <> struct action_t<grammar::datetime_kw> : data_type_action<grammar::datetime_kw, type::id_t::DATETIME> {};
+// clang-format on
 
 template <> struct action_t<grammar::not_kw> {
     template <typename ActionInput>
