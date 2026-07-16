@@ -1,21 +1,26 @@
 #pragma once
 
 #include <limits>
-#include <stdx/fixed/string.hh>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include <gsl/span>
 #include <stdx/assert.hh>
+#include <stdx/fixed/string.hh>
 #include <stdx/option.hh>
+#include <stdx/result.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 #include <stdx/variant.hh>
 
+#include "sql/file.hh"
 #include "sql/type.hh"
+#include "support/diagnostic/location.hh"
 
-namespace cairn::sql::ast {
+namespace cairn::sql {
+
+namespace ast {
 
 enum class node_kind_t : u8 {
     LITERAL_EXPR,
@@ -221,7 +226,11 @@ class ast_t {
     std::vector<node_id_t>   roots_;
 };
 
-} // namespace cairn::sql::ast
+} // namespace ast
+
+[[nodiscard]] auto parse(const file& source_file) noexcept -> stdx::result<ast::ast_t, location>;
+
+} // namespace cairn::sql
 
 template <> struct stdx::nullable<cairn::sql::ast::node_id_t> {
     using nid_t = cairn::sql::ast::node_id_t;
