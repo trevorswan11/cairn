@@ -1,9 +1,9 @@
 #pragma once
 
-#include <stdx/result.hh>
-#include "sql/file.hh"
 #include "sql/ast.hh"
+#include "sql/file.hh"
 #include "support/diagnostic/location.hh"
+#include <stdx/result.hh>
 
 namespace cairn::sql {
 

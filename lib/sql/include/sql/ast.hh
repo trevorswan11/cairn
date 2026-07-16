@@ -1,6 +1,7 @@
 #pragma once
 
-#include <string>
+#include <limits>
+#include <stdx/fixed/string.hh>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -27,21 +28,50 @@ enum class node_kind_t : u8 {
     ALTER_TABLE_STMT,
     CREATE_INDEX_STMT,
     DROP_INDEX_STMT,
-
-    INVALID,
 };
 
-struct node_id_t {
-    node_kind_t kind{node_kind_t::INVALID};
-    u32         index{0};
+class node_id_t {
+  public:
+    constexpr node_id_t() noexcept : raw_{INVALID_ID} {}
 
-    [[nodiscard]] constexpr auto is_valid() const noexcept -> bool {
-        return kind != node_kind_t::INVALID;
+    constexpr node_id_t(node_kind_t kind, u64 index) noexcept : raw_{} {
+        ASSERT(index <= INDEX_MASK, "Requested node index is too large");
+        raw_ |= static_cast<u64>(kind) << KIND_OFFSET;
+        raw_ |= index;
     }
-    [[nodiscard]] static constexpr auto make_invalid() noexcept -> node_id_t { return {}; }
+
+    [[nodiscard]] constexpr auto kind() const noexcept -> node_kind_t {
+        return static_cast<node_kind_t>((raw_ & KIND_MASK) >> KIND_OFFSET);
+    }
+
+    [[nodiscard]] constexpr auto index() const noexcept -> usize {
+        return static_cast<usize>(raw_ & INDEX_MASK);
+    }
+
+    [[nodiscard]] static constexpr auto make_invalid() noexcept -> node_id_t {
+        return node_id_t{INVALID_ID};
+    }
+
+    [[nodiscard]] constexpr auto is_valid() const noexcept -> bool { return raw_ != INVALID_ID; }
+
+    [[nodiscard]] friend auto operator<=>(const node_id_t&, const node_id_t&) noexcept = default;
+    [[nodiscard]] friend auto operator==(const node_id_t&, const node_id_t&) noexcept
+        -> bool = default;
+
+  private:
+    constexpr explicit node_id_t(u64 raw) noexcept : raw_{raw} {}
+
+  private:
+    static constexpr u64 KIND_MASK{0xFF00000000000000ULL};
+    static constexpr u64 KIND_OFFSET{56};
+    static constexpr u64 INDEX_MASK{0x00FFFFFFFFFFFFFFULL};
+    static constexpr u64 INVALID_ID{std::numeric_limits<u64>::max()};
+
+  private:
+    u64 raw_;
 };
 
-using literal_value_t = stdx::variant<stdx::monostate, bool, i64, f64, std::string>;
+using literal_value_t = stdx::variant<stdx::monostate, bool, i64, f64, stdx::fixed::string>;
 
 // Individual node structures (POD)
 struct literal_expr_t {
@@ -49,7 +79,7 @@ struct literal_expr_t {
 };
 
 struct identifier_expr_t {
-    std::string name;
+    stdx::fixed::string name;
 };
 
 enum class binary_op_t : u8 {
@@ -74,45 +104,44 @@ struct binary_expr_t {
 };
 
 struct select_item_t {
-    bool      is_star{false};
-    node_id_t expr;
+    stdx::option<node_id_t> expr;
 };
 
 struct select_stmt_t {
     std::vector<select_item_t> select_list;
-    std::string                table_name;
-    node_id_t                  where_clause; // node_id_t::make_invalid() if none
+    stdx::fixed::string        table_name;
+    stdx::option<node_id_t>    where_clause;
 };
 
 struct column_def_t {
-    std::string name;
-    type::id_t  type{type::id_t::INVALID};
-    bool        nullable{true};
+    stdx::fixed::string name;
+    type::id_t          type{type::id_t::INVALID};
+    bool                nullable{true};
 };
 
 struct create_table_stmt_t {
-    std::string               table_name;
+    stdx::fixed::string       table_name;
     std::vector<column_def_t> column_defs;
 };
 
 struct drop_table_stmt_t {
-    std::string table_name;
+    stdx::fixed::string table_name;
 };
 
 struct alter_table_stmt_t {
-    std::string  table_name;
-    column_def_t column_def;
+    stdx::fixed::string table_name;
+    column_def_t        column_def;
 };
 
 struct create_index_stmt_t {
-    std::string              index_name;
-    std::string              table_name;
-    std::vector<std::string> columns;
+    stdx::fixed::string              index_name;
+    stdx::fixed::string              table_name;
+    std::vector<stdx::fixed::string> columns;
 };
 
 struct drop_index_stmt_t {
-    std::string index_name;
-    std::string table_name;
+    stdx::fixed::string index_name;
+    stdx::fixed::string table_name;
 };
 
 using node_data_t = stdx::variant<stdx::monostate,
@@ -137,10 +166,10 @@ class ast_t {
         roots_.clear();
     }
 
-    template <typename T> auto add_node(T&& node) -> node_id_t {
-        const u32 index = static_cast<u32>(pool_.size());
-        pool_.emplace_back(std::forward<T>(node));
-        return node_id_t{get_kind<std::decay_t<T>>(), index};
+    template <typename T, typename... Args> auto add_node(Args&&... args) -> node_id_t {
+        const u32 index{static_cast<u32>(pool_.size())};
+        pool_.emplace_back(std::in_place_type<T>, std::forward<Args>(args)...);
+        return node_id_t{get_kind<T>(), index};
     }
 
     auto add_root(node_id_t id) noexcept -> void { roots_.emplace_back(id); }
@@ -148,13 +177,13 @@ class ast_t {
     [[nodiscard]] auto roots() const noexcept -> gsl::span<const node_id_t> { return roots_; }
 
     [[nodiscard]] auto operator[](node_id_t id) const noexcept -> const node_data_t& {
-        ASSERT(id.is_valid() && id.index < pool_.size());
-        return pool_[id.index];
+        ASSERT(id.is_valid() && id.index() < pool_.size());
+        return pool_[id.index()];
     }
 
     [[nodiscard]] auto operator[](node_id_t id) noexcept -> node_data_t& {
-        ASSERT(id.is_valid() && id.index < pool_.size());
-        return pool_[id.index];
+        ASSERT(id.is_valid() && id.index() < pool_.size());
+        return pool_[id.index()];
     }
 
     template <typename T>
@@ -164,22 +193,27 @@ class ast_t {
 
   private:
     template <typename T> static constexpr auto get_kind() noexcept -> node_kind_t {
-        if constexpr (std::is_same_v<T, literal_expr_t>) { return node_kind_t::LITERAL_EXPR; }
-        if constexpr (std::is_same_v<T, identifier_expr_t>) { return node_kind_t::IDENTIFIER_EXPR; }
-        if constexpr (std::is_same_v<T, binary_expr_t>) { return node_kind_t::BINARY_EXPR; }
-        if constexpr (std::is_same_v<T, select_stmt_t>) { return node_kind_t::SELECT_STMT; }
-        if constexpr (std::is_same_v<T, create_table_stmt_t>) {
+        if constexpr (std::is_same_v<T, literal_expr_t>) {
+            return node_kind_t::LITERAL_EXPR;
+        } else if constexpr (std::is_same_v<T, identifier_expr_t>) {
+            return node_kind_t::IDENTIFIER_EXPR;
+        } else if constexpr (std::is_same_v<T, binary_expr_t>) {
+            return node_kind_t::BINARY_EXPR;
+        } else if constexpr (std::is_same_v<T, select_stmt_t>) {
+            return node_kind_t::SELECT_STMT;
+        } else if constexpr (std::is_same_v<T, create_table_stmt_t>) {
             return node_kind_t::CREATE_TABLE_STMT;
-        }
-        if constexpr (std::is_same_v<T, drop_table_stmt_t>) { return node_kind_t::DROP_TABLE_STMT; }
-        if constexpr (std::is_same_v<T, alter_table_stmt_t>) {
+        } else if constexpr (std::is_same_v<T, drop_table_stmt_t>) {
+            return node_kind_t::DROP_TABLE_STMT;
+        } else if constexpr (std::is_same_v<T, alter_table_stmt_t>) {
             return node_kind_t::ALTER_TABLE_STMT;
-        }
-        if constexpr (std::is_same_v<T, create_index_stmt_t>) {
+        } else if constexpr (std::is_same_v<T, create_index_stmt_t>) {
             return node_kind_t::CREATE_INDEX_STMT;
+        } else if constexpr (std::is_same_v<T, drop_index_stmt_t>) {
+            return node_kind_t::DROP_INDEX_STMT;
+        } else {
+            static_assert(!sizeof(T*), "Unsupported node type");
         }
-        if constexpr (std::is_same_v<T, drop_index_stmt_t>) { return node_kind_t::DROP_INDEX_STMT; }
-        return node_kind_t::INVALID;
     }
 
   private:
@@ -188,3 +222,14 @@ class ast_t {
 };
 
 } // namespace cairn::sql::ast
+
+template <> struct stdx::nullable<cairn::sql::ast::node_id_t> {
+    [[nodiscard]] static constexpr auto invalid() noexcept -> cairn::sql::ast::node_id_t {
+        return cairn::sql::ast::node_id_t::make_invalid();
+    }
+
+    [[nodiscard]] static constexpr auto is_valid(const cairn::sql::ast::node_id_t& id) noexcept
+        -> bool {
+        return id.is_valid();
+    }
+};

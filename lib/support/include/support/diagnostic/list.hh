@@ -4,8 +4,8 @@
 
 #include <gsl/span>
 #include <stdx/iterator.hh>
-#include <stdx/utility.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
 #include "support/diagnostic/error.hh"
 
@@ -16,7 +16,7 @@ class diagnostic_list {
     MAKE_ITERATOR(list_t, std::vector<diagnostic>, list_)
 
   public:
-    diagnostic_list() = default;
+    diagnostic_list()  = default;
     ~diagnostic_list() = default;
     MAKE_MOVE_ONLY(diagnostic_list);
 
