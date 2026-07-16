@@ -14,6 +14,7 @@
 #include <stdx/fixed/string.hh>
 #include <stdx/hash.hh>
 #include <stdx/memory.hh>
+#include <stdx/option.hh>
 #include <stdx/profiler.hh>
 #include <stdx/result.hh>
 #include <stdx/string.hh>
@@ -31,7 +32,6 @@
 #include "sql/file.hh"
 #include "sql/peg.hh"
 #include "sql/type.hh"
-#include "stdx/option.hh"
 #include "support/diagnostic/location.hh"
 #include "support/string_utils.hh"
 
