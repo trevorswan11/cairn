@@ -7,7 +7,6 @@
 
 #include "sql/ast.hh"
 #include "sql/file.hh"
-#include "sql/parser.hh"
 #include "sql/type.hh"
 #include "support/diagnostic/location.hh"
 #include "testhelpers/unwrap.hh"
