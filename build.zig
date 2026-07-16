@@ -486,7 +486,7 @@ fn addArtifacts(b: *std.Build, config: struct {
 
     const pegtl = b.dependency("pegtl", .{});
     const libsql: Library = .init(b, base_lib_config.with("sql", .{
-        .link_libraries = &.{ libstorage.artifact, libwal.artifact, libexec.artifact },
+        .link_libraries = &.{ libstorage.artifact, libwal.artifact, libexec.artifact, libtxn.artifact },
         .system_include_paths = &.{pegtl.path("include")},
     }));
     libsql.artifact.installHeadersDirectory(pegtl.path("include"), "", .{ .include_extensions = &.{".hpp"} });
