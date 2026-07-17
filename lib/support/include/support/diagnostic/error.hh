@@ -50,6 +50,9 @@ enum class error : u8 {
     SQL_TABLE_NOT_FOUND,
     SQL_INDEX_ALREADY_EXISTS,
     SQL_INDEX_NOT_FOUND,
+    SQL_COLUMN_NOT_FOUND,
+    SQL_COLUMN_AMBIGUOUS,
+    SQL_TYPE_MISMATCH,
 };
 
 template <typename T> using result = stdx::result<T, error>;
