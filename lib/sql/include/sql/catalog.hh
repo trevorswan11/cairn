@@ -174,6 +174,21 @@ template <usize PoolSize> class catalog {
         return {};
     }
 
+    [[nodiscard]] auto sys_tables_root() const noexcept -> storage::page_id_t {
+        std::shared_lock lock{mutex_};
+        return sys_tables_root_;
+    }
+
+    [[nodiscard]] auto sys_columns_root() const noexcept -> storage::page_id_t {
+        std::shared_lock lock{mutex_};
+        return sys_columns_root_;
+    }
+
+    [[nodiscard]] auto sys_indexes_root() const noexcept -> storage::page_id_t {
+        std::shared_lock lock{mutex_};
+        return sys_indexes_root_;
+    }
+
     [[nodiscard]] auto get_table(std::string_view name) const
         -> stdx::option<const table_metadata&> {
         std::shared_lock lock{mutex_};
