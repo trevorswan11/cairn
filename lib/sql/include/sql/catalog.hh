@@ -41,14 +41,16 @@ namespace cairn::sql {
 enum class table_id_t : i64 {};
 enum class index_id_t : i64 {};
 
-struct table_metadata {
+namespace metadata {
+
+struct table {
     table_id_t         table_id;
     std::string        name;
     storage::page_id_t root_page_id;
     schema             table_schema;
 };
 
-struct index_metadata {
+struct index {
     table_id_t         table_id;
     index_id_t         index_id;
     std::string        name;
@@ -57,10 +59,10 @@ struct index_metadata {
     bool               is_unique;
 };
 
-constexpr std::array SYS_HEADER_MAGIC{"CAIRNDB"};
+constexpr std::array sys_header_magic{"CAIRNDB"};
 
-struct db_metadata_header_t {
-    std::remove_const_t<decltype(SYS_HEADER_MAGIC)> magic;
+struct db_header_t {
+    std::remove_const_t<decltype(sys_header_magic)> magic;
     i64                                             sys_tables_root;
     i64                                             sys_columns_root;
     i64                                             sys_indexes_root;
@@ -70,6 +72,12 @@ struct db_metadata_header_t {
 [[nodiscard]] auto sys_columns_schema() -> const schema&;
 [[nodiscard]] auto sys_indexes_schema() -> const schema&;
 
+constexpr std::string_view sys_tables_name{"sys_tables"};
+constexpr std::string_view sys_columns_name{"sys_columns"};
+constexpr std::string_view sys_indexes_name{"sys_indexes"};
+
+} // namespace metadata
+
 template <usize PoolSize> class catalog {
   public:
     using pool_t         = storage::buffer_pool<PoolSize>;
@@ -77,17 +85,17 @@ template <usize PoolSize> class catalog {
     using catalog_scan_t = exec::table_scan<i64, 128, PoolSize>;
 
     using tables_by_name_map_t = ankerl::unordered_dense::map<std::string,
-                                                              table_metadata,
+                                                              metadata::table,
                                                               stdx::string_transparent_hash,
                                                               stdx::string_transparent_eq>;
     using tables_by_id_map_t   = ankerl::unordered_dense::
-        map<table_id_t, gsl::not_null<const table_metadata*>, stdx::hash<table_id_t>>;
+        map<table_id_t, gsl::not_null<const metadata::table*>, stdx::hash<table_id_t>>;
     using indexes_by_name_map_t = ankerl::unordered_dense::map<std::string,
-                                                               index_metadata,
+                                                               metadata::index,
                                                                stdx::string_transparent_hash,
                                                                stdx::string_transparent_eq>;
     using indexes_by_id_map_t   = ankerl::unordered_dense::
-        map<index_id_t, gsl::not_null<const index_metadata*>, stdx::hash<index_id_t>>;
+        map<index_id_t, gsl::not_null<const metadata::index*>, stdx::hash<index_id_t>>;
 
   public:
     catalog(pool_t&                            pool,
@@ -107,8 +115,8 @@ template <usize PoolSize> class catalog {
                 needs_init = true;
             } else {
                 auto       guard{std::move(*read_res)};
-                const auto header{guard.template as<db_metadata_header_t>()};
-                if (header->magic != SYS_HEADER_MAGIC) {
+                const auto header{guard.template as<metadata::db_header_t>()};
+                if (header->magic != metadata::sys_header_magic) {
                     needs_init = true;
                 } else {
                     sys_tables_root_  = storage::page_id_t{header->sys_tables_root};
@@ -125,8 +133,8 @@ template <usize PoolSize> class catalog {
             pg0->latch().lock();
             typename pool_t::write_guard_t guard0{pool_, *pg0};
             guard0.mark_dirty();
-            auto header{guard0.template as<db_metadata_header_t>()};
-            header->magic = SYS_HEADER_MAGIC;
+            auto header{guard0.template as<metadata::db_header_t>()};
+            header->magic = metadata::sys_header_magic;
 
             auto sys_tables_tree_base{TRY(txn_tree_t::tree_t::create(pool_))};
             auto sys_columns_tree_base{TRY(txn_tree_t::tree_t::create(pool_))};
@@ -148,23 +156,23 @@ template <usize PoolSize> class catalog {
                                           sys_tables_txn_tree,
                                           sys_columns_txn_tree,
                                           table_id_t{1},
-                                          "sys_tables",
+                                          metadata::sys_tables_name,
                                           sys_tables_root_,
-                                          sys_tables_schema()));
+                                          metadata::sys_tables_schema()));
             TRY(insert_table_metadata_txn(bootstrap_txn,
                                           sys_tables_txn_tree,
                                           sys_columns_txn_tree,
                                           table_id_t{2},
-                                          "sys_columns",
+                                          metadata::sys_columns_name,
                                           sys_columns_root_,
-                                          sys_columns_schema()));
+                                          metadata::sys_columns_schema()));
             TRY(insert_table_metadata_txn(bootstrap_txn,
                                           sys_tables_txn_tree,
                                           sys_columns_txn_tree,
                                           table_id_t{3},
-                                          "sys_indexes",
+                                          metadata::sys_indexes_name,
                                           sys_indexes_root_,
-                                          sys_indexes_schema()));
+                                          metadata::sys_indexes_schema()));
 
             TRY(txn_mgr_.update_txn_lsn(bootstrap_txn, wal::log::seq_num{1}));
             TRY(txn_mgr_.commit_txn(bootstrap_txn, log_mgr_));
@@ -190,14 +198,15 @@ template <usize PoolSize> class catalog {
     }
 
     [[nodiscard]] auto get_table(std::string_view name) const
-        -> stdx::option<const table_metadata&> {
+        -> stdx::option<const metadata::table&> {
         std::shared_lock lock{mutex_};
         auto             it{tables_by_name_.find(name)};
         if (it == tables_by_name_.end()) { return stdx::none; }
         return it->second;
     }
 
-    [[nodiscard]] auto get_table(table_id_t table_id) const -> stdx::option<const table_metadata&> {
+    [[nodiscard]] auto get_table(table_id_t table_id) const
+        -> stdx::option<const metadata::table&> {
         std::shared_lock lock{mutex_};
         auto             it{tables_by_id_.find(table_id)};
         if (it == tables_by_id_.end()) { return stdx::none; }
@@ -205,14 +214,15 @@ template <usize PoolSize> class catalog {
     }
 
     [[nodiscard]] auto get_index(std::string_view name) const
-        -> stdx::option<const index_metadata&> {
+        -> stdx::option<const metadata::index&> {
         std::shared_lock lock{mutex_};
         auto             it{indexes_by_name_.find(name)};
         if (it == indexes_by_name_.end()) { return stdx::none; }
         return it->second;
     }
 
-    [[nodiscard]] auto get_index(index_id_t index_id) const -> stdx::option<const index_metadata&> {
+    [[nodiscard]] auto get_index(index_id_t index_id) const
+        -> stdx::option<const metadata::index&> {
         std::shared_lock lock{mutex_};
         auto             it{indexes_by_id_.find(index_id)};
         if (it == indexes_by_id_.end()) { return stdx::none; }
@@ -221,7 +231,7 @@ template <usize PoolSize> class catalog {
 
     [[nodiscard]] auto
     create_table(txn::id_t txn_id, table_id_t table_id, std::string_view name, const schema& sch)
-        -> result<table_metadata> {
+        -> result<metadata::table> {
         std::unique_lock lock{mutex_};
         if (tables_by_name_.contains(name) || tables_by_id_.contains(table_id)) {
             return stdx::err{error::SQL_TABLE_ALREADY_EXISTS};
@@ -239,7 +249,7 @@ template <usize PoolSize> class catalog {
             txn_id, sys_tables_tree, sys_columns_tree, table_id, name, root_page_id, sch));
 
         auto inserted{tables_by_name_.emplace(std::string{name},
-                                              table_metadata{
+                                              metadata::table{
                                                   .table_id     = table_id,
                                                   .name         = std::string{name},
                                                   .root_page_id = root_page_id,
@@ -280,7 +290,7 @@ template <usize PoolSize> class catalog {
                                     index_id_t          index_id,
                                     stdx::fixed::string name,
                                     i32                 column_id,
-                                    bool                is_unique) -> result<index_metadata> {
+                                    bool                is_unique) -> result<metadata::index> {
         std::unique_lock lock{mutex_};
 
         auto name_str{std::string{name.view()}};
@@ -300,11 +310,11 @@ template <usize PoolSize> class catalog {
                                       value_t{column_id},
                                       value_t{static_cast<i64>(std::to_underlying(root_page_id))},
                                       value_t{is_unique}};
-        auto                 idx_tuple{TRY(tuple::serialize(sys_indexes_schema(), idx_vals))};
+        auto idx_tuple{TRY(tuple::serialize(metadata::sys_indexes_schema(), idx_vals))};
         TRY(sys_indexes_tree.insert_txn(txn_id, composite_id, idx_tuple.data()));
 
         auto inserted{indexes_by_name_.emplace(name_str,
-                                               index_metadata{
+                                               metadata::index{
                                                    .table_id     = table_id,
                                                    .index_id     = index_id,
                                                    .name         = name_str,
@@ -356,7 +366,7 @@ template <usize PoolSize> class catalog {
         std::vector<value_t> table_vals{value_t{std::to_underlying(table_id)},
                                         value_t{name},
                                         value_t{static_cast<i64>(std::to_underlying(root_page))}};
-        auto                 table_tuple = TRY(tuple::serialize(sys_tables_schema(), table_vals));
+        auto table_tuple = TRY(tuple::serialize(metadata::sys_tables_schema(), table_vals));
         TRY(sys_tables_tree.insert_txn(txn_id, std::to_underlying(table_id), table_tuple.data()));
 
         for (usize i{0}; i < sch.column_count(); ++i) {
@@ -366,7 +376,7 @@ template <usize PoolSize> class catalog {
                                           value_t{col.name()},
                                           value_t{static_cast<i32>(col.type())},
                                           value_t{col.nullable()}};
-            auto                 col_tuple{TRY(tuple::serialize(sys_columns_schema(), col_vals))};
+            auto col_tuple{TRY(tuple::serialize(metadata::sys_columns_schema(), col_vals))};
             TRY(sys_columns_tree.insert_txn(txn_id, composite_id, col_tuple.data()));
         }
         return {};
@@ -403,7 +413,7 @@ template <usize PoolSize> class catalog {
             tuple t{std::move(buf)};
 
             std::array<value_t, 3> vals;
-            if (!t.deserialize(sys_tables_schema(), vals)) { return false; }
+            if (!t.deserialize(metadata::sys_tables_schema(), vals)) { return false; }
 
             auto name_sv{vals[1].get_value().as<std::string_view>()};
             table_rows.emplace_back(static_cast<table_id_t>(key),
@@ -425,7 +435,7 @@ template <usize PoolSize> class catalog {
                     tuple t{std::move(buf)};
 
                     std::array<value_t, 4> vals;
-                    if (!t.deserialize(sys_columns_schema(), vals)) { return false; }
+                    if (!t.deserialize(metadata::sys_columns_schema(), vals)) { return false; }
 
                     std::string col_name{vals[1].get_value().as<std::string_view>()};
                     auto        type_id{static_cast<type::id_t>(vals[2].get_value().as<i32>())};
@@ -437,7 +447,7 @@ template <usize PoolSize> class catalog {
 
             schema table_sch{std::move(cols)};
             auto   inserted{tables_by_name_.emplace(row.name,
-                                                  table_metadata{
+                                                  metadata::table{
                                                         .table_id     = row.id,
                                                         .name         = row.name,
                                                         .root_page_id = row.root_page_id,
@@ -453,7 +463,7 @@ template <usize PoolSize> class catalog {
             tuple t{std::move(buf)};
 
             std::array<value_t, 5> vals;
-            if (!t.deserialize(sys_indexes_schema(), vals)) { return false; }
+            if (!t.deserialize(metadata::sys_indexes_schema(), vals)) { return false; }
 
             table_id_t         table_id{static_cast<table_id_t>(key >> 32)};
             index_id_t         index_id{static_cast<index_id_t>(key & 0xFFFFFFFFLL)};
@@ -463,7 +473,7 @@ template <usize PoolSize> class catalog {
             bool               is_unique{vals[4].get_value().as<bool>()};
 
             auto inserted{indexes_by_name_.emplace(idx_name,
-                                                   index_metadata{
+                                                   metadata::index{
                                                        .table_id     = table_id,
                                                        .index_id     = index_id,
                                                        .name         = idx_name,

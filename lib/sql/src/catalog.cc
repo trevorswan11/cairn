@@ -3,7 +3,7 @@
 #include "sql/schema.hh"
 #include "sql/type.hh"
 
-namespace cairn::sql {
+namespace cairn::sql::metadata {
 
 auto sys_tables_schema() -> const schema& {
     static const schema sch{{column{"table_id", type::id_t::BIGINT, false},
@@ -29,4 +29,4 @@ auto sys_indexes_schema() -> const schema& {
     return sch;
 }
 
-} // namespace cairn::sql
+} // namespace cairn::sql::metadata
