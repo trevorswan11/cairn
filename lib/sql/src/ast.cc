@@ -50,14 +50,15 @@ struct parser_state_t {
     };
     std::vector<expr_scope_t> expr_scopes;
 
-    std::vector<ast::select_item_t>  select_list;
-    stdx::fixed::string              table_name;
-    stdx::fixed::string              index_name;
-    std::vector<stdx::fixed::string> index_columns;
-    std::vector<ast::column_def_t>   column_defs;
-    ast::column_def_t                current_column_def;
-    stdx::option<type::id_t>         current_data_type;
-    bool                             column_nullable{true};
+    std::vector<ast::select_item_t>   select_list;
+    stdx::fixed::string               table_name;
+    stdx::option<stdx::fixed::string> table_alias;
+    stdx::fixed::string               index_name;
+    std::vector<stdx::fixed::string>  index_columns;
+    std::vector<ast::column_def_t>    column_defs;
+    ast::column_def_t                 current_column_def;
+    stdx::option<type::id_t>          current_data_type;
+    bool                              column_nullable{true};
 
     [[nodiscard]] auto active_scope() -> expr_scope_t& {
         return expr_scopes.empty() ? expr_scopes.emplace_back() : expr_scopes.back();
@@ -118,27 +119,27 @@ template <typename Rule> struct action_t : peg::nothing<Rule> {};
 
 template <> struct action_t<grammar::null_kw> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>()};
+        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position())};
         state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::true_kw> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>(true)};
+        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position(), true)};
         state.active_scope().operands.emplace_back(id);
     }
 };
 
 template <> struct action_t<grammar::false_kw> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>(false)};
+        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position(), false)};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -161,7 +162,8 @@ template <> struct action_t<grammar::string_literal> {
                 unescaped[i] = str[i];
             }
         }
-        auto id{state.tree.add_node<ast::literal_expr_t>(std::move(unescaped))};
+        auto id{
+            state.tree.add_node<ast::literal_expr_t>(in.current_position(), std::move(unescaped))};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -176,12 +178,12 @@ template <> struct action_t<grammar::numeric_literal> {
             double value;
             auto   result{std::from_chars(str.begin(), str.end(), value)};
             ASSERT(result.ec == std::errc{} && result.ptr == str.end());
-            id = state.tree.add_node<ast::literal_expr_t>(value);
+            id = state.tree.add_node<ast::literal_expr_t>(in.current_position(), value);
         } else {
             i64  value;
             auto result{std::from_chars(str.begin(), str.end(), value)};
             ASSERT(result.ec == std::errc{} && result.ptr == str.end());
-            id = state.tree.add_node<ast::literal_expr_t>(value);
+            id = state.tree.add_node<ast::literal_expr_t>(in.current_position(), value);
         }
         state.active_scope().operands.emplace_back(id);
     }
@@ -191,7 +193,8 @@ template <> struct action_t<grammar::expr_identifier> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::identifier_expr_t>(clean_identifier(in.string_view()))};
+        auto id{state.tree.add_node<ast::identifier_expr_t>(in.current_position(),
+                                                            clean_identifier(in.string_view()))};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -234,7 +237,8 @@ template <> struct action_t<grammar::binary_op> {
             auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            auto id{state.tree.add_node<ast::binary_expr_t>(top_op, lhs, rhs)};
+            auto id{
+                state.tree.add_node<ast::binary_expr_t>(in.current_position(), top_op, lhs, rhs)};
             scope.operands.emplace_back(id);
         }
         scope.operators.emplace_back(op);
@@ -243,7 +247,7 @@ template <> struct action_t<grammar::binary_op> {
 
 template <> struct action_t<grammar::expression> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
         auto& scope{state.active_scope()};
         while (!scope.operators.empty()) {
@@ -256,7 +260,7 @@ template <> struct action_t<grammar::expression> {
             auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            auto id{state.tree.add_node<ast::binary_expr_t>(op, lhs, rhs)};
+            auto id{state.tree.add_node<ast::binary_expr_t>(in.current_position(), op, lhs, rhs)};
             scope.operands.emplace_back(id);
         }
     }
@@ -315,6 +319,14 @@ template <> struct action_t<grammar::select_table> {
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
         state.table_name = clean_identifier(in.string_view());
+    }
+};
+
+template <> struct action_t<grammar::table_alias> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        state.table_alias = clean_identifier(in.string_view());
     }
 };
 
@@ -404,56 +416,61 @@ template <> struct action_t<grammar::select_item> {
 
 template <> struct action_t<grammar::select_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
         stdx::option<ast::node_id_t> where_clause;
         if (!state.active_scope().operands.empty()) {
             where_clause = state.active_scope().operands.back();
             state.active_scope().operands.pop_back();
         }
-        auto id{state.tree.add_node<ast::select_stmt_t>(
-            std::move(state.select_list), std::move(state.table_name), where_clause)};
+        auto id{state.tree.add_node<ast::select_stmt_t>(in.current_position(),
+                                                        std::move(state.select_list),
+                                                        std::move(state.table_name),
+                                                        std::move(state.table_alias),
+                                                        where_clause)};
         state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::create_table_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::create_table_stmt_t>(std::move(state.table_name),
-                                                              std::move(state.column_defs))};
+        auto id{state.tree.add_node<ast::create_table_stmt_t>(
+            in.current_position(), std::move(state.table_name), std::move(state.column_defs))};
         state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::drop_table_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::drop_table_stmt_t>(std::move(state.table_name))};
+        auto id{state.tree.add_node<ast::drop_table_stmt_t>(in.current_position(),
+                                                            std::move(state.table_name))};
         state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::alter_table_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
         ASSERT(!state.column_defs.empty());
         auto col_def{std::move(state.column_defs.back())};
         state.column_defs.pop_back();
-        auto id{state.tree.add_node<ast::alter_table_stmt_t>(std::move(state.table_name),
-                                                             std::move(col_def))};
+        auto id{state.tree.add_node<ast::alter_table_stmt_t>(
+            in.current_position(), std::move(state.table_name), std::move(col_def))};
         state.tree.add_root(id);
     }
 };
 
 template <> struct action_t<grammar::create_index_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::create_index_stmt_t>(std::move(state.index_name),
+        auto id{state.tree.add_node<ast::create_index_stmt_t>(in.current_position(),
+                                                              std::move(state.index_name),
                                                               std::move(state.table_name),
                                                               std::move(state.index_columns))};
         state.tree.add_root(id);
@@ -462,10 +479,10 @@ template <> struct action_t<grammar::create_index_stmt> {
 
 template <> struct action_t<grammar::drop_index_stmt> {
     template <typename ActionInput>
-    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::drop_index_stmt_t>(std::move(state.index_name),
-                                                            std::move(state.table_name))};
+        auto id{state.tree.add_node<ast::drop_index_stmt_t>(
+            in.current_position(), std::move(state.index_name), std::move(state.table_name))};
         state.tree.add_root(id);
     }
 };

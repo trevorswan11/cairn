@@ -113,9 +113,10 @@ struct select_item_t {
 };
 
 struct select_stmt_t {
-    std::vector<select_item_t> select_list;
-    stdx::fixed::string        table_name;
-    stdx::option<node_id_t>    where_clause;
+    std::vector<select_item_t>        select_list;
+    stdx::fixed::string               table_name;
+    stdx::option<stdx::fixed::string> table_alias;
+    stdx::option<node_id_t>           where_clause;
 };
 
 struct column_def_t {
@@ -169,12 +170,20 @@ class ast_t {
     auto clear() noexcept -> void {
         pool_.clear();
         roots_.clear();
+        locations_.clear();
     }
 
-    template <typename T, typename... Args> auto add_node(Args&&... args) -> node_id_t {
+    template <typename T, typename... Args>
+    auto add_node(const auto& current_loc, Args&&... args) -> node_id_t {
         const u64 index{static_cast<u64>(pool_.size())};
         pool_.emplace_back(std::in_place_type<T>, std::forward<Args>(args)...);
+        locations_.emplace_back(current_loc.line - 1, current_loc.column - 1);
         return node_id_t{get_kind<T>(), index};
+    }
+
+    [[nodiscard]] auto get_location(node_id_t id) const noexcept -> location {
+        ASSERT(id.is_valid() && id.index() < locations_.size());
+        return locations_[id.index()];
     }
 
     auto add_root(node_id_t id) noexcept -> void { roots_.emplace_back(id); }
@@ -224,6 +233,7 @@ class ast_t {
   private:
     std::vector<node_data_t> pool_;
     std::vector<node_id_t>   roots_;
+    std::vector<location>    locations_;
 };
 
 } // namespace ast

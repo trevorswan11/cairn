@@ -33,6 +33,7 @@ SQL_KEYWORD(index_kw, "INDEX");
 SQL_KEYWORD(add_kw, "ADD");
 SQL_KEYWORD(column_kw, "COLUMN");
 SQL_KEYWORD(on_kw, "ON");
+SQL_KEYWORD(as_kw, "AS");
 SQL_KEYWORD(null_kw, "NULL");
 SQL_KEYWORD(not_kw, "NOT");
 SQL_KEYWORD(and_kw, "AND");
@@ -80,6 +81,7 @@ struct reserved_keyword : peg::sor<select_kw,
                                    add_kw,
                                    column_kw,
                                    on_kw,
+                                   as_kw,
                                    null_kw,
                                    not_kw,
                                    and_kw,
@@ -107,7 +109,7 @@ struct expression;
 struct open_paren : peg::one<'('> {};
 struct close_paren : peg::one<')'> {};
 
-struct expr_identifier : identifier {};
+struct expr_identifier : peg::seq<peg::opt<peg::seq<identifier, peg::one<'.'>>>, identifier> {};
 struct select_table : identifier {};
 struct create_table_name : identifier {};
 struct drop_table_name : identifier {};
@@ -155,10 +157,17 @@ struct select_all : peg::one<'*'> {};
 struct select_item : peg::sor<select_all, expression> {};
 struct select_list : peg::list<select_item, padded<peg::one<','>>> {};
 
-struct select_stmt : peg::seq<select_kw,
-                              mand_space,
-                              peg::must<select_list, mand_space, from_kw, mand_space, select_table>,
-                              peg::opt<peg::seq<mand_space, where_kw, mand_space, expression>>> {};
+struct table_alias : identifier {};
+struct select_stmt
+    : peg::seq<select_kw,
+               mand_space,
+               peg::must<select_list,
+                         mand_space,
+                         from_kw,
+                         mand_space,
+                         select_table,
+                         peg::opt<mand_space, peg::opt<as_kw, mand_space>, table_alias>>,
+               peg::opt<peg::seq<mand_space, where_kw, mand_space, expression>>> {};
 
 struct data_type : peg::sor<boolean_kw,
                             tinyint_kw,
