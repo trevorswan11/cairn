@@ -54,4 +54,45 @@ class datetime_t {
     return 0;
 }
 
+[[nodiscard]] constexpr auto numeric_rank(id_t t) noexcept -> u32 {
+    switch (t) {
+    case id_t::TINYINT:  return 1;
+    case id_t::SMALLINT: return 2;
+    case id_t::INTEGER:  return 3;
+    case id_t::BIGINT:   return 4;
+    case id_t::FLOAT:    return 5;
+    case id_t::DOUBLE:   return 6;
+    default:             return 0;
+    }
+}
+
+[[nodiscard]] constexpr auto can_coerce(id_t from, id_t to) noexcept -> bool {
+    if (from == id_t::INVALID || to == id_t::INVALID) { return false; }
+    if (from == to) { return true; }
+    if (is_numeric(from) && is_numeric(to)) {
+        return numeric_rank(from) <= numeric_rank(to);
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr auto common_type(id_t a, id_t b) noexcept -> stdx::option<id_t> {
+    if (a == id_t::INVALID || b == id_t::INVALID) { return stdx::none; }
+    if (a == b) { return a; }
+    if (is_numeric(a) && is_numeric(b)) {
+        const u32 rank_a = numeric_rank(a);
+        const u32 rank_b = numeric_rank(b);
+        const u32 max_rank = (rank_a > rank_b) ? rank_a : rank_b;
+        switch (max_rank) {
+        case 1: return id_t::TINYINT;
+        case 2: return id_t::SMALLINT;
+        case 3: return id_t::INTEGER;
+        case 4: return id_t::BIGINT;
+        case 5: return id_t::FLOAT;
+        case 6: return id_t::DOUBLE;
+        default: return stdx::none;
+        }
+    }
+    return stdx::none;
+}
+
 } // namespace cairn::sql::type
