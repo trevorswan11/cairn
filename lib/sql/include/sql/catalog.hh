@@ -6,7 +6,6 @@
 #include <limits>
 #include <mutex>
 #include <shared_mutex>
-#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -15,6 +14,7 @@
 #include <ankerl/unordered_dense.h>
 #include <gsl/pointers>
 #include <gsl/span>
+#include <stdx/fixed/string.hh>
 #include <stdx/hash.hh>
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
@@ -44,19 +44,19 @@ enum class index_id_t : i64 {};
 namespace metadata {
 
 struct table {
-    table_id_t         table_id;
-    std::string        name;
-    storage::page_id_t root_page_id;
-    schema             table_schema;
+    table_id_t          table_id;
+    stdx::fixed::string name;
+    storage::page_id_t  root_page_id;
+    schema              table_schema;
 };
 
 struct index {
-    table_id_t         table_id;
-    index_id_t         index_id;
-    std::string        name;
-    i32                column_id;
-    storage::page_id_t root_page_id;
-    bool               is_unique;
+    table_id_t          table_id;
+    index_id_t          index_id;
+    stdx::fixed::string name;
+    i32                 column_id;
+    storage::page_id_t  root_page_id;
+    bool                is_unique;
 };
 
 constexpr std::array sys_header_magic{"CAIRNDB"};
@@ -84,13 +84,13 @@ template <usize PoolSize> class catalog {
     using txn_tree_t     = txn::iot_tree<i64, 128, PoolSize>;
     using catalog_scan_t = exec::table_scan<i64, 128, PoolSize>;
 
-    using tables_by_name_map_t = ankerl::unordered_dense::map<std::string,
+    using tables_by_name_map_t = ankerl::unordered_dense::map<stdx::fixed::string,
                                                               metadata::table,
                                                               stdx::string_transparent_hash,
                                                               stdx::string_transparent_eq>;
     using tables_by_id_map_t   = ankerl::unordered_dense::
         map<table_id_t, gsl::not_null<const metadata::table*>, stdx::hash<table_id_t>>;
-    using indexes_by_name_map_t = ankerl::unordered_dense::map<std::string,
+    using indexes_by_name_map_t = ankerl::unordered_dense::map<stdx::fixed::string,
                                                                metadata::index,
                                                                stdx::string_transparent_hash,
                                                                stdx::string_transparent_eq>;
@@ -248,10 +248,10 @@ template <usize PoolSize> class catalog {
         TRY(insert_table_metadata_txn(
             txn_id, sys_tables_tree, sys_columns_tree, table_id, name, root_page_id, sch));
 
-        auto inserted{tables_by_name_.emplace(std::string{name},
+        auto inserted{tables_by_name_.emplace(name,
                                               metadata::table{
                                                   .table_id     = table_id,
-                                                  .name         = std::string{name},
+                                                  .name         = stdx::fixed::string{name},
                                                   .root_page_id = root_page_id,
                                                   .table_schema = sch,
                                               })};
@@ -293,8 +293,7 @@ template <usize PoolSize> class catalog {
                                     bool                is_unique) -> result<metadata::index> {
         std::unique_lock lock{mutex_};
 
-        auto name_str{std::string{name.view()}};
-        if (indexes_by_name_.contains(name_str) || indexes_by_id_.contains(index_id)) {
+        if (indexes_by_name_.contains(name) || indexes_by_id_.contains(index_id)) {
             return stdx::err{error::SQL_INDEX_ALREADY_EXISTS};
         }
 
@@ -313,11 +312,11 @@ template <usize PoolSize> class catalog {
         auto idx_tuple{TRY(tuple::serialize(metadata::sys_indexes_schema(), idx_vals))};
         TRY(sys_indexes_tree.insert_txn(txn_id, composite_id, idx_tuple.data()));
 
-        auto inserted{indexes_by_name_.emplace(name_str,
+        auto inserted{indexes_by_name_.emplace(name,
                                                metadata::index{
                                                    .table_id     = table_id,
                                                    .index_id     = index_id,
-                                                   .name         = name_str,
+                                                   .name         = name,
                                                    .column_id    = column_id,
                                                    .root_page_id = root_page_id,
                                                    .is_unique    = is_unique,
@@ -350,9 +349,9 @@ template <usize PoolSize> class catalog {
 
   private:
     struct table_row_t {
-        table_id_t         id;
-        std::string        name;
-        storage::page_id_t root_page_id;
+        table_id_t          id;
+        stdx::fixed::string name;
+        storage::page_id_t  root_page_id;
     };
 
   private:
@@ -417,7 +416,7 @@ template <usize PoolSize> class catalog {
 
             auto name_sv{vals[1].get_value().as<std::string_view>()};
             table_rows.emplace_back(static_cast<table_id_t>(key),
-                                    std::string{name_sv},
+                                    stdx::fixed::string{name_sv},
                                     storage::page_id_t{vals[2].get_value().as<i64>()});
             return true;
         }));
@@ -437,11 +436,11 @@ template <usize PoolSize> class catalog {
                     std::array<value_t, 4> vals;
                     if (!t.deserialize(metadata::sys_columns_schema(), vals)) { return false; }
 
-                    std::string col_name{vals[1].get_value().as<std::string_view>()};
-                    auto        type_id{static_cast<type::id_t>(vals[2].get_value().as<i32>())};
-                    bool        nullable{vals[3].get_value().as<bool>()};
+                    auto col_name_sv{vals[1].get_value().as<std::string_view>()};
+                    auto type_id{static_cast<type::id_t>(vals[2].get_value().as<i32>())};
+                    bool nullable{vals[3].get_value().as<bool>()};
 
-                    cols.emplace_back(std::move(col_name), type_id, nullable);
+                    cols.emplace_back(stdx::fixed::string{col_name_sv}, type_id, nullable);
                     return true;
                 }));
 
@@ -465,19 +464,19 @@ template <usize PoolSize> class catalog {
             std::array<value_t, 5> vals;
             if (!t.deserialize(metadata::sys_indexes_schema(), vals)) { return false; }
 
-            table_id_t         table_id{static_cast<table_id_t>(key >> 32)};
-            index_id_t         index_id{static_cast<index_id_t>(key & 0xFFFFFFFFLL)};
-            std::string        idx_name{vals[1].get_value().as<std::string_view>()};
-            i32                column_id{vals[2].get_value().as<i32>()};
-            storage::page_id_t root_page_id{storage::page_id_t{vals[3].get_value().as<i64>()}};
-            bool               is_unique{vals[4].get_value().as<bool>()};
+            auto table_id{static_cast<table_id_t>(key >> 32)};
+            auto index_id{static_cast<index_id_t>(key & 0xFFFFFFFFLL)};
+            auto idx_name{vals[1].get_value().as<std::string_view>()};
+            auto column_id{vals[2].get_value().as<i32>()};
+            auto root_page_id{storage::page_id_t{vals[3].get_value().as<i64>()}};
+            auto is_unique{vals[4].get_value().as<bool>()};
 
             auto inserted{indexes_by_name_.emplace(idx_name,
                                                    metadata::index{
-                                                       .table_id     = table_id,
-                                                       .index_id     = index_id,
-                                                       .name         = idx_name,
-                                                       .column_id    = column_id,
+                                                       .table_id  = table_id,
+                                                       .index_id  = index_id,
+                                                       .name      = stdx::fixed::string{idx_name},
+                                                       .column_id = column_id,
                                                        .root_page_id = root_page_id,
                                                        .is_unique    = is_unique,
                                                    })};

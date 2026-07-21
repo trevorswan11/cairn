@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include <gsl/span>
+#include <stdx/fixed/string.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
@@ -15,7 +15,7 @@ namespace cairn::sql {
 
 class column {
   public:
-    column(std::string name, type::id_t type, bool nullable = true)
+    column(stdx::fixed::string name, type::id_t type, bool nullable = true)
         : name_{std::move(name)}, type_{type}, nullable_{nullable} {}
 
     [[nodiscard]] auto name() const noexcept -> std::string_view { return name_; }
@@ -26,9 +26,9 @@ class column {
     }
 
   private:
-    std::string name_;
-    type::id_t  type_;
-    bool        nullable_;
+    stdx::fixed::string name_;
+    type::id_t          type_;
+    bool                nullable_;
 };
 
 class schema {
