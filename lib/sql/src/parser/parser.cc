@@ -1,4 +1,4 @@
-#include "sql/ast.hh"
+#include "sql/parser/parser.hh"
 
 #include <array>
 #include <charconv>
@@ -20,7 +20,6 @@
 #include <stdx/string.hh>
 #include <stdx/types.hh>
 #include <stdx/variant.hh>
-#include <tao/pegtl.hpp>
 #include <tao/pegtl/nothing.hpp>
 #include <tao/pegtl/parse.hpp>
 #include <tao/pegtl/parse_error.hpp>
@@ -28,35 +27,35 @@
 #include <tao/pegtl/text_position.hpp>
 #include <tao/pegtl/text_view_input.hpp>
 
-#include "sql/ast.hh"
+#include "sql/detail/node.hh"
 #include "sql/file.hh"
-#include "sql/peg.hh"
+#include "sql/parser/grammar.hh"
 #include "sql/type.hh"
 #include "support/diagnostic/location.hh"
 #include "support/string_utils.hh"
 
-namespace cairn::sql {
+namespace cairn::sql::parser {
 
 namespace peg = tao::pegtl;
 
 namespace {
 
+struct expr_scope_t {
+    std::vector<node_id_t>   operands;
+    std::vector<binary_op_t> operators;
+};
+
 struct parser_state_t {
-    ast::ast_t tree;
+    ast_t tree;
 
-    struct expr_scope_t {
-        std::vector<ast::node_id_t>   operands;
-        std::vector<ast::binary_op_t> operators;
-    };
-    std::vector<expr_scope_t> expr_scopes;
-
-    std::vector<ast::select_item_t>   select_list;
+    std::vector<expr_scope_t>         expr_scopes;
+    std::vector<select_item_t>        select_list;
     stdx::fixed::string               table_name;
     stdx::option<stdx::fixed::string> table_alias;
     stdx::fixed::string               index_name;
     std::vector<stdx::fixed::string>  index_columns;
-    std::vector<ast::column_def_t>    column_defs;
-    ast::column_def_t                 current_column_def;
+    std::vector<column_def_t>         column_defs;
+    column_def_t                      current_column_def;
     stdx::option<type::id_t>          current_data_type;
     bool                              column_nullable{true};
 
@@ -74,39 +73,39 @@ struct parser_state_t {
 }
 
 constexpr auto precedence_map{[] {
-    stdx::fixed::enum_map<ast::binary_op_t, i32> map{0};
-    map[ast::binary_op_t::OR]                    = 1;
-    map[ast::binary_op_t::AND]                   = 2;
-    map[ast::binary_op_t::EQUAL]                 = 3;
-    map[ast::binary_op_t::NOT_EQUAL]             = 3;
-    map[ast::binary_op_t::LESS_THAN]             = 3;
-    map[ast::binary_op_t::LESS_THAN_OR_EQUAL]    = 3;
-    map[ast::binary_op_t::GREATER_THAN]          = 3;
-    map[ast::binary_op_t::GREATER_THAN_OR_EQUAL] = 3;
-    map[ast::binary_op_t::ADD]                   = 4;
-    map[ast::binary_op_t::SUBTRACT]              = 4;
-    map[ast::binary_op_t::MULTIPLY]              = 5;
-    map[ast::binary_op_t::DIVIDE]                = 5;
+    stdx::fixed::enum_map<binary_op_t, i32> map{0};
+    map[binary_op_t::OR]                    = 1;
+    map[binary_op_t::AND]                   = 2;
+    map[binary_op_t::EQUAL]                 = 3;
+    map[binary_op_t::NOT_EQUAL]             = 3;
+    map[binary_op_t::LESS_THAN]             = 3;
+    map[binary_op_t::LESS_THAN_OR_EQUAL]    = 3;
+    map[binary_op_t::GREATER_THAN]          = 3;
+    map[binary_op_t::GREATER_THAN_OR_EQUAL] = 3;
+    map[binary_op_t::ADD]                   = 4;
+    map[binary_op_t::SUBTRACT]              = 4;
+    map[binary_op_t::MULTIPLY]              = 5;
+    map[binary_op_t::DIVIDE]                = 5;
     return map;
 }()};
 
 constexpr auto binary_ops{[] {
-    constexpr std::array operators{std::pair{"+", ast::binary_op_t::ADD},
-                                   std::pair{"-", ast::binary_op_t::SUBTRACT},
-                                   std::pair{"*", ast::binary_op_t::MULTIPLY},
-                                   std::pair{"/", ast::binary_op_t::DIVIDE},
-                                   std::pair{"=", ast::binary_op_t::EQUAL},
-                                   std::pair{"!=", ast::binary_op_t::NOT_EQUAL},
-                                   std::pair{"<>", ast::binary_op_t::NOT_EQUAL},
-                                   std::pair{"<=", ast::binary_op_t::LESS_THAN_OR_EQUAL},
-                                   std::pair{">=", ast::binary_op_t::GREATER_THAN_OR_EQUAL},
-                                   std::pair{"<", ast::binary_op_t::LESS_THAN},
-                                   std::pair{">", ast::binary_op_t::GREATER_THAN},
-                                   std::pair{"and", ast::binary_op_t::AND},
-                                   std::pair{"or", ast::binary_op_t::OR}};
+    constexpr std::array operators{std::pair{"+", binary_op_t::ADD},
+                                   std::pair{"-", binary_op_t::SUBTRACT},
+                                   std::pair{"*", binary_op_t::MULTIPLY},
+                                   std::pair{"/", binary_op_t::DIVIDE},
+                                   std::pair{"=", binary_op_t::EQUAL},
+                                   std::pair{"!=", binary_op_t::NOT_EQUAL},
+                                   std::pair{"<>", binary_op_t::NOT_EQUAL},
+                                   std::pair{"<=", binary_op_t::LESS_THAN_OR_EQUAL},
+                                   std::pair{">=", binary_op_t::GREATER_THAN_OR_EQUAL},
+                                   std::pair{"<", binary_op_t::LESS_THAN},
+                                   std::pair{">", binary_op_t::GREATER_THAN},
+                                   std::pair{"and", binary_op_t::AND},
+                                   std::pair{"or", binary_op_t::OR}};
 
     stdx::fixed::hash_map<std::string_view,
-                          ast::binary_op_t,
+                          binary_op_t,
                           operators.size(),
                           string_utils::ihash,
                           string_utils::iequals>
@@ -121,7 +120,7 @@ template <> struct action_t<grammar::null_kw> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position())};
+        auto id{state.tree.add_node<literal_expr_t>(in.current_position())};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -130,7 +129,7 @@ template <> struct action_t<grammar::true_kw> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position(), true)};
+        auto id{state.tree.add_node<literal_expr_t>(in.current_position(), true)};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -139,7 +138,7 @@ template <> struct action_t<grammar::false_kw> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::literal_expr_t>(in.current_position(), false)};
+        auto id{state.tree.add_node<literal_expr_t>(in.current_position(), false)};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -162,8 +161,7 @@ template <> struct action_t<grammar::string_literal> {
                 unescaped[i] = str[i];
             }
         }
-        auto id{
-            state.tree.add_node<ast::literal_expr_t>(in.current_position(), std::move(unescaped))};
+        auto id{state.tree.add_node<literal_expr_t>(in.current_position(), std::move(unescaped))};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -172,18 +170,18 @@ template <> struct action_t<grammar::numeric_literal> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto           str{in.string_view()};
-        ast::node_id_t id;
+        auto      str{in.string_view()};
+        node_id_t id;
         if (str.contains('.') || str.contains('e') || str.contains('E')) {
             double value;
             auto   result{std::from_chars(str.begin(), str.end(), value)};
             ASSERT(result.ec == std::errc{} && result.ptr == str.end());
-            id = state.tree.add_node<ast::literal_expr_t>(in.current_position(), value);
+            id = state.tree.add_node<literal_expr_t>(in.current_position(), value);
         } else {
             i64  value;
             auto result{std::from_chars(str.begin(), str.end(), value)};
             ASSERT(result.ec == std::errc{} && result.ptr == str.end());
-            id = state.tree.add_node<ast::literal_expr_t>(in.current_position(), value);
+            id = state.tree.add_node<literal_expr_t>(in.current_position(), value);
         }
         state.active_scope().operands.emplace_back(id);
     }
@@ -193,8 +191,8 @@ template <> struct action_t<grammar::expr_identifier> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::identifier_expr_t>(in.current_position(),
-                                                            clean_identifier(in.string_view()))};
+        auto id{state.tree.add_node<identifier_expr_t>(in.current_position(),
+                                                       clean_identifier(in.string_view()))};
         state.active_scope().operands.emplace_back(id);
     }
 };
@@ -224,7 +222,7 @@ template <> struct action_t<grammar::binary_op> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto op{binary_ops.get_opt(in.string_view()).materialize().value_or(ast::binary_op_t::ADD)};
+        auto  op{binary_ops.get_opt(in.string_view()).materialize().value_or(binary_op_t::ADD)};
         auto& scope{state.active_scope()};
         while (!scope.operators.empty()) {
             if (precedence_map[scope.operators.back()] < precedence_map[op]) { break; }
@@ -237,8 +235,7 @@ template <> struct action_t<grammar::binary_op> {
             auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            auto id{
-                state.tree.add_node<ast::binary_expr_t>(in.current_position(), top_op, lhs, rhs)};
+            auto id{state.tree.add_node<binary_expr_t>(in.current_position(), top_op, lhs, rhs)};
             scope.operands.emplace_back(id);
         }
         scope.operators.emplace_back(op);
@@ -260,7 +257,7 @@ template <> struct action_t<grammar::expression> {
             auto lhs{scope.operands.back()};
             scope.operands.pop_back();
 
-            auto id{state.tree.add_node<ast::binary_expr_t>(in.current_position(), op, lhs, rhs)};
+            auto id{state.tree.add_node<binary_expr_t>(in.current_position(), op, lhs, rhs)};
             scope.operands.emplace_back(id);
         }
     }
@@ -398,7 +395,7 @@ template <> struct action_t<grammar::select_all> {
     template <typename ActionInput>
     static auto apply(const ActionInput&, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        state.select_list.emplace_back(ast::select_item_t{stdx::none});
+        state.select_list.emplace_back(select_item_t{stdx::none});
     }
 };
 
@@ -409,7 +406,7 @@ template <> struct action_t<grammar::select_item> {
         if (!state.active_scope().operands.empty()) {
             auto expr{state.active_scope().operands.back()};
             state.active_scope().operands.pop_back();
-            state.select_list.emplace_back(ast::select_item_t{expr});
+            state.select_list.emplace_back(select_item_t{expr});
         }
     }
 };
@@ -418,16 +415,16 @@ template <> struct action_t<grammar::select_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        stdx::option<ast::node_id_t> where_clause;
+        stdx::option<node_id_t> where_clause;
         if (!state.active_scope().operands.empty()) {
             where_clause = state.active_scope().operands.back();
             state.active_scope().operands.pop_back();
         }
-        auto id{state.tree.add_node<ast::select_stmt_t>(in.current_position(),
-                                                        std::move(state.select_list),
-                                                        std::move(state.table_name),
-                                                        std::move(state.table_alias),
-                                                        where_clause)};
+        auto id{state.tree.add_node<select_stmt_t>(in.current_position(),
+                                                   std::move(state.select_list),
+                                                   std::move(state.table_name),
+                                                   std::move(state.table_alias),
+                                                   where_clause)};
         state.tree.add_root(id);
     }
 };
@@ -436,7 +433,7 @@ template <> struct action_t<grammar::create_table_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::create_table_stmt_t>(
+        auto id{state.tree.add_node<create_table_stmt_t>(
             in.current_position(), std::move(state.table_name), std::move(state.column_defs))};
         state.tree.add_root(id);
     }
@@ -446,8 +443,8 @@ template <> struct action_t<grammar::drop_table_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::drop_table_stmt_t>(in.current_position(),
-                                                            std::move(state.table_name))};
+        auto id{state.tree.add_node<drop_table_stmt_t>(in.current_position(),
+                                                       std::move(state.table_name))};
         state.tree.add_root(id);
     }
 };
@@ -459,7 +456,7 @@ template <> struct action_t<grammar::alter_table_stmt> {
         ASSERT(!state.column_defs.empty());
         auto col_def{std::move(state.column_defs.back())};
         state.column_defs.pop_back();
-        auto id{state.tree.add_node<ast::alter_table_stmt_t>(
+        auto id{state.tree.add_node<alter_table_stmt_t>(
             in.current_position(), std::move(state.table_name), std::move(col_def))};
         state.tree.add_root(id);
     }
@@ -469,10 +466,10 @@ template <> struct action_t<grammar::create_index_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::create_index_stmt_t>(in.current_position(),
-                                                              std::move(state.index_name),
-                                                              std::move(state.table_name),
-                                                              std::move(state.index_columns))};
+        auto id{state.tree.add_node<create_index_stmt_t>(in.current_position(),
+                                                         std::move(state.index_name),
+                                                         std::move(state.table_name),
+                                                         std::move(state.index_columns))};
         state.tree.add_root(id);
     }
 };
@@ -481,7 +478,7 @@ template <> struct action_t<grammar::drop_index_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        auto id{state.tree.add_node<ast::drop_index_stmt_t>(
+        auto id{state.tree.add_node<drop_index_stmt_t>(
             in.current_position(), std::move(state.index_name), std::move(state.table_name))};
         state.tree.add_root(id);
     }
@@ -489,7 +486,7 @@ template <> struct action_t<grammar::drop_index_stmt> {
 
 } // namespace
 
-auto parse(const file& source_file) noexcept -> stdx::result<ast::ast_t, location> {
+auto parse(const file& source_file) noexcept -> stdx::result<ast_t, location> {
     PROFILE_FUNCTION();
 
     std::string_view     query_view{source_file};
@@ -506,4 +503,4 @@ auto parse(const file& source_file) noexcept -> stdx::result<ast::ast_t, locatio
     } catch (...) { return stdx::err{location{0, 0}}; }
 }
 
-} // namespace cairn::sql
+} // namespace cairn::sql::parser
