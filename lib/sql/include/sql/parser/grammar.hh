@@ -37,6 +37,15 @@ SQL_KEYWORD(null_kw, "NULL");
 SQL_KEYWORD(not_kw, "NOT");
 SQL_KEYWORD(and_kw, "AND");
 SQL_KEYWORD(or_kw, "OR");
+SQL_KEYWORD(group_kw, "GROUP");
+SQL_KEYWORD(by_kw, "BY");
+SQL_KEYWORD(having_kw, "HAVING");
+SQL_KEYWORD(count_kw, "COUNT");
+SQL_KEYWORD(sum_kw, "SUM");
+SQL_KEYWORD(avg_kw, "AVG");
+SQL_KEYWORD(min_kw, "MIN");
+SQL_KEYWORD(max_kw, "MAX");
+SQL_KEYWORD(distinct_kw, "DISTINCT");
 SQL_KEYWORD(true_kw, "TRUE");
 SQL_KEYWORD(false_kw, "FALSE");
 
@@ -72,6 +81,15 @@ struct numeric_literal
 struct reserved_keyword : peg::sor<select_kw,
                                    from_kw,
                                    where_kw,
+                                   group_kw,
+                                   by_kw,
+                                   having_kw,
+                                   count_kw,
+                                   sum_kw,
+                                   avg_kw,
+                                   min_kw,
+                                   max_kw,
+                                   distinct_kw,
                                    create_kw,
                                    drop_kw,
                                    alter_kw,
@@ -120,10 +138,26 @@ struct drop_index_table_name : identifier {};
 struct column_name : identifier {};
 struct index_column : identifier {};
 
-struct primary_expr : peg::sor<boolean_kw,
+struct count_star_expr : peg::seq<count_kw, peg::one<'('>, padded<peg::one<'*'>>, peg::one<')'>> {};
+struct agg_func_name : peg::sor<count_kw, sum_kw, avg_kw, min_kw, max_kw> {};
+struct agg_open_paren : peg::one<'('> {};
+struct agg_close_paren : peg::one<')'> {};
+struct aggregate_expr : peg::sor<count_star_expr,
+                                 peg::seq<agg_func_name,
+                                          agg_open_paren,
+                                          opt_space,
+                                          peg::opt<peg::seq<distinct_kw, mand_space>>,
+                                          expression,
+                                          opt_space,
+                                          agg_close_paren>> {};
+
+struct primary_expr : peg::sor<true_kw,
+                               false_kw,
+                               boolean_kw,
                                null_kw,
                                string_literal,
                                numeric_literal,
+                               aggregate_expr,
                                expr_identifier,
                                peg::seq<open_paren, padded<expression>, close_paren>> {};
 
@@ -157,6 +191,15 @@ struct select_item : peg::sor<select_all, expression> {};
 struct select_list : peg::list<select_item, padded<peg::one<','>>> {};
 
 struct table_alias : identifier {};
+struct where_clause_rule : peg::seq<where_kw, mand_space, expression> {};
+struct group_by_expr : expression {};
+struct group_by_clause : peg::seq<group_kw,
+                                  mand_space,
+                                  by_kw,
+                                  mand_space,
+                                  peg::list<group_by_expr, padded<peg::one<','>>>> {};
+struct having_clause_rule : peg::seq<having_kw, mand_space, expression> {};
+
 struct select_stmt
     : peg::seq<select_kw,
                mand_space,
@@ -166,7 +209,9 @@ struct select_stmt
                          mand_space,
                          select_table,
                          peg::opt<mand_space, peg::opt<as_kw, mand_space>, table_alias>>,
-               peg::opt<peg::seq<mand_space, where_kw, mand_space, expression>>> {};
+               peg::opt<mand_space, where_clause_rule>,
+               peg::opt<mand_space, group_by_clause>,
+               peg::opt<mand_space, having_clause_rule>> {};
 
 struct data_type : peg::sor<boolean_kw,
                             tinyint_kw,

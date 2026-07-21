@@ -57,11 +57,27 @@ struct select_item_t {
     stdx::option<node_id_t> expr;
 };
 
+enum class agg_func_t : u8 {
+    COUNT,
+    SUM,
+    AVG,
+    MIN,
+    MAX,
+};
+
+struct aggregate_expr_t {
+    agg_func_t              func;
+    stdx::option<node_id_t> arg;
+    bool                    is_distinct{false};
+};
+
 struct select_stmt_t {
     std::vector<select_item_t>        select_list;
     stdx::fixed::string               table_name;
     stdx::option<stdx::fixed::string> table_alias;
     stdx::option<node_id_t>           where_clause;
+    std::vector<node_id_t>            group_by;
+    stdx::option<node_id_t>           having_clause;
 };
 
 struct column_def_t {
@@ -99,6 +115,7 @@ using node_data_t = stdx::variant<stdx::monostate,
                                   literal_expr_t,
                                   identifier_expr_t,
                                   binary_expr_t,
+                                  aggregate_expr_t,
                                   select_stmt_t,
                                   create_table_stmt_t,
                                   drop_table_stmt_t,

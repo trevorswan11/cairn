@@ -13,6 +13,7 @@ namespace parser {
 struct literal_expr_t;
 struct identifier_expr_t;
 struct binary_expr_t;
+struct aggregate_expr_t;
 struct select_stmt_t;
 struct create_table_stmt_t;
 struct drop_table_stmt_t;
@@ -27,6 +28,8 @@ namespace binder {
 struct literal_expr_t;
 struct column_ref_expr_t;
 struct binary_expr_t;
+struct aggregate_expr_t;
+struct cast_expr_t;
 struct select_stmt_t;
 struct create_table_stmt_t;
 struct drop_table_stmt_t;
@@ -43,6 +46,8 @@ enum class node_kind_t : u8 {
     COLUMN_REF_EXPR,
     IDENTIFIER_EXPR,
     BINARY_EXPR,
+    AGGREGATE_EXPR,
+    CAST_EXPR,
 
     SELECT_STMT,
     CREATE_TABLE_STMT,
@@ -59,6 +64,10 @@ template <typename T> constexpr auto node_kind_of() noexcept -> node_kind_t {
         return node_kind_t::COLUMN_REF_EXPR;
     } else if constexpr (std::is_same_v<T, binder::binary_expr_t>) {
         return node_kind_t::BINARY_EXPR;
+    } else if constexpr (std::is_same_v<T, binder::aggregate_expr_t>) {
+        return node_kind_t::AGGREGATE_EXPR;
+    } else if constexpr (std::is_same_v<T, binder::cast_expr_t>) {
+        return node_kind_t::CAST_EXPR;
     } else if constexpr (std::is_same_v<T, binder::select_stmt_t>) {
         return node_kind_t::SELECT_STMT;
     } else if constexpr (std::is_same_v<T, binder::create_table_stmt_t>) {
@@ -77,6 +86,8 @@ template <typename T> constexpr auto node_kind_of() noexcept -> node_kind_t {
         return node_kind_t::IDENTIFIER_EXPR;
     } else if constexpr (std::is_same_v<T, parser::binary_expr_t>) {
         return node_kind_t::BINARY_EXPR;
+    } else if constexpr (std::is_same_v<T, parser::aggregate_expr_t>) {
+        return node_kind_t::AGGREGATE_EXPR;
     } else if constexpr (std::is_same_v<T, parser::select_stmt_t>) {
         return node_kind_t::SELECT_STMT;
     } else if constexpr (std::is_same_v<T, parser::create_table_stmt_t>) {

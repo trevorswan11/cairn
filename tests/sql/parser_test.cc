@@ -156,4 +156,50 @@ TEST_CASE("Parse error diagnostics") {
     CHECK(loc.column == 7);
 }
 
+TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
+    SECTION("COUNT(*) aggregate") {
+        auto tree{UNWRAP(parse_sql("SELECT COUNT(*) FROM users;"))};
+        auto roots{tree.roots()};
+        REQUIRE(roots.size() == 1);
+
+        const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
+        CHECK(select.table_name == "users");
+        REQUIRE(select.select_list.size() == 1);
+
+        auto        expr_id{UNWRAP(select.select_list[0].expr)};
+        const auto& agg{UNWRAP(tree[expr_id].as_opt<parser::aggregate_expr_t>())};
+        CHECK(agg.func == parser::agg_func_t::COUNT);
+        CHECK_FALSE(agg.arg);
+        CHECK_FALSE(agg.is_distinct);
+    }
+
+    SECTION("Aggregates with GROUP BY and HAVING") {
+        auto tree{UNWRAP(
+            parse_sql("SELECT department_id, SUM(salary), AVG(DISTINCT bonus) FROM employees "
+                      "WHERE active = true GROUP BY department_id, location_id HAVING SUM(salary) "
+                      "> 50000;"))};
+        auto roots{tree.roots()};
+        REQUIRE(roots.size() == 1);
+
+        const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
+        CHECK(select.table_name == "employees");
+        REQUIRE(select.select_list.size() == 3);
+
+        CHECK(select.where_clause);
+        REQUIRE(select.group_by.size() == 2);
+
+        auto having_id{UNWRAP(select.having_clause)};
+        REQUIRE(having_id.kind() == parser::node_kind_t::BINARY_EXPR);
+        const auto& having_bin{UNWRAP(tree[having_id].as_opt<parser::binary_expr_t>())};
+        CHECK(having_bin.op == parser::binary_op_t::GREATER_THAN);
+
+        // Check AVG(DISTINCT bonus)
+        auto        avg_expr_id{UNWRAP(select.select_list[2].expr)};
+        const auto& avg_agg{UNWRAP(tree[avg_expr_id].as_opt<parser::aggregate_expr_t>())};
+        CHECK(avg_agg.func == parser::agg_func_t::AVG);
+        CHECK(avg_agg.is_distinct);
+        CHECK(avg_agg.arg);
+    }
+}
+
 } // namespace cairn::tests
