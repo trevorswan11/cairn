@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <stdx/option.hh>
 
 #include "sql/type.hh"
 
@@ -10,8 +11,8 @@ TEST_CASE("sql::type coercion and common_type") {
     SECTION("can_coerce identity and invalid") {
         CHECK(type::can_coerce(type::id_t::INTEGER, type::id_t::INTEGER));
         CHECK(type::can_coerce(type::id_t::VARCHAR, type::id_t::VARCHAR));
-        CHECK_FALSE(type::can_coerce(type::id_t::INVALID, type::id_t::INTEGER));
-        CHECK_FALSE(type::can_coerce(type::id_t::INTEGER, type::id_t::INVALID));
+        CHECK_FALSE(type::can_coerce(stdx::none, type::id_t::INTEGER));
+        CHECK_FALSE(type::can_coerce(type::id_t::INTEGER, stdx::none));
     }
 
     SECTION("can_coerce numeric hierarchy") {
@@ -19,7 +20,6 @@ TEST_CASE("sql::type coercion and common_type") {
         CHECK(type::can_coerce(type::id_t::INTEGER, type::id_t::DOUBLE));
         CHECK(type::can_coerce(type::id_t::FLOAT, type::id_t::DOUBLE));
 
-        // Narrowing coercion is not implicit
         CHECK_FALSE(type::can_coerce(type::id_t::DOUBLE, type::id_t::INTEGER));
         CHECK_FALSE(type::can_coerce(type::id_t::BIGINT, type::id_t::SMALLINT));
     }
@@ -36,9 +36,9 @@ TEST_CASE("sql::type coercion and common_type") {
         CHECK(type::common_type(type::id_t::FLOAT, type::id_t::BIGINT) == type::id_t::FLOAT);
         CHECK(type::common_type(type::id_t::SMALLINT, type::id_t::TINYINT) == type::id_t::SMALLINT);
 
-        CHECK(type::common_type(type::id_t::VARCHAR, type::id_t::INTEGER) == stdx::none);
-        CHECK(type::common_type(type::id_t::BOOLEAN, type::id_t::DOUBLE) == stdx::none);
-        CHECK(type::common_type(type::id_t::INVALID, type::id_t::INTEGER) == stdx::none);
+        CHECK_FALSE(type::common_type(type::id_t::VARCHAR, type::id_t::INTEGER));
+        CHECK_FALSE(type::common_type(type::id_t::BOOLEAN, type::id_t::DOUBLE));
+        CHECK_FALSE(type::common_type(stdx::none, type::id_t::INTEGER));
     }
 }
 

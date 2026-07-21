@@ -22,22 +22,22 @@ using detail::node_id_t;
 using detail::node_kind_t;
 
 struct literal_expr_t {
-    parser::literal_value_t value;
-    type::id_t              type{type::id_t::INVALID};
+    parser::literal_value_t  value;
+    stdx::option<type::id_t> type;
 };
 
 struct column_ref_expr_t {
-    table_id_t          table_id;
-    usize               column_idx;
-    stdx::fixed::string column_name;
-    type::id_t          type{type::id_t::INVALID};
+    table_id_t               table_id;
+    usize                    column_idx;
+    stdx::fixed::string      column_name;
+    stdx::option<type::id_t> type;
 };
 
 struct binary_expr_t {
-    parser::binary_op_t op;
-    node_id_t           lhs;
-    node_id_t           rhs;
-    type::id_t          type{type::id_t::INVALID};
+    parser::binary_op_t      op;
+    node_id_t                lhs;
+    node_id_t                rhs;
+    stdx::option<type::id_t> type;
 };
 
 struct select_stmt_t {
