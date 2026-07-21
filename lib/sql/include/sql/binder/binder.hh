@@ -40,7 +40,6 @@ template <usize PoolSize> class binder_t {
     [[nodiscard]] auto bind(const parser::ast_t& tree, node_id_t root_id)
         -> stdx::result<ast_t, diagnostic> {
         if (!root_id.is_valid()) { return stdx::err{diagnostic{error::IO_ERROR}}; }
-
         const auto& node_data{tree[root_id]};
         const auto  loc{tree.get_location(root_id)};
 
@@ -54,7 +53,7 @@ template <usize PoolSize> class binder_t {
                 return {};
             },
             [&](const parser::create_table_stmt_t& create) -> stdx::result<void, diagnostic> {
-                auto  tbl_name{create.table_name};
+                auto tbl_name{create.table_name};
                 if (tbl_name.empty()) {
                     return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}};
                 }
@@ -64,8 +63,8 @@ template <usize PoolSize> class binder_t {
                 return {};
             },
             [&](const parser::drop_table_stmt_t& drop) -> stdx::result<void, diagnostic> {
-                auto  tbl_name{drop.table_name};
-                auto  tbl{catalog_.get_table(tbl_name.view())};
+                auto tbl_name{drop.table_name};
+                auto tbl{catalog_.get_table(tbl_name.view())};
                 if (!tbl) { return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}}; }
 
                 ast.add_root(
@@ -73,8 +72,8 @@ template <usize PoolSize> class binder_t {
                 return {};
             },
             [&](const parser::alter_table_stmt_t& alter) -> stdx::result<void, diagnostic> {
-                auto  tbl_name{alter.table_name};
-                auto  tbl{catalog_.get_table(tbl_name.view())};
+                auto tbl_name{alter.table_name};
+                auto tbl{catalog_.get_table(tbl_name.view())};
                 if (!tbl) { return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}}; }
 
                 ast.add_root(ast.template add_node<alter_table_stmt_t>(
@@ -82,8 +81,8 @@ template <usize PoolSize> class binder_t {
                 return {};
             },
             [&](const parser::create_index_stmt_t& idx) -> stdx::result<void, diagnostic> {
-                auto  tbl_name{idx.table_name};
-                auto  tbl{catalog_.get_table(tbl_name.view())};
+                auto tbl_name{idx.table_name};
+                auto tbl{catalog_.get_table(tbl_name.view())};
                 if (!tbl) { return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}}; }
 
                 std::vector<stdx::fixed::string> col_names;
@@ -138,11 +137,8 @@ template <usize PoolSize> class binder_t {
         auto tbl_alias{stmt.table_alias};
 
         std::vector<binding_scope_t> scopes;
-        if (tbl_alias) {
-            scopes.push_back(binding_scope_t{*tbl_alias, tbl->table_id, &tbl->table_schema});
-        } else {
-            scopes.push_back(binding_scope_t{tbl_name, tbl->table_id, &tbl->table_schema});
-        }
+        scopes.emplace_back(
+            binding_scope_t{tbl_alias.value_or(tbl_name), tbl->table_id, &tbl->table_schema});
 
         std::vector<node_id_t> bound_select_list;
         for (const auto& item : stmt.select_list) {
@@ -169,8 +165,8 @@ template <usize PoolSize> class binder_t {
 
         return ast.template add_node<select_stmt_t>(loc,
                                                     tbl->table_id,
-                                                    tbl_name,
-                                                    tbl_alias,
+                                                    std::move(tbl_name),
+                                                    std::move(tbl_alias),
                                                     std::move(bound_select_list),
                                                     bound_where_clause);
     }
@@ -203,7 +199,6 @@ template <usize PoolSize> class binder_t {
             },
             [&](const parser::identifier_expr_t& ident) -> stdx::result<node_id_t, diagnostic> {
                 std::string_view full_name{ident.name.view()};
-
                 std::string_view prefix, col_name{full_name};
                 const auto       dot_pos{full_name.find('.')};
                 if (dot_pos != std::string_view::npos) {
@@ -240,8 +235,8 @@ template <usize PoolSize> class binder_t {
                                                                     col.type());
                 } else {
                     stdx::option<const binding_scope_t&> matched_scope;
-                    stdx::option<usize>    matched_col_idx;
-                    usize                  match_count{0};
+                    stdx::option<usize>                  matched_col_idx;
+                    usize                                match_count{0};
 
                     for (const auto& scope : scopes) {
                         const auto columns{scope.table_schema->columns()};
@@ -251,8 +246,7 @@ template <usize PoolSize> class binder_t {
                             })};
                         if (it != columns.end()) {
                             matched_scope.emplace(scope);
-                            matched_col_idx =
-                                static_cast<usize>(std::distance(columns.begin(), it));
+                            matched_col_idx.emplace(std::distance(columns.begin(), it));
                             match_count++;
                         }
                     }
