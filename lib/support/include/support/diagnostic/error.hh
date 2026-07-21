@@ -54,6 +54,9 @@ enum class error : u8 {
     SQL_COLUMN_NOT_FOUND,
     SQL_COLUMN_AMBIGUOUS,
     SQL_TYPE_MISMATCH,
+    SQL_CONSTRAINT_VIOLATION,
+    SQL_INVALID_AGGREGATE,
+    SQL_UNGROUPED_COLUMN,
 };
 
 template <typename T> using result = stdx::result<T, error>;
