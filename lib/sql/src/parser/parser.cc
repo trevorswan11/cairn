@@ -52,6 +52,11 @@ struct parser_state_t {
     std::vector<select_item_t>        select_list;
     stdx::fixed::string               table_name;
     stdx::option<stdx::fixed::string> table_alias;
+    stdx::option<node_id_t>           where_clause;
+    std::vector<node_id_t>            group_by_list;
+    stdx::option<node_id_t>           having_clause;
+    stdx::option<agg_func_t>          current_agg_func;
+    bool                              is_distinct_agg{false};
     stdx::fixed::string               index_name;
     std::vector<stdx::fixed::string>  index_columns;
     std::vector<column_def_t>         column_defs;
@@ -411,20 +416,133 @@ template <> struct action_t<grammar::select_item> {
     }
 };
 
+template <> struct action_t<grammar::count_star_expr> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto id{state.tree.add_node<aggregate_expr_t>(
+            in.current_position(), agg_func_t::COUNT, stdx::none, false)};
+        state.active_scope().operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::agg_func_name> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto sv{in.string_view()};
+        if (string_utils::iequals{}(sv, "COUNT")) {
+            state.current_agg_func = agg_func_t::COUNT;
+        } else if (string_utils::iequals{}(sv, "SUM")) {
+            state.current_agg_func = agg_func_t::SUM;
+        } else if (string_utils::iequals{}(sv, "AVG")) {
+            state.current_agg_func = agg_func_t::AVG;
+        } else if (string_utils::iequals{}(sv, "MIN")) {
+            state.current_agg_func = agg_func_t::MIN;
+        } else if (string_utils::iequals{}(sv, "MAX")) {
+            state.current_agg_func = agg_func_t::MAX;
+        }
+    }
+};
+
+template <> struct action_t<grammar::agg_open_paren> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        state.expr_scopes.emplace_back();
+    }
+};
+
+template <> struct action_t<grammar::agg_close_paren> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        ASSERT(!state.expr_scopes.empty());
+        auto scope{std::move(state.expr_scopes.back())};
+        state.expr_scopes.pop_back();
+
+        if (!scope.operands.empty()) {
+            ASSERT(scope.operands.size() == 1);
+            state.active_scope().operands.emplace_back(scope.operands.front());
+        }
+    }
+};
+
+template <> struct action_t<grammar::distinct_kw> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        state.is_distinct_agg = true;
+    }
+};
+
+template <> struct action_t<grammar::aggregate_expr> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        if (!state.current_agg_func) { return; }
+        auto func{*state.current_agg_func};
+        state.current_agg_func = stdx::none;
+        bool is_distinct{state.is_distinct_agg};
+        state.is_distinct_agg = false;
+
+        stdx::option<node_id_t> arg;
+        if (!state.active_scope().operands.empty()) {
+            arg = state.active_scope().operands.back();
+            state.active_scope().operands.pop_back();
+        }
+
+        auto id{
+            state.tree.add_node<aggregate_expr_t>(in.current_position(), func, arg, is_distinct)};
+        state.active_scope().operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::where_clause_rule> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        if (!state.active_scope().operands.empty()) {
+            state.where_clause = state.active_scope().operands.back();
+            state.active_scope().operands.pop_back();
+        }
+    }
+};
+
+template <> struct action_t<grammar::group_by_expr> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        if (!state.active_scope().operands.empty()) {
+            auto expr{state.active_scope().operands.back()};
+            state.active_scope().operands.pop_back();
+            state.group_by_list.emplace_back(expr);
+        }
+    }
+};
+
+template <> struct action_t<grammar::having_clause_rule> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        if (!state.active_scope().operands.empty()) {
+            state.having_clause = state.active_scope().operands.back();
+            state.active_scope().operands.pop_back();
+        }
+    }
+};
+
 template <> struct action_t<grammar::select_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
         PROFILE_FUNCTION();
-        stdx::option<node_id_t> where_clause;
-        if (!state.active_scope().operands.empty()) {
-            where_clause = state.active_scope().operands.back();
-            state.active_scope().operands.pop_back();
-        }
         auto id{state.tree.add_node<select_stmt_t>(in.current_position(),
                                                    std::move(state.select_list),
                                                    std::move(state.table_name),
                                                    std::move(state.table_alias),
-                                                   where_clause)};
+                                                   state.where_clause,
+                                                   std::move(state.group_by_list),
+                                                   state.having_clause)};
         state.tree.add_root(id);
     }
 };
