@@ -183,7 +183,7 @@ template <usize PoolSize> class binder_t {
                 return stdx::err{diagnostic{error::IO_ERROR, loc}};
             },
             [&](const parser::literal_expr_t& lit) -> stdx::result<node_id_t, diagnostic> {
-                type::id_t lit_type{type::id_t::INVALID};
+                stdx::option<type::id_t> lit_type;
                 if (lit.value.template is<bool>()) {
                     lit_type = type::id_t::BOOLEAN;
                 } else if (lit.value.template is<i64>()) {
@@ -192,8 +192,6 @@ template <usize PoolSize> class binder_t {
                     lit_type = type::id_t::DOUBLE;
                 } else if (lit.value.template is<stdx::fixed::string>()) {
                     lit_type = type::id_t::VARCHAR;
-                } else if (lit.value.template is<stdx::monostate>()) {
-                    lit_type = type::id_t::INVALID;
                 }
                 return ast.template add_node<literal_expr_t>(loc, lit.value, lit_type);
             },
@@ -271,9 +269,9 @@ template <usize PoolSize> class binder_t {
                 auto bound_lhs_id{TRY(bind_expression(tree, binary.lhs, scopes, ast))};
                 auto bound_rhs_id{TRY(bind_expression(tree, binary.rhs, scopes, ast))};
 
-                const auto l_type{get_expr_type(ast, bound_lhs_id)};
-                const auto r_type{get_expr_type(ast, bound_rhs_id)};
-                type::id_t res_type{type::id_t::INVALID};
+                const auto               l_type{get_expr_type(ast, bound_lhs_id)};
+                const auto               r_type{get_expr_type(ast, bound_rhs_id)};
+                stdx::option<type::id_t> res_type;
 
                 switch (binary.op) {
                 case parser::binary_op_t::AND:
@@ -281,7 +279,7 @@ template <usize PoolSize> class binder_t {
                     if (l_type != type::id_t::BOOLEAN || r_type != type::id_t::BOOLEAN) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
                     }
-                    res_type = type::id_t::BOOLEAN;
+                    res_type.emplace(type::id_t::BOOLEAN);
                     break;
                 }
                 case parser::binary_op_t::EQUAL:
@@ -290,37 +288,20 @@ template <usize PoolSize> class binder_t {
                 case parser::binary_op_t::LESS_THAN_OR_EQUAL:
                 case parser::binary_op_t::GREATER_THAN:
                 case parser::binary_op_t::GREATER_THAN_OR_EQUAL: {
-                    bool compatible{false};
-                    if (l_type == r_type) {
-                        compatible = true;
-                    } else if (type::is_numeric(l_type) && type::is_numeric(r_type)) {
-                        compatible = true;
-                    }
-                    if (!compatible) {
+                    if (l_type != r_type &&
+                        (!type::is_numeric(l_type) || !type::is_numeric(r_type))) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
                     }
-                    res_type = type::id_t::BOOLEAN;
+                    res_type.emplace(type::id_t::BOOLEAN);
                     break;
                 }
                 case parser::binary_op_t::ADD:
                 case parser::binary_op_t::SUBTRACT:
                 case parser::binary_op_t::MULTIPLY:
                 case parser::binary_op_t::DIVIDE:   {
-                    if (!type::is_numeric(l_type) || !type::is_numeric(r_type)) {
+                    res_type = type::common_type(l_type, r_type);
+                    if (!type::is_numeric(res_type)) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
-                    }
-                    if (l_type == type::id_t::DOUBLE || r_type == type::id_t::DOUBLE) {
-                        res_type = type::id_t::DOUBLE;
-                    } else if (l_type == type::id_t::FLOAT || r_type == type::id_t::FLOAT) {
-                        res_type = type::id_t::FLOAT;
-                    } else if (l_type == type::id_t::BIGINT || r_type == type::id_t::BIGINT) {
-                        res_type = type::id_t::BIGINT;
-                    } else if (l_type == type::id_t::INTEGER || r_type == type::id_t::INTEGER) {
-                        res_type = type::id_t::INTEGER;
-                    } else if (l_type == type::id_t::SMALLINT || r_type == type::id_t::SMALLINT) {
-                        res_type = type::id_t::SMALLINT;
-                    } else {
-                        res_type = type::id_t::TINYINT;
                     }
                     break;
                 }
@@ -334,11 +315,12 @@ template <usize PoolSize> class binder_t {
             });
     }
 
-    [[nodiscard]] auto get_expr_type(const ast_t& ast, node_id_t id) const noexcept -> type::id_t {
+    [[nodiscard]] auto get_expr_type(const ast_t& ast, node_id_t id) const noexcept
+        -> stdx::option<type::id_t> {
         return ast[id].visit([](const literal_expr_t& lit) { return lit.type; },
                              [](const column_ref_expr_t& col) { return col.type; },
                              [](const binary_expr_t& bin) { return bin.type; },
-                             [](const auto&) { return type::id_t::INVALID; });
+                             [](const auto&) -> stdx::option<type::id_t> { return stdx::none; });
     }
 
   private:

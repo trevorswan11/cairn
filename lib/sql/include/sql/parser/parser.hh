@@ -65,9 +65,9 @@ struct select_stmt_t {
 };
 
 struct column_def_t {
-    stdx::fixed::string name;
-    type::id_t          type{type::id_t::INVALID};
-    bool                nullable{true};
+    stdx::fixed::string      name;
+    stdx::option<type::id_t> type;
+    bool                     nullable{true};
 };
 
 struct create_table_stmt_t {

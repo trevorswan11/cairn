@@ -45,29 +45,30 @@ class value_t {
     [[nodiscard]] auto is_null() const noexcept -> bool { return value_.is<stdx::monostate>(); }
     MAKE_DEDUCING_GETTER(value)
 
-    [[nodiscard]] auto type() const noexcept -> type::id_t { return type_; }
+    [[nodiscard]] auto type() const noexcept -> stdx::option<type::id_t> { return type_; }
     [[nodiscard]] auto size() const noexcept -> stdx::option<u32> {
-        return type::get_size_of(type());
+        return type::get_size_of(type_);
     }
 
   private:
-    static auto derive_type(const variant_t& val) noexcept -> type::id_t {
-        return val.visit([](stdx::monostate) { return type::id_t::INVALID; },
-                         [](bool) { return type::id_t::BOOLEAN; },
-                         [](i8) { return type::id_t::TINYINT; },
-                         [](i16) { return type::id_t::SMALLINT; },
-                         [](i32) { return type::id_t::INTEGER; },
-                         [](i64) { return type::id_t::BIGINT; },
-                         [](f32) { return type::id_t::FLOAT; },
-                         [](f64) { return type::id_t::DOUBLE; },
-                         [](std::string_view) { return type::id_t::VARCHAR; },
-                         [](type::datetime_t) { return type::id_t::DATETIME; });
+    static auto derive_type(const variant_t& val) noexcept -> stdx::option<type::id_t> {
+        return val.visit(
+            [](stdx::monostate) -> stdx::option<type::id_t> { return stdx::none; },
+            [](bool) -> stdx::option<type::id_t> { return type::id_t::BOOLEAN; },
+            [](i8) -> stdx::option<type::id_t> { return type::id_t::TINYINT; },
+            [](i16) -> stdx::option<type::id_t> { return type::id_t::SMALLINT; },
+            [](i32) -> stdx::option<type::id_t> { return type::id_t::INTEGER; },
+            [](i64) -> stdx::option<type::id_t> { return type::id_t::BIGINT; },
+            [](f32) -> stdx::option<type::id_t> { return type::id_t::FLOAT; },
+            [](f64) -> stdx::option<type::id_t> { return type::id_t::DOUBLE; },
+            [](std::string_view) -> stdx::option<type::id_t> { return type::id_t::VARCHAR; },
+            [](type::datetime_t) -> stdx::option<type::id_t> { return type::id_t::DATETIME; });
     }
 
   private:
-    variant_t  value_;
-    type::id_t type_{type::id_t::INVALID};
-    bool       nullable_{true};
+    variant_t                value_;
+    stdx::option<type::id_t> type_;
+    bool                     nullable_{true};
 };
 
 } // namespace cairn::sql
