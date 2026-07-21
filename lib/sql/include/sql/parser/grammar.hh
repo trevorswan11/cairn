@@ -1,6 +1,5 @@
 #pragma once
 
-#include <tao/pegtl.hpp>
 #include <tao/pegtl/ascii.hpp>
 #include <tao/pegtl/pegtl_string.hpp>
 #include <tao/pegtl/rules.hpp>
