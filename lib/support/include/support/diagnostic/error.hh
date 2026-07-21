@@ -63,6 +63,9 @@ class diagnostic {
     constexpr explicit diagnostic(error err) noexcept : err_{err} {}
     constexpr diagnostic(error err, usize line, usize column) noexcept
         : loc_{{line, column}}, err_{err} {}
+    template <Locateable Loc>
+    constexpr diagnostic(error err, const Loc& loc) noexcept
+        : loc_{source_info<Loc>::get(loc)}, err_{err} {}
 
     [[nodiscard]] constexpr auto loc() const noexcept -> stdx::option<location> { return loc_; }
     [[nodiscard]] constexpr auto err() const noexcept -> error { return err_; }
