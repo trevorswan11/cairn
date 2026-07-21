@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdx/option.hh>
 #include <stdx/result.hh>
 #include <stdx/types.hh>
 
@@ -59,18 +60,19 @@ template <typename T> using result = stdx::result<T, error>;
 
 class diagnostic {
   public:
+    constexpr explicit diagnostic(error err) noexcept : err_{err} {}
     constexpr diagnostic(error err, usize line, usize column) noexcept
-        : loc_{line, column}, err_{err} {}
+        : loc_{{line, column}}, err_{err} {}
 
-    [[nodiscard]] constexpr auto loc() const noexcept -> location { return loc_; }
+    [[nodiscard]] constexpr auto loc() const noexcept -> stdx::option<location> { return loc_; }
     [[nodiscard]] constexpr auto err() const noexcept -> error { return err_; }
 
     [[nodiscard]] constexpr auto operator==(const diagnostic& other) const noexcept
         -> bool = default;
 
   private:
-    location loc_;
-    error    err_;
+    stdx::option<location> loc_;
+    error                  err_;
 };
 
 } // namespace cairn
