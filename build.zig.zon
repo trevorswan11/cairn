@@ -6,7 +6,7 @@
     .dependencies = .{
         .stdx = .{
             .url = "https://github.com/trevorswan11/stdx/archive/refs/tags/v2.3.0.tar.gz",
-            .hash = "stdx-2.3.0-dNitg43aCABG7NwmYSJ6Aj4CccHUFhvwv46bujDOfhsW",
+            .hash = "stdx-2.3.0-dNitg2_aCACsdfUFtq_FR0Qd-0qjnUa-62rBXzH-GW8f",
         },
         .pegtl = .{
             .url = "https://github.com/taocpp/PEGTL/archive/refs/tags/4.0.0.tar.gz",
