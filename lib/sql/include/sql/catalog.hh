@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -14,6 +15,7 @@
 #include <ankerl/unordered_dense.h>
 #include <gsl/pointers>
 #include <gsl/span>
+#include <stdx/enum.hh>
 #include <stdx/fixed/string.hh>
 #include <stdx/hash.hh>
 #include <stdx/memory.hh>
@@ -174,6 +176,7 @@ template <usize PoolSize> class catalog {
                                           sys_indexes_root_,
                                           metadata::sys_indexes_schema()));
 
+            TRY(pool_.flush());
             TRY(txn_mgr_.update_txn_lsn(bootstrap_txn, wal::log::seq_num{1}));
             TRY(txn_mgr_.commit_txn(bootstrap_txn, log_mgr_));
         }
@@ -279,7 +282,9 @@ template <usize PoolSize> class catalog {
             TRY(sys_columns_tree.delete_txn(txn_id, composite_id));
         }
 
-        TRY(pool_.delete_page(root_page_id));
+        typename txn_tree_t::tree_t table_tree{pool_, root_page_id};
+        TRY(table_tree.delete_tree_pages());
+
         tables_by_id_.erase(table_id);
         tables_by_name_.erase(it);
         return {};
@@ -340,11 +345,103 @@ template <usize PoolSize> class catalog {
 
         const i64 composite_id{(std::to_underlying(table_id) << 32) | std::to_underlying(index_id)};
         TRY(sys_indexes_tree.delete_txn(txn_id, composite_id));
-        TRY(pool_.delete_page(root_page_id));
+
+        typename txn_tree_t::tree_t index_tree{pool_, root_page_id};
+        TRY(index_tree.delete_tree_pages());
 
         indexes_by_id_.erase(index_id);
         indexes_by_name_.erase(it);
         return {};
+    }
+
+    [[nodiscard]] auto get_table_indexes(table_id_t table_id) const
+        -> std::vector<metadata::index> {
+        std::shared_lock             lock{mutex_};
+        std::vector<metadata::index> res;
+        for (const auto& [_, idx] : indexes_by_name_) {
+            if (idx.table_id == table_id) { res.push_back(idx); }
+        }
+        return res;
+    }
+
+    [[nodiscard]] auto alter_table_schema(txn::id_t     txn_id,
+                                          table_id_t    table_id,
+                                          const schema& new_sch) -> result<void> {
+        std::unique_lock lock{mutex_};
+        auto             it{tables_by_id_.find(table_id)};
+        if (it == tables_by_id_.end()) { return stdx::err{error::SQL_TABLE_NOT_FOUND}; }
+        const auto& tbl{*it->second};
+
+        // Delete old columns from sys_columns tree
+        typename txn_tree_t::tree_t sys_columns_tree_impl{pool_, sys_columns_root_};
+        txn_tree_t                  sys_columns_tree{sys_columns_tree_impl, undo_mgr_};
+
+        for (usize i{0}; i < tbl.table_schema.column_count(); ++i) {
+            const i64 composite_id{(std::to_underlying(table_id) << 32) | static_cast<i64>(i)};
+            TRY(sys_columns_tree.delete_txn(txn_id, composite_id));
+        }
+
+        // Insert new columns into sys_columns tree
+        for (usize i{0}; i < new_sch.column_count(); ++i) {
+            const auto& col{new_sch[i]};
+            const i64   composite_id{(std::to_underlying(table_id) << 32) | static_cast<i64>(i)};
+            std::vector<value_t> col_vals{value_t{composite_id},
+                                          value_t{col.name()},
+                                          value_t{static_cast<i32>(col.type())},
+                                          value_t{col.nullable()}};
+            auto col_tuple{TRY(tuple::serialize(metadata::sys_columns_schema(), col_vals))};
+            TRY(sys_columns_tree.insert_txn(txn_id, composite_id, col_tuple.data()));
+        }
+
+        // Update in cache
+        if (auto name_it{tables_by_name_.find(tbl.name)}; name_it != tables_by_name_.end()) {
+            name_it->second.table_schema = new_sch;
+        }
+        return {};
+    }
+
+    [[nodiscard]] auto update_index_column_id(txn::id_t  txn_id,
+                                              index_id_t index_id,
+                                              i32        new_column_id) -> result<void> {
+        std::unique_lock lock{mutex_};
+        auto             it{indexes_by_id_.find(index_id)};
+        if (it == indexes_by_id_.end()) { return stdx::err{error::SQL_INDEX_NOT_FOUND}; }
+        const auto& idx{*it->second};
+
+        // Update in sys_indexes B+ tree
+        typename txn_tree_t::tree_t sys_indexes_tree_impl{pool_, sys_indexes_root_};
+        txn_tree_t                  sys_indexes_tree{sys_indexes_tree_impl, undo_mgr_};
+
+        const i64            composite_id{(std::to_underlying(idx.table_id) << 32) |
+                               std::to_underlying(index_id)};
+        std::vector<value_t> idx_vals{
+            value_t{composite_id},
+            value_t{idx.name.view()},
+            value_t{new_column_id},
+            value_t{static_cast<i64>(std::to_underlying(idx.root_page_id))},
+            value_t{idx.is_unique}};
+        auto idx_tuple{TRY(tuple::serialize(metadata::sys_indexes_schema(), idx_vals))};
+        TRY(sys_indexes_tree.update_txn(txn_id, composite_id, idx_tuple.data()));
+
+        // Update in cache
+        if (auto name_it{indexes_by_name_.find(idx.name)}; name_it != indexes_by_name_.end()) {
+            name_it->second.column_id = new_column_id;
+        }
+        return {};
+    }
+
+    [[nodiscard]] auto undo_manager() noexcept -> txn::undo::manager<i64, PoolSize>& {
+        return undo_mgr_;
+    }
+
+    [[nodiscard]] auto get_next_table_id() const noexcept -> table_id_t {
+        std::shared_lock lock{mutex_};
+        return get_next_id<table_id_t>(tables_by_id_);
+    }
+
+    [[nodiscard]] auto get_next_index_id() const noexcept -> index_id_t {
+        std::shared_lock lock{mutex_};
+        return get_next_id<index_id_t>(indexes_by_id_);
     }
 
   private:
@@ -355,6 +452,16 @@ template <usize PoolSize> class catalog {
     };
 
   private:
+    template <typename Id>
+    [[nodiscard]] static auto get_next_id(const auto& by_id_table) noexcept -> Id {
+        if (by_id_table.empty()) { return Id{1}; }
+        auto max_id{std::ranges::max(by_id_table, {}, [](const auto& entry) {
+                        return std::to_underlying(entry.first);
+                    }).first};
+        using namespace stdx::enum_ops;
+        return ++max_id;
+    }
+
     [[nodiscard]] auto insert_table_metadata_txn(txn::id_t          txn_id,
                                                  txn_tree_t&        sys_tables_tree,
                                                  txn_tree_t&        sys_columns_tree,
