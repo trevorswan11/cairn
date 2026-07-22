@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 
+#include <ankerl/unordered_dense.h>
 #include <gsl/pointers>
 #include <stdx/fixed/string.hh>
 #include <stdx/option.hh>
@@ -23,6 +24,7 @@
 #include "sql/type.hh"
 #include "support/diagnostic/error.hh"
 #include "support/diagnostic/location.hh"
+#include "support/string_utils.hh"
 
 namespace cairn::sql::binder {
 
@@ -43,6 +45,9 @@ template <usize PoolSize> class binder_t {
         const auto& node_data{tree[root_id]};
         const auto  loc{tree.get_location(root_id)};
 
+        ankerl::unordered_dense::set<std::string_view, string_utils::ihash, string_utils::iequals>
+            seen_col_names;
+
         ast_t ast;
         TRY(node_data.visit(
             [&](stdx::monostate) -> stdx::result<void, diagnostic> {
@@ -56,6 +61,14 @@ template <usize PoolSize> class binder_t {
                 auto tbl_name{create.table_name};
                 if (tbl_name.empty()) {
                     return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}};
+                }
+
+                seen_col_names.clear();
+                seen_col_names.reserve(create.column_defs.size());
+                for (const auto& col_def : create.column_defs) {
+                    if (!seen_col_names.insert(col_def.name.view()).second) {
+                        return stdx::err{diagnostic{error::SQL_CONSTRAINT_VIOLATION, loc}};
+                    }
                 }
 
                 ast.add_root(
@@ -156,6 +169,10 @@ template <usize PoolSize> class binder_t {
         stdx::option<node_id_t> bound_where_clause;
         if (stmt.where_clause) {
             auto bound_expr_id{TRY(bind_expression(tree, *stmt.where_clause, scopes, ast))};
+            if (contains_aggregate(ast, bound_expr_id)) {
+                const auto expr_loc{tree.get_location(*stmt.where_clause)};
+                return stdx::err{diagnostic{error::SQL_INVALID_AGGREGATE, expr_loc}};
+            }
             if (get_expr_type(ast, bound_expr_id) != type::id_t::BOOLEAN) {
                 const auto expr_loc{tree.get_location(*stmt.where_clause)};
                 return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, expr_loc}};
