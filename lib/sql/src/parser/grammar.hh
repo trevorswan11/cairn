@@ -136,6 +136,7 @@ struct create_index_table_name : identifier {};
 struct drop_index_name : identifier {};
 struct drop_index_table_name : identifier {};
 struct column_name : identifier {};
+struct alter_column_name : identifier {};
 struct index_column : identifier {};
 
 struct count_star_expr : peg::seq<count_kw, peg::one<'('>, padded<peg::one<'*'>>, peg::one<')'>> {};
@@ -251,16 +252,20 @@ struct drop_index_stmt : peg::seq<drop_kw,
                                   mand_space,
                                   drop_index_table_name> {};
 
-struct alter_table_stmt : peg::seq<alter_kw,
-                                   mand_space,
-                                   table_kw,
-                                   mand_space,
-                                   alter_table_name,
-                                   mand_space,
-                                   add_kw,
-                                   mand_space,
-                                   peg::opt<peg::seq<column_kw, mand_space>>,
-                                   column_def> {};
+struct alter_table_stmt
+    : peg::seq<
+          alter_kw,
+          mand_space,
+          table_kw,
+          mand_space,
+          alter_table_name,
+          mand_space,
+          peg::sor<
+              peg::seq<add_kw, mand_space, peg::opt<peg::seq<column_kw, mand_space>>, column_def>,
+              peg::seq<drop_kw,
+                       mand_space,
+                       peg::opt<peg::seq<column_kw, mand_space>>,
+                       alter_column_name>>> {};
 
 struct index_columns : peg::list<index_column, padded<peg::one<','>>> {};
 struct create_index_stmt : peg::seq<create_kw,
