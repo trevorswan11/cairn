@@ -23,6 +23,7 @@
 #include "support/crash/injection.hh"
 #include "testhelpers/argv.hh"
 #include "testhelpers/conversion.hh"
+#include "testhelpers/env.hh"
 #include "testhelpers/subprocess.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -55,9 +56,9 @@ using txn_tree_t = txn::iot_tree<i64, 128, 64>;
 } // namespace
 
 TEST_CASE("ddl crash recovery workload", "[.][ddl_crash]") {
-    const auto db_path{helpers::get_env("CAIRN_DB_PATH")};
-    const auto wal_path{helpers::get_env("CAIRN_WAL_PATH")};
-    const auto limit_str{helpers::get_env("CAIRN_CRASH_LIMIT")};
+    const auto db_path{UNWRAP(helpers::get_env("CAIRN_DB_PATH"))};
+    const auto wal_path{UNWRAP(helpers::get_env("CAIRN_WAL_PATH"))};
+    const auto limit_str{UNWRAP(helpers::get_env("CAIRN_CRASH_LIMIT"))};
 
     const auto limit{UNWRAP(helpers::parse_integral<i32>(limit_str))};
     crash::initialize();

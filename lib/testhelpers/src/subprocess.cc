@@ -3,7 +3,6 @@
 #include <array>
 #include <cstdlib>
 #include <string>
-#include <string_view>
 
 #include <cairn/config.h>
 #include <fmt/base.h>
@@ -15,7 +14,6 @@
 
 #include "support/diagnostic/error.hh"
 #include "testhelpers/argv.hh"
-#include "testhelpers/internal/safe_assertions.hh"
 
 #if CAIRN_WINDOWS
 #    include <iterator>
@@ -60,20 +58,6 @@ auto self_exe_path() -> std::string {
     if (len != -1) { buffer[static_cast<usize>(len)] = '\0'; }
     return buffer.data();
 #endif
-}
-
-auto set_env(const std::string& name, const std::string& value) -> void {
-#if CAIRN_WINDOWS
-    ::SetEnvironmentVariableA(name.c_str(), value.c_str());
-#else
-    ::setenv(name.c_str(), value.c_str(), 1);
-#endif
-}
-
-auto get_env(const std::string& name) -> std::string_view {
-    const auto* var{std::getenv(name.c_str())};
-    CAIRN_REQUIRE(var);
-    return var;
 }
 
 auto spawn_child(const Argv& args) -> result<u32> {
