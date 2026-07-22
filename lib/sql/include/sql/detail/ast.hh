@@ -1,6 +1,5 @@
 #pragma once
 
-#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -9,19 +8,11 @@
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
-#include <tao/pegtl/position_with_source.hpp>
-#include <tao/pegtl/text_position.hpp>
 
 #include "sql/detail/node.hh"
 #include "support/diagnostic/location.hh"
 
 namespace cairn {
-
-template <>
-struct source_info<tao::pegtl::position_with_source<std::string, tao::pegtl::text_position>> {
-    using pos_t = tao::pegtl::position_with_source<std::string, tao::pegtl::text_position>;
-    static auto get(const pos_t& loc) -> location { return location{loc.line - 1, loc.column - 1}; }
-};
 
 namespace sql::detail {
 

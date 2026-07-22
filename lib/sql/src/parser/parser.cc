@@ -27,14 +27,22 @@
 #include <tao/pegtl/text_position.hpp>
 #include <tao/pegtl/text_view_input.hpp>
 
+#include "grammar.hh"
 #include "sql/detail/node.hh"
 #include "sql/file.hh"
-#include "sql/parser/grammar.hh"
 #include "sql/type.hh"
 #include "support/diagnostic/location.hh"
 #include "support/string_utils.hh"
 
-namespace cairn::sql::parser {
+namespace cairn {
+
+template <>
+struct source_info<tao::pegtl::position_with_source<std::string, tao::pegtl::text_position>> {
+    using pos_t = tao::pegtl::position_with_source<std::string, tao::pegtl::text_position>;
+    static auto get(const pos_t& loc) -> location { return location{loc.line - 1, loc.column - 1}; }
+};
+
+namespace sql::parser {
 
 namespace peg = tao::pegtl;
 
@@ -567,6 +575,17 @@ template <> struct action_t<grammar::drop_table_stmt> {
     }
 };
 
+template <> struct action_t<grammar::alter_column_name> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        state.current_column_def.name = clean_identifier(in.string_view());
+        state.current_column_def.type.reset();
+        state.current_column_def.nullable = true;
+        state.column_defs.emplace_back(std::move(state.current_column_def));
+    }
+};
+
 template <> struct action_t<grammar::alter_table_stmt> {
     template <typename ActionInput>
     static auto apply(const ActionInput& in, parser_state_t& state) -> void {
@@ -621,4 +640,6 @@ auto parse(const file& source_file) noexcept -> stdx::result<ast_t, location> {
     } catch (...) { return stdx::err{location{0, 0}}; }
 }
 
-} // namespace cairn::sql::parser
+} // namespace sql::parser
+
+} // namespace cairn

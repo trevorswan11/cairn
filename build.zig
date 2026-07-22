@@ -481,7 +481,15 @@ fn addArtifacts(b: *std.Build, config: struct {
         .link_libraries = &.{libstorage.artifact},
     }));
     const libexec: Library = .init(b, base_lib_config.with("exec", .{
-        .link_libraries = &.{ libstorage.artifact, libwal.artifact, libtxn.artifact },
+        .include_paths = &.{
+            ArtifactConfig.libraryInclude(b, "sql").@"1",
+        },
+        .link_libraries = &.{
+            libstorage.artifact,
+            libwal.artifact,
+            libtxn.artifact,
+            libopt.artifact,
+        },
     }));
 
     const pegtl = b.dependency("pegtl", .{});
@@ -593,6 +601,8 @@ fn addArtifacts(b: *std.Build, config: struct {
         })));
         unit_suites.append(.init(b, base_test_config.with("exec", .{
             .link_libraries = &.{
+                libopt.artifact,
+                libsql.artifact,
                 libexec.artifact,
                 libtxn.artifact,
                 libwal.artifact,
