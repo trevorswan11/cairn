@@ -7,6 +7,7 @@
 #include <ranges>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <gsl/pointers>
 #include <gsl/span>
@@ -341,6 +342,14 @@ class bplus_base_t {
         return {};
     }
 
+    [[nodiscard]] auto delete_tree_pages() -> result<void> {
+        read_guard_t meta_guard{TRY(pool_->fetch_read(meta_page_))};
+        const auto   root{meta_guard.template as<meta_node>()->root};
+        meta_guard.drop();
+        if (root.has_value()) { TRY(delete_node_recursive(*root)); }
+        return pool_->delete_page(meta_page_);
+    }
+
   private:
     using path_stack = stdx::fixed::vector<write_guard_t, TREE_HEIGHT_UPPER_BOUND>;
     using slot_stack = stdx::fixed::vector<i32, TREE_HEIGHT_UPPER_BOUND>;
@@ -585,6 +594,25 @@ class bplus_base_t {
     }
 
     [[nodiscard]] auto fetch_meta_write() { return pool_->fetch_write(meta_page_); }
+
+  private:
+    [[nodiscard]] auto delete_node_recursive(page_id_t pid) -> result<void> {
+        read_guard_t guard{TRY(pool_->fetch_read(pid))};
+        const auto   kind{kind_of(guard)};
+        if (kind == node_kind::INTERNAL) {
+            const i32              size{InternalTrait::size(guard.get())};
+            std::vector<page_id_t> children;
+            children.reserve(static_cast<usize>(size) + 1);
+            for (i32 i{0}; i <= size; ++i) {
+                children.push_back(InternalTrait::get_child(guard.get(), i));
+            }
+            guard.drop();
+            for (const auto child_pid : children) { TRY(delete_node_recursive(child_pid)); }
+        } else {
+            guard.drop();
+        }
+        return pool_->delete_page(pid);
+    }
 
   private:
     stdx::option<pool_t&>         pool_;
