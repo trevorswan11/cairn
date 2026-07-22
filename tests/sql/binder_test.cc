@@ -198,6 +198,96 @@ TEST_CASE("sql::binder basic resolution and errors") {
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TYPE_MISMATCH);
     }
+
+    SECTION("Bind aggregates, GROUP BY, HAVING, and coercion") {
+        {
+            const auto transaction{tm.begin_txn()};
+            schema     emp_schema{{column{"id", type::id_t::INTEGER, false},
+                                   column{"name", type::id_t::VARCHAR, true},
+                                   column{"salary", type::id_t::DOUBLE, false},
+                                   column{"dept_id", type::id_t::INTEGER, false}}};
+
+            auto meta{
+                UNWRAP(cat.create_table(transaction, table_id_t{20}, "employees", emp_schema))};
+            REQUIRE(tm.update_txn_lsn(transaction, wal::log::seq_num{3}));
+            REQUIRE(tm.commit_txn(transaction, lm));
+        }
+
+        SECTION("Implicit coercion cast injection") {
+            auto        tree{UNWRAP(parse_sql("SELECT id FROM employees WHERE salary > 50;"))};
+            auto        roots{tree.roots()};
+            auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+            const auto& select{
+                UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_ast.roots()[0]))};
+            auto        where_id{UNWRAP(select.where_clause)};
+            const auto& gt{UNWRAP(bound_ast.get_as_opt<binder::binary_expr_t>(where_id))};
+            CHECK(gt.type == type::id_t::BOOLEAN);
+            CHECK(gt.rhs.kind() == binder::node_kind_t::CAST_EXPR);
+            const auto& cast{UNWRAP(bound_ast.get_as_opt<binder::cast_expr_t>(gt.rhs))};
+            CHECK(cast.target_type == type::id_t::DOUBLE);
+        }
+
+        SECTION("Aggregate functions and return types") {
+            auto tree{
+                UNWRAP(parse_sql("SELECT COUNT(*), SUM(salary), AVG(salary) FROM employees;"))};
+            auto        roots{tree.roots()};
+            auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+            const auto& select{
+                UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_ast.roots()[0]))};
+            REQUIRE(select.select_list.size() == 3);
+
+            const auto& count_node{
+                UNWRAP(bound_ast.get_as_opt<binder::aggregate_expr_t>(select.select_list[0]))};
+            CHECK(count_node.func == parser::agg_func_t::COUNT);
+            CHECK(count_node.return_type == type::id_t::BIGINT);
+            CHECK_FALSE(count_node.arg);
+
+            const auto& sum_node{
+                UNWRAP(bound_ast.get_as_opt<binder::aggregate_expr_t>(select.select_list[1]))};
+            CHECK(sum_node.func == parser::agg_func_t::SUM);
+            CHECK(sum_node.return_type == type::id_t::DOUBLE);
+
+            const auto& avg_node{
+                UNWRAP(bound_ast.get_as_opt<binder::aggregate_expr_t>(select.select_list[2]))};
+            CHECK(avg_node.func == parser::agg_func_t::AVG);
+            CHECK(avg_node.return_type == type::id_t::DOUBLE);
+        }
+
+        SECTION("GROUP BY and HAVING clauses") {
+            auto        tree{UNWRAP(parse_sql("SELECT dept_id, SUM(salary) FROM employees GROUP BY "
+                                              "dept_id HAVING SUM(salary) > 1000;"))};
+            auto        roots{tree.roots()};
+            auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+            const auto& select{
+                UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_ast.roots()[0]))};
+            REQUIRE(select.group_by.size() == 1);
+            CHECK(select.having_clause);
+        }
+
+        SECTION("Bind error: Invalid aggregate in WHERE clause") {
+            auto tree{UNWRAP(parse_sql("SELECT id FROM employees WHERE SUM(salary) > 1000;"))};
+            auto roots{tree.roots()};
+            CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_INVALID_AGGREGATE);
+        }
+
+        SECTION("Bind error: Duplicate column constraint in CREATE TABLE") {
+            auto tree{UNWRAP(parse_sql("CREATE TABLE dup_test (id INT, id INT);"))};
+            auto roots{tree.roots()};
+            CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_CONSTRAINT_VIOLATION);
+        }
+
+        SECTION("Bind error: Invalid aggregate on non-numeric type") {
+            auto tree{UNWRAP(parse_sql("SELECT SUM(name) FROM employees;"))};
+            auto roots{tree.roots()};
+            CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_INVALID_AGGREGATE);
+        }
+
+        SECTION("Bind error: Ungrouped column error") {
+            auto tree{UNWRAP(parse_sql("SELECT name, SUM(salary) FROM employees;"))};
+            auto roots{tree.roots()};
+            CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_UNGROUPED_COLUMN);
+        }
+    }
 }
 
 } // namespace cairn::tests
