@@ -497,7 +497,6 @@ fn addArtifacts(b: *std.Build, config: struct {
         .link_libraries = &.{ libstorage.artifact, libwal.artifact, libexec.artifact, libtxn.artifact },
         .system_include_paths = &.{pegtl.path("include")},
     }));
-    libsql.artifact.installHeadersDirectory(pegtl.path("include"), "", .{ .include_extensions = &.{".hpp"} });
 
     const all_cairn_libraries = [_]*std.Build.Step.Compile{
         libexec.artifact,    libnet.artifact,     libopt.artifact, libsql.artifact,
