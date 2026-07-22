@@ -604,7 +604,7 @@ class bplus_base_t {
             std::vector<page_id_t> children;
             children.reserve(static_cast<usize>(size) + 1);
             for (i32 i{0}; i <= size; ++i) {
-                children.push_back(InternalTrait::get_child(guard.get(), i));
+                children.emplace_back(InternalTrait::get_child(guard.get(), i));
             }
             guard.drop();
             for (const auto child_pid : children) { TRY(delete_node_recursive(child_pid)); }
