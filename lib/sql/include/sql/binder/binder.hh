@@ -163,12 +163,61 @@ template <usize PoolSize> class binder_t {
             bound_where_clause.emplace(bound_expr_id);
         }
 
+        std::vector<node_id_t> bound_group_by;
+        for (const auto& g_expr_id : stmt.group_by) {
+            bound_group_by.emplace_back(TRY(bind_expression(tree, g_expr_id, scopes, ast)));
+        }
+
+        stdx::option<node_id_t> bound_having_clause;
+        if (stmt.having_clause) {
+            auto bound_expr_id{TRY(bind_expression(tree, *stmt.having_clause, scopes, ast))};
+            if (get_expr_type(ast, bound_expr_id) != type::id_t::BOOLEAN) {
+                const auto expr_loc{tree.get_location(*stmt.having_clause)};
+                return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, expr_loc}};
+            }
+            bound_having_clause.emplace(bound_expr_id);
+        }
+
+        // Grouping validation
+        const bool has_aggregates{
+            std::ranges::any_of(bound_select_list,
+                                [&](node_id_t id) { return contains_aggregate(ast, id); }) ||
+            (bound_having_clause && contains_aggregate(ast, *bound_having_clause))};
+
+        if (has_aggregates || !bound_group_by.empty()) {
+            std::vector<column_ref_expr_t> grouped_cols;
+            for (const auto g_id : bound_group_by) {
+                collect_unaggregated_cols(ast, g_id, grouped_cols);
+            }
+
+            const auto is_col_grouped = [&](const column_ref_expr_t& col) {
+                return std::ranges::any_of(grouped_cols, [&](const column_ref_expr_t& g_col) {
+                    return g_col.table_id == col.table_id && g_col.column_idx == col.column_idx;
+                });
+            };
+
+            std::vector<column_ref_expr_t> unagg_cols;
+            for (const auto s_id : bound_select_list) {
+                collect_unaggregated_cols(ast, s_id, unagg_cols);
+            }
+            if (bound_having_clause) {
+                collect_unaggregated_cols(ast, *bound_having_clause, unagg_cols);
+            }
+
+            if (!std::ranges::all_of(unagg_cols,
+                                     [&](const auto& col) { return is_col_grouped(col); })) {
+                return stdx::err{diagnostic{error::SQL_UNGROUPED_COLUMN, loc}};
+            }
+        }
+
         return ast.template add_node<select_stmt_t>(loc,
                                                     tbl->table_id,
                                                     std::move(tbl_name),
                                                     std::move(tbl_alias),
                                                     std::move(bound_select_list),
-                                                    bound_where_clause);
+                                                    bound_where_clause,
+                                                    std::move(bound_group_by),
+                                                    bound_having_clause);
     }
 
     [[nodiscard]] auto bind_expression(const parser::ast_t&                tree,
@@ -185,13 +234,13 @@ template <usize PoolSize> class binder_t {
             [&](const parser::literal_expr_t& lit) -> stdx::result<node_id_t, diagnostic> {
                 stdx::option<type::id_t> lit_type;
                 if (lit.value.template is<bool>()) {
-                    lit_type = type::id_t::BOOLEAN;
+                    lit_type.emplace(type::id_t::BOOLEAN);
                 } else if (lit.value.template is<i64>()) {
-                    lit_type = type::id_t::INTEGER;
+                    lit_type.emplace(type::id_t::INTEGER);
                 } else if (lit.value.template is<f64>()) {
-                    lit_type = type::id_t::DOUBLE;
+                    lit_type.emplace(type::id_t::DOUBLE);
                 } else if (lit.value.template is<stdx::fixed::string>()) {
-                    lit_type = type::id_t::VARCHAR;
+                    lit_type.emplace(type::id_t::VARCHAR);
                 }
                 return ast.template add_node<literal_expr_t>(loc, lit.value, lit_type);
             },
@@ -265,6 +314,41 @@ template <usize PoolSize> class binder_t {
                     return stdx::err{diagnostic{error::SQL_COLUMN_NOT_FOUND, loc.line, loc.column}};
                 }
             },
+            [&](const parser::aggregate_expr_t& agg) -> stdx::result<node_id_t, diagnostic> {
+                stdx::option<node_id_t>  bound_arg;
+                stdx::option<type::id_t> arg_type;
+                if (agg.arg) {
+                    bound_arg.emplace(TRY(bind_expression(tree, *agg.arg, scopes, ast)));
+                    arg_type = get_expr_type(ast, *bound_arg);
+                }
+
+                stdx::option<type::id_t> ret_type;
+                switch (agg.func) {
+                case parser::agg_func_t::COUNT: ret_type = type::id_t::BIGINT; break;
+                case parser::agg_func_t::SUM:
+                case parser::agg_func_t::AVG:
+                    if (!type::is_numeric(arg_type)) {
+                        return stdx::err{diagnostic{error::SQL_INVALID_AGGREGATE, loc}};
+                    }
+
+                    if (agg.func == parser::agg_func_t::AVG || arg_type == type::id_t::DOUBLE) {
+                        ret_type.emplace(type::id_t::DOUBLE);
+                    } else {
+                        ret_type.emplace(type::id_t::BIGINT);
+                    }
+                    break;
+                case parser::agg_func_t::MIN:
+                case parser::agg_func_t::MAX:
+                    if (!arg_type) {
+                        return stdx::err{diagnostic{error::SQL_INVALID_AGGREGATE, loc}};
+                    }
+                    ret_type = arg_type;
+                    break;
+                }
+
+                return ast.template add_node<aggregate_expr_t>(
+                    loc, agg.func, bound_arg, agg.is_distinct, ret_type);
+            },
             [&](const parser::binary_expr_t& binary) -> stdx::result<node_id_t, diagnostic> {
                 auto bound_lhs_id{TRY(bind_expression(tree, binary.lhs, scopes, ast))};
                 auto bound_rhs_id{TRY(bind_expression(tree, binary.rhs, scopes, ast))};
@@ -288,9 +372,26 @@ template <usize PoolSize> class binder_t {
                 case parser::binary_op_t::LESS_THAN_OR_EQUAL:
                 case parser::binary_op_t::GREATER_THAN:
                 case parser::binary_op_t::GREATER_THAN_OR_EQUAL: {
-                    if (l_type != r_type &&
-                        (!type::is_numeric(l_type) || !type::is_numeric(r_type))) {
+                    auto target_type_opt{type::common_type(l_type, r_type)};
+                    if (!target_type_opt) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    const auto target_type{*target_type_opt};
+
+                    if (l_type != target_type) {
+                        if (!type::can_coerce(l_type, target_type)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_lhs_id =
+                            ast.template add_node<cast_expr_t>(loc, bound_lhs_id, target_type);
+                    }
+
+                    if (r_type != target_type) {
+                        if (!type::can_coerce(r_type, target_type)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_rhs_id =
+                            ast.template add_node<cast_expr_t>(loc, bound_rhs_id, target_type);
                     }
                     res_type.emplace(type::id_t::BOOLEAN);
                     break;
@@ -299,10 +400,28 @@ template <usize PoolSize> class binder_t {
                 case parser::binary_op_t::SUBTRACT:
                 case parser::binary_op_t::MULTIPLY:
                 case parser::binary_op_t::DIVIDE:   {
-                    res_type = type::common_type(l_type, r_type);
-                    if (!type::is_numeric(res_type)) {
+                    auto target_type_opt{type::common_type(l_type, r_type)};
+                    if (!type::is_numeric(target_type_opt)) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
                     }
+                    const auto target_type{*target_type_opt};
+
+                    if (l_type != target_type) {
+                        if (!type::can_coerce(l_type, target_type)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_lhs_id =
+                            ast.template add_node<cast_expr_t>(loc, bound_lhs_id, target_type);
+                    }
+
+                    if (r_type != target_type) {
+                        if (!type::can_coerce(r_type, target_type)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_rhs_id =
+                            ast.template add_node<cast_expr_t>(loc, bound_rhs_id, target_type);
+                    }
+                    res_type.emplace(target_type);
                     break;
                 }
                 }
@@ -315,12 +434,39 @@ template <usize PoolSize> class binder_t {
             });
     }
 
-    [[nodiscard]] auto get_expr_type(const ast_t& ast, node_id_t id) const noexcept
+    [[nodiscard]] static auto get_expr_type(const ast_t& ast, node_id_t id) noexcept
         -> stdx::option<type::id_t> {
         return ast[id].visit([](const literal_expr_t& lit) { return lit.type; },
                              [](const column_ref_expr_t& col) { return col.type; },
                              [](const binary_expr_t& bin) { return bin.type; },
+                             [](const cast_expr_t& cst) { return cst.type(); },
+                             [](const aggregate_expr_t& agg) { return agg.type(); },
                              [](const auto&) -> stdx::option<type::id_t> { return stdx::none; });
+    }
+
+    static auto collect_unaggregated_cols(const ast_t&                    ast,
+                                          node_id_t                       id,
+                                          std::vector<column_ref_expr_t>& cols) -> void {
+        const auto& node{ast[id]};
+        node.visit([&](const column_ref_expr_t& col) { cols.emplace_back(col); },
+                   [&](const binary_expr_t& bin) {
+                       collect_unaggregated_cols(ast, bin.lhs, cols);
+                       collect_unaggregated_cols(ast, bin.rhs, cols);
+                   },
+                   [&](const cast_expr_t& cst) { collect_unaggregated_cols(ast, cst.expr, cols); },
+                   [&](const aggregate_expr_t&) {},
+                   [&](const auto&) {});
+    }
+
+    [[nodiscard]] static auto contains_aggregate(const ast_t& ast, node_id_t id) -> bool {
+        const auto& node{ast[id]};
+        return node.visit([&](const aggregate_expr_t&) { return true; },
+                          [&](const binary_expr_t& bin) {
+                              return contains_aggregate(ast, bin.lhs) ||
+                                     contains_aggregate(ast, bin.rhs);
+                          },
+                          [&](const cast_expr_t& cst) { return contains_aggregate(ast, cst.expr); },
+                          [&](const auto&) { return false; });
     }
 
   private:
