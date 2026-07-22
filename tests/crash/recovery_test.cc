@@ -23,6 +23,7 @@
 #include "support/crash/injection.hh"
 #include "testhelpers/argv.hh"
 #include "testhelpers/conversion.hh"
+#include "testhelpers/env.hh"
 #include "testhelpers/mt_verifier.hh"
 #include "testhelpers/subprocess.hh"
 #include "testhelpers/tempfile.hh"
@@ -39,9 +40,9 @@ namespace cairn::tests {
 using namespace stdx::size_literals;
 
 TEST_CASE("crash recovery workload", "[.][crash]") {
-    const auto db_path{helpers::get_env("CAIRN_DB_PATH")};
-    const auto wal_path{helpers::get_env("CAIRN_WAL_PATH")};
-    const auto limit_str{helpers::get_env("CAIRN_CRASH_LIMIT")};
+    const auto db_path{UNWRAP(helpers::get_env("CAIRN_DB_PATH"))};
+    const auto wal_path{UNWRAP(helpers::get_env("CAIRN_WAL_PATH"))};
+    const auto limit_str{UNWRAP(helpers::get_env("CAIRN_CRASH_LIMIT"))};
 
     const auto limit{UNWRAP(helpers::parse_integral<i32>(limit_str))};
     crash::initialize();
