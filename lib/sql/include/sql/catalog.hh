@@ -359,7 +359,7 @@ template <usize PoolSize> class catalog {
         std::shared_lock             lock{mutex_};
         std::vector<metadata::index> res;
         for (const auto& [_, idx] : indexes_by_name_) {
-            if (idx.table_id == table_id) { res.push_back(idx); }
+            if (idx.table_id == table_id) { res.emplace_back(idx); }
         }
         return res;
     }
