@@ -40,12 +40,32 @@ struct binary_expr_t {
     stdx::option<type::id_t> type;
 };
 
+struct cast_expr_t {
+    node_id_t                    expr;
+    type::id_t                   target_type;
+    [[nodiscard]] constexpr auto type() const noexcept -> stdx::option<type::id_t> {
+        return target_type;
+    }
+};
+
+struct aggregate_expr_t {
+    parser::agg_func_t           func;
+    stdx::option<node_id_t>      arg;
+    bool                         is_distinct{false};
+    stdx::option<type::id_t>     return_type;
+    [[nodiscard]] constexpr auto type() const noexcept -> stdx::option<type::id_t> {
+        return return_type;
+    }
+};
+
 struct select_stmt_t {
     table_id_t                        table_id;
     stdx::fixed::string               table_name;
     stdx::option<stdx::fixed::string> table_alias;
     std::vector<node_id_t>            select_list;
     stdx::option<node_id_t>           where_clause;
+    std::vector<node_id_t>            group_by;
+    stdx::option<node_id_t>           having_clause;
 };
 
 struct create_table_stmt_t {
@@ -82,6 +102,8 @@ using node_data_t = stdx::variant<stdx::monostate,
                                   literal_expr_t,
                                   column_ref_expr_t,
                                   binary_expr_t,
+                                  cast_expr_t,
+                                  aggregate_expr_t,
                                   select_stmt_t,
                                   create_table_stmt_t,
                                   drop_table_stmt_t,
