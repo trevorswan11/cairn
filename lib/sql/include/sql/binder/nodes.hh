@@ -41,21 +41,15 @@ struct binary_expr_t {
 };
 
 struct cast_expr_t {
-    node_id_t                    expr;
-    type::id_t                   target_type;
-    [[nodiscard]] constexpr auto type() const noexcept -> stdx::option<type::id_t> {
-        return target_type;
-    }
+    node_id_t  expr;
+    type::id_t target_type;
 };
 
 struct aggregate_expr_t {
-    parser::agg_func_t           func;
-    stdx::option<node_id_t>      arg;
-    bool                         is_distinct{false};
-    stdx::option<type::id_t>     return_type;
-    [[nodiscard]] constexpr auto type() const noexcept -> stdx::option<type::id_t> {
-        return return_type;
-    }
+    parser::agg_func_t       func;
+    stdx::option<node_id_t>  arg;
+    bool                     is_distinct{false};
+    stdx::option<type::id_t> return_type;
 };
 
 struct select_stmt_t {

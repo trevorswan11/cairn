@@ -453,12 +453,13 @@ template <usize PoolSize> class binder_t {
 
     [[nodiscard]] static auto get_expr_type(const ast_t& ast, node_id_t id) noexcept
         -> stdx::option<type::id_t> {
-        return ast[id].visit([](const literal_expr_t& lit) { return lit.type; },
-                             [](const column_ref_expr_t& col) { return col.type; },
-                             [](const binary_expr_t& bin) { return bin.type; },
-                             [](const cast_expr_t& cst) { return cst.type(); },
-                             [](const aggregate_expr_t& agg) { return agg.type(); },
-                             [](const auto&) -> stdx::option<type::id_t> { return stdx::none; });
+        return ast[id].visit(
+            [](const literal_expr_t& lit) { return lit.type; },
+            [](const column_ref_expr_t& col) { return col.type; },
+            [](const binary_expr_t& bin) { return bin.type; },
+            [](const cast_expr_t& cst) -> stdx::option<type::id_t> { return cst.target_type; },
+            [](const aggregate_expr_t& agg) { return agg.return_type; },
+            [](const auto&) -> stdx::option<type::id_t> { return stdx::none; });
     }
 
     static auto collect_unaggregated_cols(const ast_t&                    ast,
