@@ -89,6 +89,23 @@ template <usize PoolSize> class binder_t {
                 auto tbl{catalog_.get_table(tbl_name.view())};
                 if (!tbl) { return stdx::err{diagnostic{error::SQL_TABLE_NOT_FOUND, loc}}; }
 
+                const auto columns{tbl->table_schema.columns()};
+                const auto it{std::ranges::find_if(columns, [&](const auto& col) {
+                    return col.name() == alter.column_def.name.view();
+                })};
+
+                if (alter.column_def.type.has_value()) {
+                    // ADD COLUMN: Check that column doesn't exist already
+                    if (it != columns.end()) {
+                        return stdx::err{diagnostic{error::SQL_CONSTRAINT_VIOLATION, loc}};
+                    }
+                } else {
+                    // DROP COLUMN: Check that column does exist
+                    if (it == columns.end()) {
+                        return stdx::err{diagnostic{error::SQL_COLUMN_NOT_FOUND, loc}};
+                    }
+                }
+
                 ast.add_root(ast.template add_node<alter_table_stmt_t>(
                     loc, tbl->table_id, tbl_name, alter.column_def));
                 return {};
