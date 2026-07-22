@@ -5,6 +5,7 @@
 
 #include <gsl/span>
 #include <stdx/assert.hh>
+#include <stdx/iterator.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
@@ -17,6 +18,9 @@ namespace cairn {
 namespace sql::detail {
 
 template <typename Data> class ast_t {
+  public:
+    MAKE_UNALIASED_ITERATOR(std::vector<node_id_t>, roots_)
+
   public:
     ast_t()  = default;
     ~ast_t() = default;
