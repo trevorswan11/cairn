@@ -9,7 +9,7 @@ The parser treats the following keywords as reserved and case-insensitive:
 - **DML/QL**: `SELECT`, `FROM`, `WHERE`, `GROUP`, `BY`, `HAVING`
 - **DDL**: `CREATE`, `DROP`, `ALTER`, `TABLE`, `INDEX`, `ADD`, `COLUMN`, `ON`
 - **Types**: `BOOLEAN`, `TINYINT`, `SMALLINT`, `INT`, `INTEGER`, `BIGINT`, `FLOAT`, `DOUBLE`, `VARCHAR`, `DATETIME`
-- **Expressions & Operators**: `AS`, `NULL`, `NOT`, `AND`, `OR`, `DISTINCT`, `TRUE`, `FALSE`
+- **Expressions & Operators**: `AS`, `NULL`, `NOT`, `IS`, `AND`, `OR`, `DISTINCT`, `TRUE`, `FALSE`
 - **Aggregates**: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`
 
 ---
@@ -120,21 +120,34 @@ DropIndexStatement ::= "DROP" "INDEX" Identifier "ON" Identifier
 Expressions support operator precedence, logical operations, arithmetic, and aggregates:
 
 ```ebnf
-Expression   ::= PrimaryExpr { BinaryOp PrimaryExpr }
+Expression   ::= OperandExpr { BinaryOp OperandExpr }
+
+OperandExpr  ::= PrimaryExpr [ "IS" [ "NOT" ] "NULL" ]
+               | [ "-" | "NOT" ] PrimaryExpr
 
 PrimaryExpr  ::= Literal
                | QualifiedIdentifier
                | AggregateExpr
+               | FunctionCallExpr
                | "(" Expression ")"
 
 QualifiedIdentifier ::= [ Identifier "." ] Identifier
 
-BinaryOp     ::= "+" | "-" | "*" | "/"
+BinaryOp     ::= "+" | "-" | "*" | "/" | "%"
                | "=" | "!=" | "<>" | "<" | ">" | "<=" | ">="
                | "AND" | "OR"
 
 Literal      ::= "TRUE" | "FALSE" | "NULL" | StringLiteral | NumericLiteral
+
+FunctionCallExpr ::= Identifier "(" [ Expression { "," Expression } ] ")"
 ```
+
+#### Built-in Scalar Functions
+
+Cairn supports the following built-in scalar functions:
+- **Conditional**: `COALESCE(e1, e2, ...)`, `NULLIF(e1, e2)`
+- **String**: `LOWER(str)`, `UPPER(str)`, `LENGTH(str)`, `SUBSTR(str, start, len)`
+- **Math**: `ABS(x)`, `MOD(x, y)`
 
 #### Aggregate Expressions
 
