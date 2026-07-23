@@ -34,6 +34,17 @@ enum class error : u8 {
     SQL_VALUE_SCHEMA_COUNT_MISMATCH, // the value count did not match the schema count
     SQL_INVALID_COLUMN_INDEX,        // attempt to get value not in schema column range
     SQL_UNSUPPORTED_FIXED_TYPE,      // attempt to get a type unknown to the tuple deserializer
+    SQL_TABLE_ALREADY_EXISTS,
+    SQL_TABLE_NOT_FOUND,
+    SQL_INDEX_ALREADY_EXISTS,
+    SQL_INDEX_NOT_FOUND,
+    SQL_COLUMN_NOT_FOUND,
+    SQL_COLUMN_AMBIGUOUS,
+    SQL_TYPE_MISMATCH,
+    SQL_CONSTRAINT_VIOLATION,
+    SQL_INVALID_AGGREGATE,
+    SQL_UNGROUPED_COLUMN,
+    SQL_UNEXPECTED_NODE,
 
     WAL_SOURCE_BUF_TOO_SMALL, // the reader buf did not have enough space
     WAL_SIZE_CORRUPT,       // deserializing a log record resulted in a header/footer size mismatch
@@ -46,17 +57,6 @@ enum class error : u8 {
     TXN_DEADLOCK_DETECTED,       // transaction was aborted to prevent or resolve a deadlock
     TXN_LOCK_ACQUISITION_FAILED, // lock manager limits exceeded
     TXN_SERIALIZATION_FAILURE,   // validation failure
-
-    SQL_TABLE_ALREADY_EXISTS,
-    SQL_TABLE_NOT_FOUND,
-    SQL_INDEX_ALREADY_EXISTS,
-    SQL_INDEX_NOT_FOUND,
-    SQL_COLUMN_NOT_FOUND,
-    SQL_COLUMN_AMBIGUOUS,
-    SQL_TYPE_MISMATCH,
-    SQL_CONSTRAINT_VIOLATION,
-    SQL_INVALID_AGGREGATE,
-    SQL_UNGROUPED_COLUMN,
 };
 
 template <typename T> using result = stdx::result<T, error>;
