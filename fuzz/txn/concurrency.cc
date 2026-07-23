@@ -55,7 +55,7 @@ struct AbortOp {
 
 using ConcurrencyOp = stdx::variant<BeginOp, ReadOp, WriteOp, CommitOp, AbortOp>;
 
-void FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) {
+auto FuzzTxnConcurrency(const std::vector<ConcurrencyOp>& operations) -> void {
     helpers::tempfile file{"fuzz_concurrency_db"};
     using txn_tree_t = txn::iot_tree<i64, 128, 64>;
     auto                        pool{UNWRAP(txn_tree_t::tree_t::pool_t::open(file.path))};

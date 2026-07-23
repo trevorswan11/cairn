@@ -38,7 +38,7 @@ struct CompactOp {};
 
 using SlottedPageOp = stdx::variant<InsertOp, UpdateOp, RemoveOp, CompactOp>;
 
-void FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) {
+auto FuzzSlottedPage(const std::vector<SlottedPageOp>& operations) -> void {
     page         p;
     slotted_page sp{p};
     sp.refresh_page();
