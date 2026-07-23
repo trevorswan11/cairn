@@ -37,6 +37,7 @@ enum class binary_op_t : u8 {
     SUB,
     MUL,
     DIV,
+    MOD,
     EQ,
     NEQ,
     LT,
@@ -53,6 +54,7 @@ enum class binary_op_t : u8 {
     case binary_op_t::SUB:  return "-";
     case binary_op_t::MUL:  return "*";
     case binary_op_t::DIV:  return "/";
+    case binary_op_t::MOD:  return "%";
     case binary_op_t::EQ:   return "=";
     case binary_op_t::NEQ:  return "!=";
     case binary_op_t::LT:   return "<";
@@ -127,11 +129,30 @@ struct drop_index_stmt_t {
     stdx::fixed::string table_name;
 };
 
+enum class unary_op_t : u8 {
+    MINUS,
+    NOT,
+    IS_NULL,
+    IS_NOT_NULL,
+};
+
+struct unary_expr_t {
+    unary_op_t op;
+    node_id_t  expr;
+};
+
+struct function_expr_t {
+    stdx::fixed::string    name;
+    std::vector<node_id_t> args;
+};
+
 using node_data_t = stdx::variant<stdx::monostate,
                                   literal_expr_t,
                                   identifier_expr_t,
                                   binary_expr_t,
                                   aggregate_expr_t,
+                                  unary_expr_t,
+                                  function_expr_t,
                                   select_stmt_t,
                                   create_table_stmt_t,
                                   drop_table_stmt_t,

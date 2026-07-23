@@ -26,6 +26,8 @@ class dumper_t {
     auto operator()(const identifier_expr_t& node) -> void;
     auto operator()(const binary_expr_t& node) -> void;
     auto operator()(const aggregate_expr_t& node) -> void;
+    auto operator()(const unary_expr_t& node) -> void;
+    auto operator()(const function_expr_t& node) -> void;
     auto operator()(const select_stmt_t& node) -> void;
     auto operator()(const create_table_stmt_t& node) -> void;
     auto operator()(const drop_table_stmt_t& node) -> void;

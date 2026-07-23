@@ -55,6 +55,26 @@ auto dumper_t::operator()(const aggregate_expr_t& node) -> void {
     }
 }
 
+auto dumper_t::operator()(const unary_expr_t& node) -> void {
+    fmt::println(out_, "UnaryExpr ({})", magic_enum::enum_name(node.op));
+    guard_t g{indent_, true};
+    fmt::print(out_, "{}Expr: ", indent_.current_branch());
+    dump(node.expr);
+}
+
+auto dumper_t::operator()(const function_expr_t& node) -> void {
+    fmt::println(out_, "FunctionExpr ({})", node.name);
+    if (!node.args.empty()) {
+        guard_t g{indent_, true};
+        fmt::println(out_, "{}Args:", indent_.current_branch());
+        for (usize i{0}; i < node.args.size(); ++i) {
+            guard_t g_item{indent_, i == node.args.size() - 1};
+            fmt::print(out_, "{}", indent_.current_branch());
+            dump(node.args[i]);
+        }
+    }
+}
+
 auto dumper_t::operator()(const select_stmt_t& node) -> void {
     fmt::println(out_, "SelectStmt");
 
