@@ -69,9 +69,9 @@ class expression_evaluator_t {
                                   const sql::tuple& input_tuple) -> result<sql::value_t>;
 
   private:
-    const sql::binder::ast_t&        ast_;
-    const sql::schema&               sch_;
-    mutable std::vector<std::string> string_pool_;
+    [[maybe_unused]] const sql::binder::ast_t& ast_;
+    [[maybe_unused]] const sql::schema&        sch_;
+    std::vector<std::string>                   string_pool_;
 };
 
 } // namespace cairn::exec
