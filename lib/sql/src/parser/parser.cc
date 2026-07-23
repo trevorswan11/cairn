@@ -99,6 +99,7 @@ constexpr auto precedence_map{[] {
     map[binary_op_t::SUB]  = 4;
     map[binary_op_t::MUL]  = 5;
     map[binary_op_t::DIV]  = 5;
+    map[binary_op_t::MOD]  = 5;
     return map;
 }()};
 
@@ -107,6 +108,7 @@ constexpr auto binary_ops{[] {
                                    std::pair{"-", binary_op_t::SUB},
                                    std::pair{"*", binary_op_t::MUL},
                                    std::pair{"/", binary_op_t::DIV},
+                                   std::pair{"%", binary_op_t::MOD},
                                    std::pair{"=", binary_op_t::EQ},
                                    std::pair{"!=", binary_op_t::NEQ},
                                    std::pair{"<>", binary_op_t::NEQ},
@@ -207,6 +209,91 @@ template <> struct action_t<grammar::expr_identifier> {
         auto id{state.tree.add_node<identifier_expr_t>(in.current_position(),
                                                        clean_identifier(in.string_view()))};
         state.active_scope().operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::func_open_paren> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput&, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        state.expr_scopes.emplace_back();
+    }
+};
+
+template <> struct action_t<grammar::function_call> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        ASSERT(!state.expr_scopes.empty());
+        auto scope{std::move(state.expr_scopes.back())};
+        state.expr_scopes.pop_back();
+
+        auto matched_str{in.string_view()};
+        auto first_paren{matched_str.find('(')};
+        ASSERT(first_paren != std::string_view::npos);
+        auto name{clean_identifier(stdx::string::substr(matched_str, 0, first_paren))};
+
+        auto id{state.tree.add_node<function_expr_t>(
+            in.current_position(), name, std::move(scope.operands))};
+        state.active_scope().operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::unary_minus_expr> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto& operands{state.active_scope().operands};
+        ASSERT(!operands.empty());
+        auto child{operands.back()};
+        operands.pop_back();
+
+        auto id{state.tree.add_node<unary_expr_t>(in.current_position(), unary_op_t::MINUS, child)};
+        operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::unary_not_expr> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto& operands{state.active_scope().operands};
+        ASSERT(!operands.empty());
+        auto child{operands.back()};
+        operands.pop_back();
+
+        auto id{state.tree.add_node<unary_expr_t>(in.current_position(), unary_op_t::NOT, child)};
+        operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::is_null_op> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto& operands{state.active_scope().operands};
+        ASSERT(!operands.empty());
+        auto child{operands.back()};
+        operands.pop_back();
+
+        auto id{
+            state.tree.add_node<unary_expr_t>(in.current_position(), unary_op_t::IS_NULL, child)};
+        operands.emplace_back(id);
+    }
+};
+
+template <> struct action_t<grammar::is_not_null_op> {
+    template <typename ActionInput>
+    static auto apply(const ActionInput& in, parser_state_t& state) -> void {
+        PROFILE_FUNCTION();
+        auto& operands{state.active_scope().operands};
+        ASSERT(!operands.empty());
+        auto child{operands.back()};
+        operands.pop_back();
+
+        auto id{state.tree.add_node<unary_expr_t>(
+            in.current_position(), unary_op_t::IS_NOT_NULL, child)};
+        operands.emplace_back(id);
     }
 };
 

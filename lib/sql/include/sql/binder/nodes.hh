@@ -52,6 +52,36 @@ struct aggregate_expr_t {
     stdx::option<type::id_t> return_type;
 };
 
+enum class unary_op_t : u8 {
+    MINUS,
+    NOT,
+    IS_NULL,
+    IS_NOT_NULL,
+};
+
+struct unary_expr_t {
+    unary_op_t               op;
+    node_id_t                expr;
+    stdx::option<type::id_t> type;
+};
+
+enum class func_type_t : u8 {
+    COALESCE,
+    NULLIF,
+    LOWER,
+    UPPER,
+    LENGTH,
+    SUBSTR,
+    ABS,
+    MOD,
+};
+
+struct function_expr_t {
+    func_type_t              func;
+    std::vector<node_id_t>   args;
+    stdx::option<type::id_t> type;
+};
+
 struct select_stmt_t {
     table_id_t                        table_id;
     stdx::fixed::string               table_name;
@@ -98,6 +128,8 @@ using node_data_t = stdx::variant<stdx::monostate,
                                   binary_expr_t,
                                   cast_expr_t,
                                   aggregate_expr_t,
+                                  unary_expr_t,
+                                  function_expr_t,
                                   select_stmt_t,
                                   create_table_stmt_t,
                                   drop_table_stmt_t,

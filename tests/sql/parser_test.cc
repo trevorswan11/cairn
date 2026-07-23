@@ -202,4 +202,73 @@ TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
     }
 }
 
+TEST_CASE("Parse modulo, unary operators, and built-in functions") {
+    SECTION("Parse modulo binary operator") {
+        auto tree{UNWRAP(parse_sql("SELECT id % 10 FROM users;"))};
+        auto roots{tree.roots()};
+        REQUIRE(roots.size() == 1);
+        const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
+        auto        expr_id{UNWRAP(select.select_list[0].expr)};
+        REQUIRE(expr_id.kind() == parser::node_kind_t::BINARY_EXPR);
+        const auto& binary{UNWRAP(tree[expr_id].as_opt<parser::binary_expr_t>())};
+        CHECK(binary.op == parser::binary_op_t::MOD);
+    }
+
+    SECTION("Parse negation, NOT, IS NULL unary operators") {
+        auto tree{UNWRAP(
+            parse_sql("SELECT -id, NOT active FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
+        auto roots{tree.roots()};
+        REQUIRE(roots.size() == 1);
+        const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
+
+        // -id
+        auto minus_id{UNWRAP(select.select_list[0].expr)};
+        REQUIRE(minus_id.kind() == parser::node_kind_t::UNARY_EXPR);
+        const auto& unary_minus{UNWRAP(tree[minus_id].as_opt<parser::unary_expr_t>())};
+        CHECK(unary_minus.op == parser::unary_op_t::MINUS);
+
+        // NOT active
+        auto not_active{UNWRAP(select.select_list[1].expr)};
+        REQUIRE(not_active.kind() == parser::node_kind_t::UNARY_EXPR);
+        const auto& unary_not{UNWRAP(tree[not_active].as_opt<parser::unary_expr_t>())};
+        CHECK(unary_not.op == parser::unary_op_t::NOT);
+
+        // WHERE clause: name IS NULL AND id IS NOT NULL
+        auto where_id{UNWRAP(select.where_clause)};
+        REQUIRE(where_id.kind() == parser::node_kind_t::BINARY_EXPR);
+        const auto& where_bin{UNWRAP(tree[where_id].as_opt<parser::binary_expr_t>())};
+        CHECK(where_bin.op == parser::binary_op_t::AND);
+
+        REQUIRE(where_bin.lhs.kind() == parser::node_kind_t::UNARY_EXPR);
+        const auto& is_null{UNWRAP(tree[where_bin.lhs].as_opt<parser::unary_expr_t>())};
+        CHECK(is_null.op == parser::unary_op_t::IS_NULL);
+
+        REQUIRE(where_bin.rhs.kind() == parser::node_kind_t::UNARY_EXPR);
+        const auto& is_not_null{UNWRAP(tree[where_bin.rhs].as_opt<parser::unary_expr_t>())};
+        CHECK(is_not_null.op == parser::unary_op_t::IS_NOT_NULL);
+    }
+
+    SECTION("Parse built-in functions") {
+        auto tree{
+            UNWRAP(parse_sql("SELECT COALESCE(name, 'N/A'), SUBSTR(name, 1, 3) FROM users;"))};
+        auto roots{tree.roots()};
+        REQUIRE(roots.size() == 1);
+        const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
+
+        // COALESCE(name, 'N/A')
+        auto coalesce_id{UNWRAP(select.select_list[0].expr)};
+        REQUIRE(coalesce_id.kind() == parser::node_kind_t::FUNCTION_EXPR);
+        const auto& coalesce_fn{UNWRAP(tree[coalesce_id].as_opt<parser::function_expr_t>())};
+        CHECK(coalesce_fn.name == "COALESCE");
+        REQUIRE(coalesce_fn.args.size() == 2);
+
+        // SUBSTR(name, 1, 3)
+        auto substr_id{UNWRAP(select.select_list[1].expr)};
+        REQUIRE(substr_id.kind() == parser::node_kind_t::FUNCTION_EXPR);
+        const auto& substr_fn{UNWRAP(tree[substr_id].as_opt<parser::function_expr_t>())};
+        CHECK(substr_fn.name == "SUBSTR");
+        REQUIRE(substr_fn.args.size() == 3);
+    }
+}
+
 } // namespace cairn::tests

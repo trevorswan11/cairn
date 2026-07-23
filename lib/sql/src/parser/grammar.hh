@@ -35,6 +35,7 @@ SQL_KEYWORD(on_kw, "ON");
 SQL_KEYWORD(as_kw, "AS");
 SQL_KEYWORD(null_kw, "NULL");
 SQL_KEYWORD(not_kw, "NOT");
+SQL_KEYWORD(is_kw, "IS");
 SQL_KEYWORD(and_kw, "AND");
 SQL_KEYWORD(or_kw, "OR");
 SQL_KEYWORD(group_kw, "GROUP");
@@ -101,6 +102,7 @@ struct reserved_keyword : peg::sor<select_kw,
                                    as_kw,
                                    null_kw,
                                    not_kw,
+                                   is_kw,
                                    and_kw,
                                    or_kw,
                                    true_kw,
@@ -152,6 +154,15 @@ struct aggregate_expr : peg::sor<count_star_expr,
                                           opt_space,
                                           agg_close_paren>> {};
 
+struct func_open_paren : peg::one<'('> {};
+struct func_close_paren : peg::one<')'> {};
+struct func_name : identifier {};
+struct function_call : peg::seq<func_name,
+                                func_open_paren,
+                                peg::must<opt_space,
+                                          peg::opt<peg::list<expression, padded<peg::one<','>>>>,
+                                          func_close_paren>> {};
+
 struct primary_expr : peg::sor<true_kw,
                                false_kw,
                                boolean_kw,
@@ -159,6 +170,7 @@ struct primary_expr : peg::sor<true_kw,
                                string_literal,
                                numeric_literal,
                                aggregate_expr,
+                               function_call,
                                expr_identifier,
                                peg::seq<open_paren, padded<expression>, close_paren>> {};
 
@@ -166,6 +178,7 @@ struct op_plus : peg::one<'+'> {};
 struct op_minus : peg::one<'-'> {};
 struct op_mul : peg::one<'*'> {};
 struct op_div : peg::one<'/'> {};
+struct op_mod : peg::one<'%'> {};
 struct op_eq : peg::one<'='> {};
 struct op_neq : peg::sor<peg::string<'!', '='>, peg::string<'<', '>'>> {};
 struct op_lte : peg::string<'<', '='> {};
@@ -182,10 +195,26 @@ struct binary_op : peg::sor<op_neq,
                             op_minus,
                             op_mul,
                             op_div,
+                            op_mod,
                             and_kw,
                             or_kw> {};
 
-struct expression : peg::list<primary_expr, padded<binary_op>> {};
+struct null_token : TAO_PEGTL_ISTRING("NULL") {};
+struct is_null_op : peg::seq<is_kw, mand_space, null_token> {};
+struct is_not_null_op : peg::seq<is_kw, mand_space, not_kw, mand_space, null_token> {};
+struct postfix_null_op : peg::sor<is_not_null_op, is_null_op> {};
+
+struct unary_minus_expr;
+struct unary_not_expr;
+
+struct operand_expr : peg::sor<peg::seq<primary_expr, peg::opt<mand_space, postfix_null_op>>,
+                               unary_minus_expr,
+                               unary_not_expr> {};
+
+struct unary_minus_expr : peg::seq<op_minus, opt_space, operand_expr> {};
+struct unary_not_expr : peg::seq<not_kw, mand_space, operand_expr> {};
+
+struct expression : peg::list<operand_expr, padded<binary_op>> {};
 
 struct select_all : peg::one<'*'> {};
 struct select_item : peg::sor<select_all, expression> {};
