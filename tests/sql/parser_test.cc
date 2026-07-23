@@ -1,11 +1,8 @@
-#include <string_view>
-
 #include <catch2/catch_test_macros.hpp>
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
 
-#include "sql/file.hh"
 #include "sql/parser/parser.hh"
 #include "sql/type.hh"
 #include "support/diagnostic/location.hh"
@@ -15,17 +12,8 @@ namespace cairn::tests {
 
 using namespace cairn::sql;
 
-namespace {
-
-auto parse_sql(std::string_view query) {
-    const file f{query};
-    return parser::parse(f);
-}
-
-} // namespace
-
 TEST_CASE("Parse SELECT statement") {
-    auto tree{UNWRAP(parse_sql("SELECT * FROM users;"))};
+    auto tree{UNWRAP(parser::parse("SELECT * FROM users;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -40,7 +28,7 @@ TEST_CASE("Parse SELECT statement") {
 }
 
 TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
-    auto tree{UNWRAP(parse_sql("SELECT id, name FROM users WHERE id = 5 AND age > 21;"))};
+    auto tree{UNWRAP(parser::parse("SELECT id, name FROM users WHERE id = 5 AND age > 21;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -70,7 +58,7 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
 }
 
 TEST_CASE("Parse CREATE TABLE statement") {
-    auto tree{UNWRAP(parse_sql(
+    auto tree{UNWRAP(parser::parse(
         "CREATE TABLE customers (id INT NOT NULL, name VARCHAR NULL, is_active BOOLEAN);"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
@@ -97,7 +85,7 @@ TEST_CASE("Parse CREATE TABLE statement") {
 }
 
 TEST_CASE("Parse DROP TABLE statement") {
-    auto tree{UNWRAP(parse_sql("DROP TABLE customers;"))};
+    auto tree{UNWRAP(parser::parse("DROP TABLE customers;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -108,7 +96,7 @@ TEST_CASE("Parse DROP TABLE statement") {
 }
 
 TEST_CASE("Parse ALTER TABLE statement") {
-    auto tree{UNWRAP(parse_sql("ALTER TABLE employees ADD email VARCHAR NOT NULL;"))};
+    auto tree{UNWRAP(parser::parse("ALTER TABLE employees ADD email VARCHAR NOT NULL;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -122,7 +110,8 @@ TEST_CASE("Parse ALTER TABLE statement") {
 }
 
 TEST_CASE("Parse CREATE INDEX statement") {
-    auto tree{UNWRAP(parse_sql("CREATE INDEX idx_emp_name ON employees (last_name, first_name);"))};
+    auto tree{
+        UNWRAP(parser::parse("CREATE INDEX idx_emp_name ON employees (last_name, first_name);"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -139,7 +128,7 @@ TEST_CASE("Parse CREATE INDEX statement") {
 }
 
 TEST_CASE("Parse DROP INDEX statement") {
-    auto tree{UNWRAP(parse_sql("DROP INDEX idx_emp_name ON employees;"))};
+    auto tree{UNWRAP(parser::parse("DROP INDEX idx_emp_name ON employees;"))};
     auto roots{tree.roots()};
     REQUIRE(roots.size() == 1);
 
@@ -151,14 +140,14 @@ TEST_CASE("Parse DROP INDEX statement") {
 }
 
 TEST_CASE("Parse error diagnostics") {
-    auto loc{UNWRAP_ERR(parse_sql("SELECT FROM users;"))};
+    auto loc{UNWRAP_ERR(parser::parse("SELECT FROM users;"))};
     CHECK(loc.line == 0);
     CHECK(loc.column == 7);
 }
 
 TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
     SECTION("COUNT(*) aggregate") {
-        auto tree{UNWRAP(parse_sql("SELECT COUNT(*) FROM users;"))};
+        auto tree{UNWRAP(parser::parse("SELECT COUNT(*) FROM users;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
 
@@ -174,10 +163,10 @@ TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
     }
 
     SECTION("Aggregates with GROUP BY and HAVING") {
-        auto tree{UNWRAP(
-            parse_sql("SELECT department_id, SUM(salary), AVG(DISTINCT bonus) FROM employees "
-                      "WHERE active = true GROUP BY department_id, location_id HAVING SUM(salary) "
-                      "> 50000;"))};
+        auto tree{UNWRAP(parser::parse(
+            "SELECT department_id, SUM(salary), AVG(DISTINCT bonus) FROM employees "
+            "WHERE active = true GROUP BY department_id, location_id HAVING SUM(salary) "
+            "> 50000;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
 
@@ -204,7 +193,7 @@ TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
 
 TEST_CASE("Parse modulo, unary operators, and built-in functions") {
     SECTION("Parse modulo binary operator") {
-        auto tree{UNWRAP(parse_sql("SELECT id % 10 FROM users;"))};
+        auto tree{UNWRAP(parser::parse("SELECT id % 10 FROM users;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
@@ -215,8 +204,8 @@ TEST_CASE("Parse modulo, unary operators, and built-in functions") {
     }
 
     SECTION("Parse negation, NOT, IS NULL unary operators") {
-        auto tree{UNWRAP(
-            parse_sql("SELECT -id, NOT active FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
+        auto tree{UNWRAP(parser::parse(
+            "SELECT -id, NOT active FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};
@@ -250,7 +239,7 @@ TEST_CASE("Parse modulo, unary operators, and built-in functions") {
 
     SECTION("Parse built-in functions") {
         auto tree{
-            UNWRAP(parse_sql("SELECT COALESCE(name, 'N/A'), SUBSTR(name, 1, 3) FROM users;"))};
+            UNWRAP(parser::parse("SELECT COALESCE(name, 'N/A'), SUBSTR(name, 1, 3) FROM users;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         const auto& select{UNWRAP(tree[roots[0]].as_opt<parser::select_stmt_t>())};

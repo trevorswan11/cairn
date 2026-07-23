@@ -8,7 +8,6 @@
 #include "sql/binder/binder.hh"
 #include "sql/binder/nodes.hh"
 #include "sql/catalog.hh"
-#include "sql/file.hh"
 #include "sql/parser/parser.hh"
 #include "sql/schema.hh"
 #include "sql/type.hh"
@@ -25,15 +24,6 @@ namespace cairn::tests {
 
 using namespace cairn::sql;
 using namespace stdx::size_literals;
-
-namespace {
-
-auto parse_sql(std::string_view query) {
-    const file f{query};
-    return parser::parse(f);
-}
-
-} // namespace
 
 TEST_CASE("sql::binder basic resolution and errors") {
     helpers::tempfile db_file{"binder_test_db"};
@@ -64,7 +54,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
     binder::binder_t<64> b{cat};
 
     SECTION("Bind SELECT *") {
-        auto tree{UNWRAP(parse_sql("SELECT * FROM users;"))};
+        auto tree{UNWRAP(parser::parse("SELECT * FROM users;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
 
@@ -114,8 +104,8 @@ TEST_CASE("sql::binder basic resolution and errors") {
     }
 
     SECTION("Bind SELECT with table alias and WHERE clause") {
-        auto tree{
-            UNWRAP(parse_sql("SELECT u.name, u.id FROM users AS u WHERE u.id = 42 AND u.active;"))};
+        auto tree{UNWRAP(
+            parser::parse("SELECT u.name, u.id FROM users AS u WHERE u.id = 42 AND u.active;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
 
@@ -165,35 +155,35 @@ TEST_CASE("sql::binder basic resolution and errors") {
     }
 
     SECTION("Bind error: Table not found") {
-        auto tree{UNWRAP(parse_sql("SELECT * FROM non_existent;"))};
+        auto tree{UNWRAP(parser::parse("SELECT * FROM non_existent;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
     }
 
     SECTION("Bind error: Column not found") {
-        auto tree{UNWRAP(parse_sql("SELECT age FROM users;"))};
+        auto tree{UNWRAP(parser::parse("SELECT age FROM users;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_COLUMN_NOT_FOUND);
     }
 
     SECTION("Bind error: Table not found when alias masks table name") {
-        auto tree{UNWRAP(parse_sql("SELECT users.id FROM users AS u;"))};
+        auto tree{UNWRAP(parser::parse("SELECT users.id FROM users AS u;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
     }
 
     SECTION("Bind error: Type mismatch in WHERE clause") {
-        auto tree{UNWRAP(parse_sql("SELECT * FROM users WHERE id;"))};
+        auto tree{UNWRAP(parser::parse("SELECT * FROM users WHERE id;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TYPE_MISMATCH);
     }
 
     SECTION("Bind error: Type mismatch in binary operations") {
-        auto tree{UNWRAP(parse_sql("SELECT * FROM users WHERE name = 5;"))};
+        auto tree{UNWRAP(parser::parse("SELECT * FROM users WHERE name = 5;"))};
         auto roots{tree.roots()};
         REQUIRE(roots.size() == 1);
         CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TYPE_MISMATCH);
@@ -214,7 +204,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
         }
 
         SECTION("Implicit coercion cast injection") {
-            auto        tree{UNWRAP(parse_sql("SELECT id FROM employees WHERE salary > 50;"))};
+            auto        tree{UNWRAP(parser::parse("SELECT id FROM employees WHERE salary > 50;"))};
             auto        roots{tree.roots()};
             auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
             const auto& select{
@@ -229,7 +219,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
 
         SECTION("Aggregate functions and return types") {
             auto tree{
-                UNWRAP(parse_sql("SELECT COUNT(*), SUM(salary), AVG(salary) FROM employees;"))};
+                UNWRAP(parser::parse("SELECT COUNT(*), SUM(salary), AVG(salary) FROM employees;"))};
             auto        roots{tree.roots()};
             auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
             const auto& select{
@@ -254,10 +244,10 @@ TEST_CASE("sql::binder basic resolution and errors") {
         }
 
         SECTION("GROUP BY and HAVING clauses") {
-            auto        tree{UNWRAP(parse_sql("SELECT dept_id, SUM(salary) FROM employees GROUP BY "
-                                              "dept_id HAVING SUM(salary) > 1000;"))};
-            auto        roots{tree.roots()};
-            auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+            auto tree{UNWRAP(parser::parse("SELECT dept_id, SUM(salary) FROM employees GROUP BY "
+                                           "dept_id HAVING SUM(salary) > 1000;"))};
+            auto roots{tree.roots()};
+            auto bound_ast{UNWRAP(b.bind(tree, roots[0]))};
             const auto& select{
                 UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_ast.roots()[0]))};
             REQUIRE(select.group_by.size() == 1);
@@ -265,32 +255,32 @@ TEST_CASE("sql::binder basic resolution and errors") {
         }
 
         SECTION("Bind error: Invalid aggregate in WHERE clause") {
-            auto tree{UNWRAP(parse_sql("SELECT id FROM employees WHERE SUM(salary) > 1000;"))};
+            auto tree{UNWRAP(parser::parse("SELECT id FROM employees WHERE SUM(salary) > 1000;"))};
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_INVALID_AGGREGATE);
         }
 
         SECTION("Bind error: Duplicate column constraint in CREATE TABLE") {
-            auto tree{UNWRAP(parse_sql("CREATE TABLE dup_test (id INT, id INT);"))};
+            auto tree{UNWRAP(parser::parse("CREATE TABLE dup_test (id INT, id INT);"))};
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_CONSTRAINT_VIOLATION);
         }
 
         SECTION("Bind error: Invalid aggregate on non-numeric type") {
-            auto tree{UNWRAP(parse_sql("SELECT SUM(name) FROM employees;"))};
+            auto tree{UNWRAP(parser::parse("SELECT SUM(name) FROM employees;"))};
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_INVALID_AGGREGATE);
         }
 
         SECTION("Bind error: Ungrouped column error") {
-            auto tree{UNWRAP(parse_sql("SELECT name, SUM(salary) FROM employees;"))};
+            auto tree{UNWRAP(parser::parse("SELECT name, SUM(salary) FROM employees;"))};
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_UNGROUPED_COLUMN);
         }
 
         SECTION("Bind error: Non-boolean HAVING clause") {
-            auto tree{
-                UNWRAP(parse_sql("SELECT dept_id FROM employees GROUP BY dept_id HAVING salary;"))};
+            auto tree{UNWRAP(
+                parser::parse("SELECT dept_id FROM employees GROUP BY dept_id HAVING salary;"))};
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TYPE_MISMATCH);
         }
@@ -298,21 +288,22 @@ TEST_CASE("sql::binder basic resolution and errors") {
         SECTION("Bind DDL error paths: DROP TABLE, ALTER TABLE, INDEX") {
             // DROP TABLE non-existent
             {
-                auto tree{UNWRAP(parse_sql("DROP TABLE nonexistent_tbl;"))};
+                auto tree{UNWRAP(parser::parse("DROP TABLE nonexistent_tbl;"))};
                 auto roots{tree.roots()};
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
             }
 
             // ALTER TABLE ADD existing column
             {
-                auto tree{UNWRAP(parse_sql("ALTER TABLE employees ADD COLUMN name VARCHAR;"))};
+                auto tree{UNWRAP(parser::parse("ALTER TABLE employees ADD COLUMN name VARCHAR;"))};
                 auto roots{tree.roots()};
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_CONSTRAINT_VIOLATION);
             }
 
             // ALTER TABLE DROP non-existent column
             {
-                auto tree{UNWRAP(parse_sql("ALTER TABLE employees DROP COLUMN nonexistent_col;"))};
+                auto tree{
+                    UNWRAP(parser::parse("ALTER TABLE employees DROP COLUMN nonexistent_col;"))};
                 auto roots{tree.roots()};
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_COLUMN_NOT_FOUND);
             }
@@ -320,14 +311,14 @@ TEST_CASE("sql::binder basic resolution and errors") {
             // CREATE INDEX non-existent column
             {
                 auto tree{
-                    UNWRAP(parse_sql("CREATE INDEX idx_emp_bogus ON employees (bogus_col);"))};
+                    UNWRAP(parser::parse("CREATE INDEX idx_emp_bogus ON employees (bogus_col);"))};
                 auto roots{tree.roots()};
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_COLUMN_NOT_FOUND);
             }
 
             // DROP INDEX non-existent table
             {
-                auto tree{UNWRAP(parse_sql("DROP INDEX idx_bogus ON nonexistent_tbl;"))};
+                auto tree{UNWRAP(parser::parse("DROP INDEX idx_bogus ON nonexistent_tbl;"))};
                 auto roots{tree.roots()};
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
             }
@@ -336,7 +327,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
         SECTION("Bind modulo, unary operators, and built-in functions") {
             // Modulo
             {
-                auto        tree{UNWRAP(parse_sql("SELECT id % 10 FROM users;"))};
+                auto        tree{UNWRAP(parser::parse("SELECT id % 10 FROM users;"))};
                 auto        roots{tree.roots()};
                 auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
                 auto        bound_roots{bound_ast.roots()};
@@ -351,7 +342,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
 
             // Unary MINUS and NOT
             {
-                auto        tree{UNWRAP(parse_sql("SELECT -id FROM users WHERE NOT active;"))};
+                auto        tree{UNWRAP(parser::parse("SELECT -id FROM users WHERE NOT active;"))};
                 auto        roots{tree.roots()};
                 auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
                 auto        bound_roots{bound_ast.roots()};
@@ -374,8 +365,8 @@ TEST_CASE("sql::binder basic resolution and errors") {
 
             // IS NULL and IS NOT NULL
             {
-                auto        tree{UNWRAP(
-                    parse_sql("SELECT name FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
+                auto        tree{UNWRAP(parser::parse(
+                    "SELECT name FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
                 auto        roots{tree.roots()};
                 auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
                 auto        bound_roots{bound_ast.roots()};
@@ -401,11 +392,11 @@ TEST_CASE("sql::binder basic resolution and errors") {
 
             // Built-in functions COALESCE, LOWER, SUBSTR
             {
-                auto        tree{UNWRAP(parse_sql("SELECT COALESCE(name, 'default'), LOWER(name), "
-                                                  "SUBSTR(name, 1, 3) FROM users;"))};
-                auto        roots{tree.roots()};
-                auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
-                auto        bound_roots{bound_ast.roots()};
+                auto tree{UNWRAP(parser::parse("SELECT COALESCE(name, 'default'), LOWER(name), "
+                                               "SUBSTR(name, 1, 3) FROM users;"))};
+                auto roots{tree.roots()};
+                auto bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+                auto bound_roots{bound_ast.roots()};
                 const auto& select{
                     UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_roots[0]))};
 

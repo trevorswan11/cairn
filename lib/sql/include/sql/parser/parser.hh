@@ -7,6 +7,7 @@
 #include <stdx/fixed/string.hh>
 #include <stdx/option.hh>
 #include <stdx/result.hh>
+#include <stdx/string.hh>
 #include <stdx/types.hh>
 #include <stdx/utility.hh>
 #include <stdx/variant.hh>
@@ -163,5 +164,10 @@ using node_data_t = stdx::variant<stdx::monostate,
 using ast_t = detail::ast_t<node_data_t>;
 
 [[nodiscard]] auto parse(const file& source_file) noexcept -> stdx::result<ast_t, location>;
+
+template <stdx::StringLike S> auto parse(const S& input) -> stdx::result<ast_t, location> {
+    const file f{stdx::string::to_view(input)};
+    return parse(f);
+}
 
 } // namespace cairn::sql::parser
