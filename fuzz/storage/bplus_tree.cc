@@ -31,7 +31,7 @@ struct GetOp {
 
 using TreeOp = stdx::variant<InsertOp, RemoveOp, GetOp>;
 
-void FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) {
+auto FuzzBPlusTreeInvariants(const std::vector<TreeOp>& operations) -> void {
     helpers::tempfile file{"bpt_wide"};
     using tree_t = bplus_tree<u64, u64, 64>;
     auto pool{UNWRAP(tree_t::pool_t::open(file.path))};
