@@ -332,6 +332,108 @@ TEST_CASE("sql::binder basic resolution and errors") {
                 CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
             }
         }
+
+        SECTION("Bind modulo, unary operators, and built-in functions") {
+            // Modulo
+            {
+                auto        tree{UNWRAP(parse_sql("SELECT id % 10 FROM users;"))};
+                auto        roots{tree.roots()};
+                auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+                auto        bound_roots{bound_ast.roots()};
+                const auto& select{
+                    UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_roots[0]))};
+                auto expr_id{select.select_list[0]};
+                REQUIRE(expr_id.kind() == binder::node_kind_t::BINARY_EXPR);
+                const auto& bin{UNWRAP(bound_ast.get_as_opt<binder::binary_expr_t>(expr_id))};
+                CHECK(bin.op == parser::binary_op_t::MOD);
+                CHECK(bin.type == type::id_t::INTEGER);
+            }
+
+            // Unary MINUS and NOT
+            {
+                auto        tree{UNWRAP(parse_sql("SELECT -id FROM users WHERE NOT active;"))};
+                auto        roots{tree.roots()};
+                auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+                auto        bound_roots{bound_ast.roots()};
+                const auto& select{
+                    UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_roots[0]))};
+
+                auto select_expr_id{select.select_list[0]};
+                REQUIRE(select_expr_id.kind() == binder::node_kind_t::UNARY_EXPR);
+                const auto& unary_minus{
+                    UNWRAP(bound_ast.get_as_opt<binder::unary_expr_t>(select_expr_id))};
+                CHECK(unary_minus.op == binder::unary_op_t::MINUS);
+                CHECK(unary_minus.type == type::id_t::INTEGER);
+
+                auto where_id{UNWRAP(select.where_clause)};
+                REQUIRE(where_id.kind() == binder::node_kind_t::UNARY_EXPR);
+                const auto& unary_not{UNWRAP(bound_ast.get_as_opt<binder::unary_expr_t>(where_id))};
+                CHECK(unary_not.op == binder::unary_op_t::NOT);
+                CHECK(unary_not.type == type::id_t::BOOLEAN);
+            }
+
+            // IS NULL and IS NOT NULL
+            {
+                auto        tree{UNWRAP(
+                    parse_sql("SELECT name FROM users WHERE name IS NULL AND id IS NOT NULL;"))};
+                auto        roots{tree.roots()};
+                auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+                auto        bound_roots{bound_ast.roots()};
+                const auto& select{
+                    UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_roots[0]))};
+
+                auto where_id{UNWRAP(select.where_clause)};
+                REQUIRE(where_id.kind() == binder::node_kind_t::BINARY_EXPR);
+                const auto& bin_and{UNWRAP(bound_ast.get_as_opt<binder::binary_expr_t>(where_id))};
+
+                REQUIRE(bin_and.lhs.kind() == binder::node_kind_t::UNARY_EXPR);
+                const auto& is_null{
+                    UNWRAP(bound_ast.get_as_opt<binder::unary_expr_t>(bin_and.lhs))};
+                CHECK(is_null.op == binder::unary_op_t::IS_NULL);
+                CHECK(is_null.type == type::id_t::BOOLEAN);
+
+                REQUIRE(bin_and.rhs.kind() == binder::node_kind_t::UNARY_EXPR);
+                const auto& is_not_null{
+                    UNWRAP(bound_ast.get_as_opt<binder::unary_expr_t>(bin_and.rhs))};
+                CHECK(is_not_null.op == binder::unary_op_t::IS_NOT_NULL);
+                CHECK(is_not_null.type == type::id_t::BOOLEAN);
+            }
+
+            // Built-in functions COALESCE, LOWER, SUBSTR
+            {
+                auto        tree{UNWRAP(parse_sql("SELECT COALESCE(name, 'default'), LOWER(name), "
+                                                  "SUBSTR(name, 1, 3) FROM users;"))};
+                auto        roots{tree.roots()};
+                auto        bound_ast{UNWRAP(b.bind(tree, roots[0]))};
+                auto        bound_roots{bound_ast.roots()};
+                const auto& select{
+                    UNWRAP(bound_ast.get_as_opt<binder::select_stmt_t>(bound_roots[0]))};
+
+                // COALESCE(name, 'default') -> VARCHAR
+                auto coalesce_id{select.select_list[0]};
+                REQUIRE(coalesce_id.kind() == binder::node_kind_t::FUNCTION_EXPR);
+                const auto& coalesce_fn{
+                    UNWRAP(bound_ast.get_as_opt<binder::function_expr_t>(coalesce_id))};
+                CHECK(coalesce_fn.func == binder::func_type_t::COALESCE);
+                CHECK(coalesce_fn.type == type::id_t::VARCHAR);
+
+                // LOWER(name) -> VARCHAR
+                auto lower_id{select.select_list[1]};
+                REQUIRE(lower_id.kind() == binder::node_kind_t::FUNCTION_EXPR);
+                const auto& lower_fn{
+                    UNWRAP(bound_ast.get_as_opt<binder::function_expr_t>(lower_id))};
+                CHECK(lower_fn.func == binder::func_type_t::LOWER);
+                CHECK(lower_fn.type == type::id_t::VARCHAR);
+
+                // SUBSTR(name, 1, 3) -> VARCHAR
+                auto substr_id{select.select_list[2]};
+                REQUIRE(substr_id.kind() == binder::node_kind_t::FUNCTION_EXPR);
+                const auto& substr_fn{
+                    UNWRAP(bound_ast.get_as_opt<binder::function_expr_t>(substr_id))};
+                CHECK(substr_fn.func == binder::func_type_t::SUBSTR);
+                CHECK(substr_fn.type == type::id_t::VARCHAR);
+            }
+        }
     }
 }
 
