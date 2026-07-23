@@ -433,7 +433,8 @@ template <usize PoolSize> class binder_t {
                 case parser::binary_op_t::ADD:
                 case parser::binary_op_t::SUB:
                 case parser::binary_op_t::MUL:
-                case parser::binary_op_t::DIV: {
+                case parser::binary_op_t::DIV:
+                case parser::binary_op_t::MOD: {
                     auto target_type_opt{type::common_type(l_type, r_type)};
                     if (!type::is_numeric(target_type_opt)) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
@@ -463,6 +464,184 @@ template <usize PoolSize> class binder_t {
                 return ast.template add_node<binary_expr_t>(
                     loc, binary.op, bound_lhs_id, bound_rhs_id, res_type);
             },
+            [&](const parser::unary_expr_t& unary) -> stdx::result<node_id_t, diagnostic> {
+                auto bound_expr_id{TRY(bind_expression(tree, unary.expr, scopes, ast))};
+                auto expr_type{get_expr_type(ast, bound_expr_id)};
+
+                stdx::option<type::id_t> res_type;
+                unary_op_t               bound_op;
+
+                switch (unary.op) {
+                case parser::unary_op_t::MINUS: {
+                    if (!type::is_numeric(expr_type)) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    res_type = expr_type;
+                    bound_op = unary_op_t::MINUS;
+                    break;
+                }
+                case parser::unary_op_t::NOT: {
+                    if (expr_type != type::id_t::BOOLEAN) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    res_type.emplace(type::id_t::BOOLEAN);
+                    bound_op = unary_op_t::NOT;
+                    break;
+                }
+                case parser::unary_op_t::IS_NULL: {
+                    res_type.emplace(type::id_t::BOOLEAN);
+                    bound_op = unary_op_t::IS_NULL;
+                    break;
+                }
+                case parser::unary_op_t::IS_NOT_NULL: {
+                    res_type.emplace(type::id_t::BOOLEAN);
+                    bound_op = unary_op_t::IS_NOT_NULL;
+                    break;
+                }
+                }
+                return ast.template add_node<unary_expr_t>(loc, bound_op, bound_expr_id, res_type);
+            },
+            [&](const parser::function_expr_t& func) -> stdx::result<node_id_t, diagnostic> {
+                std::vector<node_id_t>                bound_args;
+                std::vector<stdx::option<type::id_t>> arg_types;
+                for (auto arg_id : func.args) {
+                    auto bound_id{TRY(bind_expression(tree, arg_id, scopes, ast))};
+                    bound_args.emplace_back(bound_id);
+                    arg_types.emplace_back(get_expr_type(ast, bound_id));
+                }
+
+                func_type_t              bound_func;
+                stdx::option<type::id_t> res_type;
+                std::string_view         name_view{func.name.view()};
+
+                if (string_utils::iequals{}(name_view, "COALESCE")) {
+                    if (bound_args.empty()) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+
+                    stdx::option<type::id_t> common{arg_types[0]};
+                    for (usize i{1}; i < arg_types.size(); ++i) {
+                        common = type::common_type(common, arg_types[i]);
+                    }
+                    if (!common) { return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}}; }
+
+                    for (usize i{0}; i < bound_args.size(); ++i) {
+                        if (arg_types[i] != common) {
+                            if (!type::can_coerce(arg_types[i], common)) {
+                                return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                            }
+                            bound_args[i] =
+                                ast.template add_node<cast_expr_t>(loc, bound_args[i], *common);
+                        }
+                    }
+                    bound_func = func_type_t::COALESCE;
+                    res_type   = common;
+                } else if (string_utils::iequals{}(name_view, "NULLIF")) {
+                    if (bound_args.size() != 2) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    auto common{type::common_type(arg_types[0], arg_types[1])};
+                    if (!common) { return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}}; }
+                    for (usize i{0}; i < 2; ++i) {
+                        if (arg_types[i] != common) {
+                            if (!type::can_coerce(arg_types[i], common)) {
+                                return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                            }
+                            bound_args[i] =
+                                ast.template add_node<cast_expr_t>(loc, bound_args[i], *common);
+                        }
+                    }
+                    bound_func = func_type_t::NULLIF;
+                    res_type   = common;
+                } else if (string_utils::iequals{}(name_view, "LOWER") ||
+                           string_utils::iequals{}(name_view, "UPPER")) {
+                    if (bound_args.size() != 1) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    if (arg_types[0] != type::id_t::VARCHAR) {
+                        if (!type::can_coerce(arg_types[0], type::id_t::VARCHAR)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_args[0] = ast.template add_node<cast_expr_t>(
+                            loc, bound_args[0], type::id_t::VARCHAR);
+                    }
+                    bound_func = string_utils::iequals{}(name_view, "LOWER") ? func_type_t::LOWER
+                                                                             : func_type_t::UPPER;
+                    res_type.emplace(type::id_t::VARCHAR);
+                } else if (string_utils::iequals{}(name_view, "LENGTH")) {
+                    if (bound_args.size() != 1) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    if (arg_types[0] != type::id_t::VARCHAR) {
+                        if (!type::can_coerce(arg_types[0], type::id_t::VARCHAR)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_args[0] = ast.template add_node<cast_expr_t>(
+                            loc, bound_args[0], type::id_t::VARCHAR);
+                    }
+                    bound_func = func_type_t::LENGTH;
+                    res_type.emplace(type::id_t::BIGINT);
+                } else if (string_utils::iequals{}(name_view, "SUBSTR")) {
+                    if (bound_args.size() != 3) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    if (arg_types[0] != type::id_t::VARCHAR) {
+                        if (!type::can_coerce(arg_types[0], type::id_t::VARCHAR)) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        bound_args[0] = ast.template add_node<cast_expr_t>(
+                            loc, bound_args[0], type::id_t::VARCHAR);
+                    }
+                    for (usize i{1}; i < 3; ++i) {
+                        if (!type::is_numeric(arg_types[i])) {
+                            return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                        }
+                        if (arg_types[i] != type::id_t::INTEGER) {
+                            if (!type::can_coerce(arg_types[i], type::id_t::INTEGER)) {
+                                return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                            }
+                            bound_args[i] = ast.template add_node<cast_expr_t>(
+                                loc, bound_args[i], type::id_t::INTEGER);
+                        }
+                    }
+                    bound_func = func_type_t::SUBSTR;
+                    res_type.emplace(type::id_t::VARCHAR);
+                } else if (string_utils::iequals{}(name_view, "ABS")) {
+                    if (bound_args.size() != 1) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    if (!type::is_numeric(arg_types[0])) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    bound_func = func_type_t::ABS;
+                    res_type   = arg_types[0];
+                } else if (string_utils::iequals{}(name_view, "MOD")) {
+                    if (bound_args.size() != 2) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    if (!type::is_numeric(arg_types[0]) || !type::is_numeric(arg_types[1])) {
+                        return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                    }
+                    auto common{type::common_type(arg_types[0], arg_types[1])};
+                    if (!common) { return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}}; }
+                    for (usize i{0}; i < 2; ++i) {
+                        if (arg_types[i] != common) {
+                            if (!type::can_coerce(arg_types[i], common)) {
+                                return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
+                            }
+                            bound_args[i] =
+                                ast.template add_node<cast_expr_t>(loc, bound_args[i], *common);
+                        }
+                    }
+                    bound_func = func_type_t::MOD;
+                    res_type   = common;
+                } else {
+                    return stdx::err{diagnostic{error::SQL_COLUMN_NOT_FOUND, loc}};
+                }
+
+                return ast.template add_node<function_expr_t>(
+                    loc, bound_func, std::move(bound_args), res_type);
+            },
             [&](const auto&) -> stdx::result<node_id_t, diagnostic> {
                 return stdx::err{diagnostic{error::IO_ERROR, loc}};
             });
@@ -476,32 +655,44 @@ template <usize PoolSize> class binder_t {
             [](const binary_expr_t& bin) { return bin.type; },
             [](const cast_expr_t& cst) -> stdx::option<type::id_t> { return cst.target_type; },
             [](const aggregate_expr_t& agg) { return agg.return_type; },
+            [](const unary_expr_t& unary) { return unary.type; },
+            [](const function_expr_t& func) { return func.type; },
             [](const auto&) -> stdx::option<type::id_t> { return stdx::none; });
     }
 
     static auto collect_unaggregated_cols(const ast_t&                    ast,
                                           node_id_t                       id,
                                           std::vector<column_ref_expr_t>& cols) -> void {
-        const auto& node{ast[id]};
-        node.visit([&](const column_ref_expr_t& col) { cols.emplace_back(col); },
-                   [&](const binary_expr_t& bin) {
-                       collect_unaggregated_cols(ast, bin.lhs, cols);
-                       collect_unaggregated_cols(ast, bin.rhs, cols);
-                   },
-                   [&](const cast_expr_t& cst) { collect_unaggregated_cols(ast, cst.expr, cols); },
-                   [&](const aggregate_expr_t&) {},
-                   [&](const auto&) {});
+        ast[id].visit(
+            [&](const column_ref_expr_t& col) { cols.emplace_back(col); },
+            [&](const binary_expr_t& bin) {
+                collect_unaggregated_cols(ast, bin.lhs, cols);
+                collect_unaggregated_cols(ast, bin.rhs, cols);
+            },
+            [&](const cast_expr_t& cst) { collect_unaggregated_cols(ast, cst.expr, cols); },
+            [&](const unary_expr_t& unary) { collect_unaggregated_cols(ast, unary.expr, cols); },
+            [&](const function_expr_t& func) {
+                for (auto arg : func.args) { collect_unaggregated_cols(ast, arg, cols); }
+            },
+            [&](const aggregate_expr_t&) {},
+            [&](const auto&) {});
     }
 
     [[nodiscard]] static auto contains_aggregate(const ast_t& ast, node_id_t id) -> bool {
-        const auto& node{ast[id]};
-        return node.visit([&](const aggregate_expr_t&) { return true; },
-                          [&](const binary_expr_t& bin) {
-                              return contains_aggregate(ast, bin.lhs) ||
-                                     contains_aggregate(ast, bin.rhs);
-                          },
-                          [&](const cast_expr_t& cst) { return contains_aggregate(ast, cst.expr); },
-                          [&](const auto&) { return false; });
+        return ast[id].visit(
+            [&](const aggregate_expr_t&) { return true; },
+            [&](const binary_expr_t& bin) {
+                return contains_aggregate(ast, bin.lhs) || contains_aggregate(ast, bin.rhs);
+            },
+            [&](const cast_expr_t& cst) { return contains_aggregate(ast, cst.expr); },
+            [&](const unary_expr_t& unary) { return contains_aggregate(ast, unary.expr); },
+            [&](const function_expr_t& func) {
+                for (auto arg : func.args) {
+                    if (contains_aggregate(ast, arg)) { return true; }
+                }
+                return false;
+            },
+            [&](const auto&) { return false; });
     }
 
   private:
