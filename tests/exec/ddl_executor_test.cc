@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <gsl/span>
 #include <stdx/memory.hh>
+#include <stdx/option.hh>
 #include <stdx/types.hh>
 
 #include "exec/ddl_executor.hh"
@@ -22,6 +23,7 @@
 #include "sql/value.hh"
 #include "storage/bplus.hh"
 #include "storage/buffer_pool.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
 #include "txn/iot_tree.hh"
@@ -200,6 +202,61 @@ TEST_CASE("ddl_executor CREATE TABLE, DROP TABLE, ALTER TABLE, and CREATE INDEX"
     }
 
     CHECK_FALSE(cat.get_table("users").has_value());
+}
+
+TEST_CASE("ddl_executor error cases and index column shifting") {
+    helpers::tempfile db_file{"ddl_executor_err_db"};
+    helpers::tempfile log_file{"ddl_executor_err_log"};
+
+    using pool_t = storage::buffer_pool<64>;
+    wal::log::manager lm{log_file.path, 1_MiB};
+    auto              pool{UNWRAP(pool_t::open(db_file.path))};
+    pool->set_log_manager(lm);
+
+    txn::undo::manager<i64, 64> undo_mgr{*pool};
+    txn::manager                tm;
+    sql::catalog<64>            cat{*pool, tm, undo_mgr, lm};
+    REQUIRE(cat.bootstrap());
+
+    ddl_executor<64> executor{cat, *pool, tm};
+    const auto       t1{tm.begin_txn()};
+
+    // Non-existent table alter
+    sql::binder::alter_table_stmt_t alter_stmt{
+        .table_id   = sql::table_id_t{999},
+        .table_name = "nonexistent",
+        .column_def = {"c1", sql::type::id_t::INTEGER},
+    };
+    CHECK(UNWRAP_ERR(executor.execute_alter_table(t1, alter_stmt)) == error::SQL_TABLE_NOT_FOUND);
+
+    // Non-existent table create index
+    sql::binder::create_index_stmt_t idx_stmt{
+        .index_name     = "idx1",
+        .table_id       = sql::table_id_t{999},
+        .table_name     = "nonexistent",
+        .column_names   = {"c1"},
+        .column_indices = {0},
+    };
+    CHECK(UNWRAP_ERR(executor.execute_create_index(t1, sql::index_id_t{10}, idx_stmt)) ==
+          error::SQL_TABLE_NOT_FOUND);
+
+    // Empty column indices create index
+    sql::binder::create_table_stmt_t create_stmt{
+        .table_name  = "t1",
+        .column_defs = {{"c1", sql::type::id_t::INTEGER}},
+    };
+    REQUIRE(executor.execute_create_table(t1, sql::table_id_t{100}, create_stmt));
+    idx_stmt.table_id       = sql::table_id_t{100};
+    idx_stmt.table_name     = "t1";
+    idx_stmt.column_indices = {};
+    CHECK(UNWRAP_ERR(executor.execute_create_index(t1, sql::index_id_t{11}, idx_stmt)) ==
+          error::SQL_COLUMN_NOT_FOUND);
+
+    // Drop non-existent column
+    alter_stmt.table_id   = sql::table_id_t{100};
+    alter_stmt.table_name = "t1";
+    alter_stmt.column_def = {"nonexistent_col", stdx::none};
+    CHECK(UNWRAP_ERR(executor.execute_alter_table(t1, alter_stmt)) == error::SQL_COLUMN_NOT_FOUND);
 }
 
 } // namespace cairn::tests

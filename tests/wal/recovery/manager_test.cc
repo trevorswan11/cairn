@@ -7,6 +7,7 @@
 #include <stdx/memory.hh>
 #include <stdx/option.hh>
 #include <stdx/types.hh>
+#include <stdx/utility.hh>
 
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
@@ -18,6 +19,7 @@
 #include "txn/manager.hh"
 #include "wal/checkpoint/manager.hh"
 #include "wal/log/manager.hh"
+#include "wal/log/record.hh"
 #include "wal/log/seq_num.hh"
 #include "wal/recovery/manager.hh"
 
@@ -286,6 +288,81 @@ TEST_CASE("recovery with checkpoint") {
             slotted_page sp{*guard.get()};
             CHECK(UNWRAP_ERR(sp.get(slot_id_t{0})) == error::STORAGE_TUPLE_DELETED);
         }
+    }
+}
+
+TEST_CASE("recovery with missing log file") {
+    helpers::tempfile db_file{"recovery_nolog_db"};
+    helpers::tempfile log_file{"recovery_nolog_log"};
+    helpers::tempfile control_file{"recovery_nolog_control"};
+
+    using pool_t = buffer_pool<8>;
+    auto         pool{UNWRAP(pool_t::open(db_file.path))};
+    txn::manager tm;
+
+    // Remove log_file so it doesn't exist
+    std::filesystem::remove(log_file.path);
+
+    log::manager         log_mgr{log_file.path, 4_KiB};
+    recovery::manager<8> rm{*pool, tm, log_mgr, control_file.path, log_file.path};
+    REQUIRE(rm.recover());
+}
+
+TEST_CASE("recovery with CLEAR log records") {
+    helpers::tempfile db_file{"recovery_clear_db"};
+    helpers::tempfile log_file{"recovery_clear_log"};
+    helpers::tempfile control_file{"recovery_clear_control"};
+
+    using pool_t = buffer_pool<8>;
+    page_id_t pid;
+
+    {
+        log::manager log{log_file.path, 16_KiB};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
+        bp->set_log_manager(log);
+
+        txn::manager tm;
+        const auto   t1{tm.begin_txn()};
+
+        auto [id, guard]{UNWRAP(bp->new_write())};
+        pid = id;
+        slotted_page sp{*guard.get()};
+        sp.refresh_page();
+
+        CHECK(sp.insert(helpers::span_from_string("initial data"),
+                        {
+                            .txn_id      = t1,
+                            .prev_lsn    = stdx::none,
+                            .log_manager = log,
+                        }));
+        const auto update_lsn{UNWRAP(guard.get()->page_lsn())};
+
+        // Append a CLEAR record directly for t1
+        log::record clr;
+        clr.txn_id        = t1;
+        clr.type          = log::record_type::CLEAR;
+        clr.page_id       = pid;
+        clr.slot_id       = slot_id_t{0};
+        clr.prev_lsn      = update_lsn;
+        clr.undo_next_lsn = stdx::none;
+        clr.redo_data     = helpers::span_from_string("cleared data");
+
+        const auto clr_lsn{UNWRAP(log.append_record(clr))};
+        DISCARD(sp.write_slot_raw(slot_id_t{0}, helpers::span_from_string("cleared data")));
+        guard.get()->set_page_lsn(clr_lsn);
+        guard.mark_dirty();
+    }
+
+    // Recover with active t1
+    {
+        log::manager log{log_file.path, 16_KiB};
+        auto         bp{UNWRAP(pool_t::open(db_file.path))};
+        bp->set_log_manager(log);
+
+        // t1 was not committed, so undo will process CLEAR / BEGIN
+        txn::manager         tm;
+        recovery::manager<8> rm{*bp, tm, log, control_file.path, log_file.path};
+        REQUIRE(rm.recover());
     }
 }
 

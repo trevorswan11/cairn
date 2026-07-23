@@ -9,6 +9,8 @@
 #include <stdx/types.hh>
 
 #include "storage/buffer_pool.hh"
+#include "storage/page.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/tempfile.hh"
 #include "testhelpers/unwrap.hh"
@@ -60,6 +62,57 @@ TEST_CASE("undo::manager read/write records") {
     CHECK(rec2.op == undo::op_t::UPDATE);
     CHECK(rec2.prev_undo_ptr == ptr1);
     CHECK(helpers::string_from_span(rec_payload) == payload2);
+}
+
+TEST_CASE("undo::manager size checks and page active records") {
+    helpers::tempfile file{"undo_mgr_size_test"};
+    using pool_t = storage::buffer_pool<64>;
+    auto                   pool{UNWRAP(pool_t::open(file.path))};
+    undo::manager<i64, 64> undo_mgr{*pool};
+
+    // Oversized record check
+    std::vector<std::byte> huge_payload(storage::DB_PAGE_SIZE);
+    auto                   err_res{undo_mgr.append_record(
+        txn::id_t{1}, 1, undo::op_t::INSERT, false, false, stdx::none, stdx::none, huge_payload)};
+    CHECK(err_res.error() == error::STORAGE_TREE_CORRUPT);
+
+    // Active page count and get_page_active_records
+    CHECK(undo_mgr.active_page_count() == 0);
+    CHECK_FALSE(undo_mgr.get_page_active_records(storage::page_id_t{1}).has_value());
+
+    const std::string payload{"data"};
+    auto              ptr1{UNWRAP(undo_mgr.append_record(txn::id_t{1},
+                                            10,
+                                            undo::op_t::INSERT,
+                                            false,
+                                            false,
+                                            stdx::none,
+                                            stdx::none,
+                                            helpers::span_from_string(payload)))};
+    CHECK(undo_mgr.active_page_count() == 1);
+    CHECK(undo_mgr.get_page_active_records(ptr1.page_id) == 1);
+
+    // Reclaim chain and test page dropping
+    auto ptr2{UNWRAP(undo_mgr.append_record(txn::id_t{1},
+                                            10,
+                                            undo::op_t::UPDATE,
+                                            false,
+                                            false,
+                                            stdx::none,
+                                            ptr1,
+                                            helpers::span_from_string(payload)))};
+    CHECK(undo_mgr.get_page_active_records(ptr1.page_id) == 2);
+
+    // Reclaim ptr2's previous ptr (reclaims ptr1)
+    REQUIRE(undo_mgr.reclaim_prev_ptr(ptr2));
+    CHECK(undo_mgr.get_page_active_records(ptr1.page_id) == 1);
+
+    // Reclaiming again (already reset prev_undo_ptr) is a no-op
+    REQUIRE(undo_mgr.reclaim_prev_ptr(ptr2));
+
+    // Reclaim entire chain from ptr2
+    undo_mgr.reclaim_undo_chain(ptr2);
+    CHECK(undo_mgr.active_page_count() == 0);
 }
 
 } // namespace cairn::tests
