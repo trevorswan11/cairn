@@ -232,19 +232,22 @@ template <typename Key, usize PoolSize> class manager {
     }
 
     [[nodiscard]] auto reclaim_prev_ptr(ptr_t ptr) -> result<void> {
-        std::lock_guard lock{mutex_};
-        auto            guard{TRY(pool_.fetch_write(ptr.page_id))};
-        gsl::span       src{guard.get()->data() + ptr.offset, sizeof(record_t<Key>)};
+        std::lock_guard     lock{mutex_};
+        stdx::option<ptr_t> old_prev;
+        {
+            auto      guard{TRY(pool_.fetch_write(ptr.page_id))};
+            gsl::span src{guard.get()->data() + ptr.offset, sizeof(record_t<Key>)};
 
-        record_t<Key> rec;
-        std::memcpy(&rec, src.data(), src.size_bytes());
+            record_t<Key> rec;
+            std::memcpy(&rec, src.data(), src.size_bytes());
 
-        auto old_prev{rec.prev_undo_ptr};
-        if (!old_prev) { return {}; } // Already reclaimed
+            old_prev = rec.prev_undo_ptr;
+            if (!old_prev) { return {}; } // Already reclaimed
 
-        rec.prev_undo_ptr.reset();
-        std::memcpy(src.data(), &rec, src.size_bytes());
-        guard.mark_dirty();
+            rec.prev_undo_ptr.reset();
+            std::memcpy(src.data(), &rec, src.size_bytes());
+            guard.mark_dirty();
+        }
 
         if (old_prev) { reclaim_undo_chain_locked(*old_prev, &record_t<Key>::prev_undo_ptr); }
         return {};

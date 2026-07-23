@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
+#include <ios>
 #include <string_view>
 #include <thread>
 #include <vector>
@@ -17,6 +19,7 @@
 #include "storage/buffer_pool.hh"
 #include "storage/page.hh"
 #include "storage/slotted_page.hh"
+#include "support/diagnostic/error.hh"
 #include "testhelpers/conversion.hh"
 #include "testhelpers/mt_verifier.hh"
 #include "testhelpers/tempfile.hh"
@@ -174,6 +177,19 @@ TEST_CASE("checkpoint concurrent with page writes") {
     stop.store(true);
     writers.clear();
     REQUIRE_FALSE(verifier.dump_if_error());
+}
+
+TEST_CASE("checkpoint read_latest_checkpoint_lsn error paths") {
+    helpers::tempfile   control_file{"checkpoint_err_control"};
+    checkpoint::manager cm{control_file.path};
+    CHECK(UNWRAP_ERR(cm.read_latest_checkpoint_lsn()) == error::WAL_CONTROL_PATH_NOT_FOUND);
+
+    // Corrupted / invalid size file
+    {
+        std::ofstream ofs{control_file.path, std::ios::binary};
+        ofs << "short";
+    }
+    CHECK(UNWRAP_ERR(cm.read_latest_checkpoint_lsn()) == error::IO_ERROR);
 }
 
 } // namespace cairn::tests

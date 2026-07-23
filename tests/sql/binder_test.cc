@@ -287,6 +287,51 @@ TEST_CASE("sql::binder basic resolution and errors") {
             auto roots{tree.roots()};
             CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_UNGROUPED_COLUMN);
         }
+
+        SECTION("Bind error: Non-boolean HAVING clause") {
+            auto tree{
+                UNWRAP(parse_sql("SELECT dept_id FROM employees GROUP BY dept_id HAVING salary;"))};
+            auto roots{tree.roots()};
+            CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TYPE_MISMATCH);
+        }
+
+        SECTION("Bind DDL error paths: DROP TABLE, ALTER TABLE, INDEX") {
+            // DROP TABLE non-existent
+            {
+                auto tree{UNWRAP(parse_sql("DROP TABLE nonexistent_tbl;"))};
+                auto roots{tree.roots()};
+                CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
+            }
+
+            // ALTER TABLE ADD existing column
+            {
+                auto tree{UNWRAP(parse_sql("ALTER TABLE employees ADD COLUMN name VARCHAR;"))};
+                auto roots{tree.roots()};
+                CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_CONSTRAINT_VIOLATION);
+            }
+
+            // ALTER TABLE DROP non-existent column
+            {
+                auto tree{UNWRAP(parse_sql("ALTER TABLE employees DROP COLUMN nonexistent_col;"))};
+                auto roots{tree.roots()};
+                CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_COLUMN_NOT_FOUND);
+            }
+
+            // CREATE INDEX non-existent column
+            {
+                auto tree{
+                    UNWRAP(parse_sql("CREATE INDEX idx_emp_bogus ON employees (bogus_col);"))};
+                auto roots{tree.roots()};
+                CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_COLUMN_NOT_FOUND);
+            }
+
+            // DROP INDEX non-existent table
+            {
+                auto tree{UNWRAP(parse_sql("DROP INDEX idx_bogus ON nonexistent_tbl;"))};
+                auto roots{tree.roots()};
+                CHECK(UNWRAP_ERR(b.bind(tree, roots[0])).err() == error::SQL_TABLE_NOT_FOUND);
+            }
+        }
     }
 }
 
