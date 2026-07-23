@@ -7,7 +7,7 @@
 
 #include <stdx/types.hh>
 
-namespace cairn::sql::parser {
+namespace cairn::support {
 
 namespace symbols {
 
@@ -50,4 +50,4 @@ class indent_t {
     std::vector<bool> levels_;
 };
 
-} // namespace cairn::sql::parser
+} // namespace cairn::support
