@@ -17,26 +17,26 @@ class dumper_t {
     dumper_t(const ast_t& ast, std::ostream& out) : ast_{ast}, out_{out} {}
 
     auto dump(node_id_t id) -> void {
-        ast_[id].visit([&](const auto& node_data) { this->visit(node_data); });
+        ast_[id].visit([&](const auto& node_data) { (*this)(node_data); });
     }
 
   private:
-    auto visit(stdx::monostate) -> void {}
-    auto visit(const literal_expr_t& node) -> void;
-    auto visit(const identifier_expr_t& node) -> void;
-    auto visit(const binary_expr_t& node) -> void;
-    auto visit(const aggregate_expr_t& node) -> void;
-    auto visit(const select_stmt_t& node) -> void;
-    auto visit(const create_table_stmt_t& node) -> void;
-    auto visit(const drop_table_stmt_t& node) -> void;
-    auto visit(const alter_table_stmt_t& node) -> void;
-    auto visit(const create_index_stmt_t& node) -> void;
-    auto visit(const drop_index_stmt_t& node) -> void;
+    auto operator()(stdx::monostate) -> void {}
+    auto operator()(const literal_expr_t& node) -> void;
+    auto operator()(const identifier_expr_t& node) -> void;
+    auto operator()(const binary_expr_t& node) -> void;
+    auto operator()(const aggregate_expr_t& node) -> void;
+    auto operator()(const select_stmt_t& node) -> void;
+    auto operator()(const create_table_stmt_t& node) -> void;
+    auto operator()(const drop_table_stmt_t& node) -> void;
+    auto operator()(const alter_table_stmt_t& node) -> void;
+    auto operator()(const create_index_stmt_t& node) -> void;
+    auto operator()(const drop_index_stmt_t& node) -> void;
 
   private:
-    const ast_t&  ast_;
-    std::ostream& out_;
-    indent_t      indent_;
+    const ast_t&      ast_;
+    std::ostream&     out_;
+    support::indent_t indent_;
 };
 
 } // namespace cairn::sql::parser

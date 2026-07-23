@@ -11,7 +11,9 @@
 
 namespace cairn::sql::parser {
 
-auto dumper_t::visit(const literal_expr_t& node) -> void {
+using guard_t = support::indent_t::guard_t;
+
+auto dumper_t::operator()(const literal_expr_t& node) -> void {
     fmt::print(out_, "LiteralExpr: ");
     node.value.visit([&](stdx::monostate) { fmt::println(out_, "NULL"); },
                      [&](bool val) { fmt::println(out_, "{}", val ? "TRUE" : "FALSE"); },
@@ -20,31 +22,31 @@ auto dumper_t::visit(const literal_expr_t& node) -> void {
                      [&](const stdx::fixed::string& val) { fmt::println(out_, "'{}'", val); });
 }
 
-auto dumper_t::visit(const identifier_expr_t& node) -> void {
+auto dumper_t::operator()(const identifier_expr_t& node) -> void {
     fmt::println(out_, "IdentifierExpr: {}", node.name);
 }
 
-auto dumper_t::visit(const binary_expr_t& node) -> void {
+auto dumper_t::operator()(const binary_expr_t& node) -> void {
     fmt::println(out_, "BinaryExpr ({})", binary_op_to_string(node.op));
     {
-        indent_t::guard_t g{indent_, false};
+        guard_t g{indent_, false};
         fmt::print(out_, "{}LHS: ", indent_.current_branch());
         dump(node.lhs);
     }
     {
-        indent_t::guard_t g{indent_, true};
+        guard_t g{indent_, true};
         fmt::print(out_, "{}RHS: ", indent_.current_branch());
         dump(node.rhs);
     }
 }
 
-auto dumper_t::visit(const aggregate_expr_t& node) -> void {
+auto dumper_t::operator()(const aggregate_expr_t& node) -> void {
     fmt::println(out_,
                  "AggregateExpr ({}){}",
                  magic_enum::enum_name(node.func),
                  node.is_distinct ? " (DISTINCT)" : "");
 
-    indent_t::guard_t g{indent_, true};
+    guard_t g{indent_, true};
     if (node.arg) {
         fmt::print(out_, "{}Arg: ", indent_.current_branch());
         dump(*node.arg);
@@ -53,7 +55,7 @@ auto dumper_t::visit(const aggregate_expr_t& node) -> void {
     }
 }
 
-auto dumper_t::visit(const select_stmt_t& node) -> void {
+auto dumper_t::operator()(const select_stmt_t& node) -> void {
     fmt::println(out_, "SelectStmt");
 
     const auto has_where{node.where_clause.has_value()};
@@ -62,10 +64,10 @@ auto dumper_t::visit(const select_stmt_t& node) -> void {
 
     // Select List
     {
-        indent_t::guard_t g{indent_, false};
+        guard_t g{indent_, false};
         fmt::println(out_, "{}Select List:", indent_.current_branch());
         for (usize i{0}; i < node.select_list.size(); ++i) {
-            indent_t::guard_t g_item{indent_, i == node.select_list.size() - 1};
+            guard_t g_item{indent_, i == node.select_list.size() - 1};
             fmt::print(out_, "{}", indent_.current_branch());
             if (node.select_list[i].expr) {
                 dump(*node.select_list[i].expr);
@@ -77,7 +79,7 @@ auto dumper_t::visit(const select_stmt_t& node) -> void {
 
     // From Table
     {
-        indent_t::guard_t g{indent_, !has_where && !has_group_by && !has_having};
+        guard_t g{indent_, !has_where && !has_group_by && !has_having};
         fmt::print(out_, "{}From Table: {}", indent_.current_branch(), node.table_name);
         if (node.table_alias) { fmt::print(out_, " (Alias: {})", *node.table_alias); }
         fmt::println(out_, "");
@@ -85,17 +87,17 @@ auto dumper_t::visit(const select_stmt_t& node) -> void {
 
     // Where Clause
     if (has_where) {
-        indent_t::guard_t g{indent_, !has_group_by && !has_having};
+        guard_t g{indent_, !has_group_by && !has_having};
         fmt::print(out_, "{}Where: ", indent_.current_branch());
         dump(*node.where_clause);
     }
 
     // Group By
     if (has_group_by) {
-        indent_t::guard_t g{indent_, !has_having};
+        guard_t g{indent_, !has_having};
         fmt::println(out_, "{}Group By:", indent_.current_branch());
         for (usize i{0}; i < node.group_by.size(); ++i) {
-            indent_t::guard_t g_item{indent_, i == node.group_by.size() - 1};
+            guard_t g_item{indent_, i == node.group_by.size() - 1};
             fmt::print(out_, "{}", indent_.current_branch());
             dump(node.group_by[i]);
         }
@@ -103,19 +105,19 @@ auto dumper_t::visit(const select_stmt_t& node) -> void {
 
     // Having Clause
     if (has_having) {
-        indent_t::guard_t g{indent_, true};
+        guard_t g{indent_, true};
         fmt::print(out_, "{}Having: ", indent_.current_branch());
         dump(*node.having_clause);
     }
 }
 
-auto dumper_t::visit(const create_table_stmt_t& node) -> void {
+auto dumper_t::operator()(const create_table_stmt_t& node) -> void {
     fmt::println(out_, "CreateTableStmt: {}", node.table_name);
     if (!node.column_defs.empty()) {
-        indent_t::guard_t g{indent_, true};
+        guard_t g{indent_, true};
         fmt::println(out_, "{}ColumnDefs:", indent_.current_branch());
         for (usize i{0}; i < node.column_defs.size(); ++i) {
-            indent_t::guard_t g_item{indent_, i == node.column_defs.size() - 1};
+            guard_t g_item{indent_, i == node.column_defs.size() - 1};
             fmt::print(out_, "{}{} ", indent_.current_branch(), node.column_defs[i].name);
             if (node.column_defs[i].type) {
                 fmt::print(out_, "{}", magic_enum::enum_name(*node.column_defs[i].type));
@@ -127,12 +129,12 @@ auto dumper_t::visit(const create_table_stmt_t& node) -> void {
     }
 }
 
-auto dumper_t::visit(const drop_table_stmt_t& node) -> void {
+auto dumper_t::operator()(const drop_table_stmt_t& node) -> void {
     fmt::println(out_, "DropTableStmt: {}", node.table_name);
 }
 
-auto dumper_t::visit(const alter_table_stmt_t& node) -> void {
-    indent_t::guard_t g{indent_, true};
+auto dumper_t::operator()(const alter_table_stmt_t& node) -> void {
+    guard_t g{indent_, true};
     fmt::print(out_, "AlterTableStmt: {}\n{}", node.table_name, indent_.current_branch());
     if (node.column_def.type) {
         fmt::println(out_,
@@ -145,19 +147,19 @@ auto dumper_t::visit(const alter_table_stmt_t& node) -> void {
     }
 }
 
-auto dumper_t::visit(const create_index_stmt_t& node) -> void {
+auto dumper_t::operator()(const create_index_stmt_t& node) -> void {
     fmt::println(out_, "CreateIndexStmt: {} on {}", node.index_name, node.table_name);
     if (!node.columns.empty()) {
-        indent_t::guard_t g{indent_, true};
+        guard_t g{indent_, true};
         fmt::println(out_, "{}Columns:", indent_.current_branch());
         for (usize i{0}; i < node.columns.size(); ++i) {
-            indent_t::guard_t g_item{indent_, i == node.columns.size() - 1};
+            guard_t g_item{indent_, i == node.columns.size() - 1};
             fmt::println(out_, "{}{}", indent_.current_branch(), node.columns[i]);
         }
     }
 }
 
-auto dumper_t::visit(const drop_index_stmt_t& node) -> void {
+auto dumper_t::operator()(const drop_index_stmt_t& node) -> void {
     fmt::println(out_, "DropIndexStmt: {} on {}", node.index_name, node.table_name);
 }
 
