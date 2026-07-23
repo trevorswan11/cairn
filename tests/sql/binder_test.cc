@@ -154,7 +154,7 @@ TEST_CASE("sql::binder basic resolution and errors") {
         // LHS of AND (u.id = 42)
         CHECK(where.lhs.kind() == binder::node_kind_t::BINARY_EXPR);
         const auto& eq{UNWRAP(bound_ast.get_as_opt<binder::binary_expr_t>(where.lhs))};
-        CHECK(eq.op == parser::binary_op_t::EQUAL);
+        CHECK(eq.op == parser::binary_op_t::EQ);
         CHECK(eq.type == type::id_t::BOOLEAN);
 
         // RHS of AND (u.active)

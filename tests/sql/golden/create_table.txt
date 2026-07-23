@@ -1,0 +1,5 @@
+CreateTableStmt: customers
+└─ ColumnDefs:
+    ├─ id INTEGER NOT NULL
+    ├─ name VARCHAR NULL
+    └─ is_active BOOLEAN NULL

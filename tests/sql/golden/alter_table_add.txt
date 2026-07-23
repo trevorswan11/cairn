@@ -1,0 +1,2 @@
+AlterTableStmt: employees
+└─ ADD COLUMN: email VARCHAR NOT NULL

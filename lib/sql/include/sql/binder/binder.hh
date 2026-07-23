@@ -400,12 +400,12 @@ template <usize PoolSize> class binder_t {
                     res_type.emplace(type::id_t::BOOLEAN);
                     break;
                 }
-                case parser::binary_op_t::EQUAL:
-                case parser::binary_op_t::NOT_EQUAL:
-                case parser::binary_op_t::LESS_THAN:
-                case parser::binary_op_t::LESS_THAN_OR_EQUAL:
-                case parser::binary_op_t::GREATER_THAN:
-                case parser::binary_op_t::GREATER_THAN_OR_EQUAL: {
+                case parser::binary_op_t::EQ:
+                case parser::binary_op_t::NEQ:
+                case parser::binary_op_t::LT:
+                case parser::binary_op_t::LTEQ:
+                case parser::binary_op_t::GT:
+                case parser::binary_op_t::GTEQ: {
                     auto target_type_opt{type::common_type(l_type, r_type)};
                     if (!target_type_opt) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};
@@ -431,9 +431,9 @@ template <usize PoolSize> class binder_t {
                     break;
                 }
                 case parser::binary_op_t::ADD:
-                case parser::binary_op_t::SUBTRACT:
-                case parser::binary_op_t::MULTIPLY:
-                case parser::binary_op_t::DIVIDE:   {
+                case parser::binary_op_t::SUB:
+                case parser::binary_op_t::MUL:
+                case parser::binary_op_t::DIV: {
                     auto target_type_opt{type::common_type(l_type, r_type)};
                     if (!type::is_numeric(target_type_opt)) {
                         return stdx::err{diagnostic{error::SQL_TYPE_MISMATCH, loc}};

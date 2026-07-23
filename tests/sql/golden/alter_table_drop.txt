@@ -1,0 +1,2 @@
+AlterTableStmt: employees
+└─ DROP COLUMN: phone

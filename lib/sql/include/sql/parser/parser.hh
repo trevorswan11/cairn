@@ -34,19 +34,35 @@ struct identifier_expr_t {
 
 enum class binary_op_t : u8 {
     ADD,
-    SUBTRACT,
-    MULTIPLY,
-    DIVIDE,
-    EQUAL,
-    NOT_EQUAL,
-    LESS_THAN,
-    GREATER_THAN,
-    LESS_THAN_OR_EQUAL,
-    GREATER_THAN_OR_EQUAL,
+    SUB,
+    MUL,
+    DIV,
+    EQ,
+    NEQ,
+    LT,
+    GT,
+    LTEQ,
+    GTEQ,
     AND,
     OR,
 };
 
+[[nodiscard]] constexpr auto binary_op_to_string(binary_op_t op) noexcept -> std::string_view {
+    switch (op) {
+    case binary_op_t::ADD:  return "+";
+    case binary_op_t::SUB:  return "-";
+    case binary_op_t::MUL:  return "*";
+    case binary_op_t::DIV:  return "/";
+    case binary_op_t::EQ:   return "=";
+    case binary_op_t::NEQ:  return "!=";
+    case binary_op_t::LT:   return "<";
+    case binary_op_t::GT:   return ">";
+    case binary_op_t::LTEQ: return "<=";
+    case binary_op_t::GTEQ: return ">=";
+    case binary_op_t::AND:  return "AND";
+    case binary_op_t::OR:   return "OR";
+    }
+}
 struct binary_expr_t {
     binary_op_t op;
     node_id_t   lhs;
