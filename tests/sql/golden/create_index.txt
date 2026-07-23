@@ -1,0 +1,4 @@
+CreateIndexStmt: idx_emp_name on employees
+└─ Columns:
+    ├─ last_name
+    └─ first_name

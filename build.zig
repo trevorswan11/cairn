@@ -649,6 +649,10 @@ fn addArtifacts(b: *std.Build, config: struct {
             fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("txn/concurrency", .{
                 .link_libraries = &all_cairn_libraries,
             })));
+            fuzz_suites.append(.initFuzz(b, base_fuzz_config.with("sql/parser_fuzz", .{
+                .include_paths = &.{ArtifactConfig.libraryInclude(b, "sql").@"1"},
+                .link_libraries = &all_cairn_libraries,
+            })));
         }
 
         tests = .{

@@ -1,0 +1,4 @@
+SelectStmt
+├─ Select List:
+│   └─ *
+└─ From Table: users

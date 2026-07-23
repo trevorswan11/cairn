@@ -1,0 +1,1 @@
+DropIndexStmt: idx_emp_name on employees

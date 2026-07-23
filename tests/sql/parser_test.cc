@@ -61,12 +61,12 @@ TEST_CASE("Parse SELECT statement with WHERE clause and operators") {
     // LHS of AND (id = 5)
     REQUIRE(binary_and.lhs.kind() == parser::node_kind_t::BINARY_EXPR);
     const auto& eq{UNWRAP(tree[binary_and.lhs].as_opt<parser::binary_expr_t>())};
-    CHECK(eq.op == parser::binary_op_t::EQUAL);
+    CHECK(eq.op == parser::binary_op_t::EQ);
 
     // RHS of AND (age > 21)
     REQUIRE(binary_and.rhs.kind() == parser::node_kind_t::BINARY_EXPR);
     const auto& gt{UNWRAP(tree[binary_and.rhs].as_opt<parser::binary_expr_t>())};
-    CHECK(gt.op == parser::binary_op_t::GREATER_THAN);
+    CHECK(gt.op == parser::binary_op_t::GT);
 }
 
 TEST_CASE("Parse CREATE TABLE statement") {
@@ -191,7 +191,7 @@ TEST_CASE("Parse aggregates, GROUP BY, and HAVING clauses") {
         auto having_id{UNWRAP(select.having_clause)};
         REQUIRE(having_id.kind() == parser::node_kind_t::BINARY_EXPR);
         const auto& having_bin{UNWRAP(tree[having_id].as_opt<parser::binary_expr_t>())};
-        CHECK(having_bin.op == parser::binary_op_t::GREATER_THAN);
+        CHECK(having_bin.op == parser::binary_op_t::GT);
 
         // Check AVG(DISTINCT bonus)
         auto        avg_expr_id{UNWRAP(select.select_list[2].expr)};

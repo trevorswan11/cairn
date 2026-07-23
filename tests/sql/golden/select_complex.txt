@@ -1,0 +1,18 @@
+SelectStmt
+├─ Select List:
+│   ├─ IdentifierExpr: department_id
+│   ├─ AggregateExpr (SUM)
+│   │   └─ Arg: IdentifierExpr: salary
+│   └─ AggregateExpr (AVG) (DISTINCT)
+│       └─ Arg: IdentifierExpr: bonus
+├─ From Table: employees
+├─ Where: BinaryExpr (=)
+│   ├─ LHS: IdentifierExpr: active
+│   └─ RHS: LiteralExpr: TRUE
+├─ Group By:
+│   ├─ IdentifierExpr: department_id
+│   └─ IdentifierExpr: location_id
+└─ Having: BinaryExpr (>)
+    ├─ LHS: AggregateExpr (SUM)
+    │   └─ Arg: IdentifierExpr: salary
+    └─ RHS: LiteralExpr: 50000

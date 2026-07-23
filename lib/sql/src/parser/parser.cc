@@ -27,7 +27,7 @@
 #include <tao/pegtl/text_position.hpp>
 #include <tao/pegtl/text_view_input.hpp>
 
-#include "grammar.hh"
+#include "parser/grammar.hh"
 #include "sql/detail/node.hh"
 #include "sql/file.hh"
 #include "sql/type.hh"
@@ -87,33 +87,33 @@ struct parser_state_t {
 
 constexpr auto precedence_map{[] {
     stdx::fixed::enum_map<binary_op_t, i32> map{0};
-    map[binary_op_t::OR]                    = 1;
-    map[binary_op_t::AND]                   = 2;
-    map[binary_op_t::EQUAL]                 = 3;
-    map[binary_op_t::NOT_EQUAL]             = 3;
-    map[binary_op_t::LESS_THAN]             = 3;
-    map[binary_op_t::LESS_THAN_OR_EQUAL]    = 3;
-    map[binary_op_t::GREATER_THAN]          = 3;
-    map[binary_op_t::GREATER_THAN_OR_EQUAL] = 3;
-    map[binary_op_t::ADD]                   = 4;
-    map[binary_op_t::SUBTRACT]              = 4;
-    map[binary_op_t::MULTIPLY]              = 5;
-    map[binary_op_t::DIVIDE]                = 5;
+    map[binary_op_t::OR]   = 1;
+    map[binary_op_t::AND]  = 2;
+    map[binary_op_t::EQ]   = 3;
+    map[binary_op_t::NEQ]  = 3;
+    map[binary_op_t::LT]   = 3;
+    map[binary_op_t::LTEQ] = 3;
+    map[binary_op_t::GT]   = 3;
+    map[binary_op_t::GTEQ] = 3;
+    map[binary_op_t::ADD]  = 4;
+    map[binary_op_t::SUB]  = 4;
+    map[binary_op_t::MUL]  = 5;
+    map[binary_op_t::DIV]  = 5;
     return map;
 }()};
 
 constexpr auto binary_ops{[] {
     constexpr std::array operators{std::pair{"+", binary_op_t::ADD},
-                                   std::pair{"-", binary_op_t::SUBTRACT},
-                                   std::pair{"*", binary_op_t::MULTIPLY},
-                                   std::pair{"/", binary_op_t::DIVIDE},
-                                   std::pair{"=", binary_op_t::EQUAL},
-                                   std::pair{"!=", binary_op_t::NOT_EQUAL},
-                                   std::pair{"<>", binary_op_t::NOT_EQUAL},
-                                   std::pair{"<=", binary_op_t::LESS_THAN_OR_EQUAL},
-                                   std::pair{">=", binary_op_t::GREATER_THAN_OR_EQUAL},
-                                   std::pair{"<", binary_op_t::LESS_THAN},
-                                   std::pair{">", binary_op_t::GREATER_THAN},
+                                   std::pair{"-", binary_op_t::SUB},
+                                   std::pair{"*", binary_op_t::MUL},
+                                   std::pair{"/", binary_op_t::DIV},
+                                   std::pair{"=", binary_op_t::EQ},
+                                   std::pair{"!=", binary_op_t::NEQ},
+                                   std::pair{"<>", binary_op_t::NEQ},
+                                   std::pair{"<=", binary_op_t::LTEQ},
+                                   std::pair{">=", binary_op_t::GTEQ},
+                                   std::pair{"<", binary_op_t::LT},
+                                   std::pair{">", binary_op_t::GT},
                                    std::pair{"and", binary_op_t::AND},
                                    std::pair{"or", binary_op_t::OR}};
 
