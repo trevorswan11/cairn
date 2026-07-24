@@ -37,6 +37,35 @@ constexpr auto float_approx_eq(ValueType l, ValueType r) noexcept -> bool {
 
 } // namespace
 
+template <typename TargetType>
+[[nodiscard]] auto cast_to_numeric(const sql::value_t& val) -> result<sql::value_t> {
+    return val.get_value().visit(
+        [](bool v) -> result<sql::value_t> {
+            return sql::value_t{static_cast<TargetType>(v ? 1 : 0)};
+        },
+        [](std::string_view v) -> result<sql::value_t> {
+            if constexpr (std::integral<TargetType>) {
+                i64        parsed;
+                const auto res{std::from_chars(v.data(), v.data() + v.size(), parsed)};
+                if (res.ec != std::errc{} || res.ptr != v.data() + v.size()) {
+                    return stdx::err{error::SQL_TYPE_MISMATCH};
+                }
+                return sql::value_t{static_cast<TargetType>(parsed)};
+            } else {
+                try {
+                    return sql::value_t{static_cast<TargetType>(std::stod(std::string{v}))};
+                } catch (...) { return stdx::err{error::SQL_TYPE_MISMATCH}; }
+            }
+        },
+        [](auto v) -> result<sql::value_t> {
+            if constexpr (requires { static_cast<TargetType>(v); }) {
+                return sql::value_t{static_cast<TargetType>(v)};
+            } else {
+                return stdx::err{error::SQL_TYPE_MISMATCH};
+            }
+        });
+}
+
 auto expression_evaluator_t::cast_value(const sql::value_t& val, sql::type::id_t target_type)
     -> result<sql::value_t> {
     if (val.is_null()) {
@@ -67,136 +96,12 @@ auto expression_evaluator_t::cast_value(const sql::value_t& val, sql::type::id_t
             [](const auto&) -> result<sql::value_t> {
                 return stdx::err{error::SQL_TYPE_MISMATCH};
             });
-    case sql::type::id_t::TINYINT:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v ? 1 : 0)}; },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(v)}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                i64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{static_cast<i8>(val)};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
-    case sql::type::id_t::SMALLINT:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<i16>(v ? 1 : 0)};
-            },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(v)}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                i64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{static_cast<i16>(val)};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
-    case sql::type::id_t::INTEGER:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<i32>(v ? 1 : 0)};
-            },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<i32>(v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<i32>(v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i32>(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i32>(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i32>(v)}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                i64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{static_cast<i32>(val)};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
-    case sql::type::id_t::BIGINT:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<i64>(v ? 1 : 0)};
-            },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<i64>(v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<i64>(v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i64>(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{static_cast<i64>(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{static_cast<i64>(v)}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                i64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{val};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
-    case sql::type::id_t::FLOAT:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<f32>(v ? 1 : 0)};
-            },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<f32>(v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<f32>(v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{static_cast<f32>(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{static_cast<f32>(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{static_cast<f32>(v)}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                f64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{static_cast<f32>(val)};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
-    case sql::type::id_t::DOUBLE:
-        return value.visit(
-            [](bool v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<f64>(v ? 1 : 0)};
-            },
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<f64>(v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<f64>(v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{static_cast<f64>(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{static_cast<f64>(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{static_cast<f64>(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{v}; },
-            [](std::string_view v) -> result<sql::value_t> {
-                f64        val;
-                const auto res{std::from_chars(v.begin(), v.end(), val)};
-                if (res.ec != std::errc{} || res.ptr != v.end()) {
-                    return stdx::err{error::SQL_TYPE_MISMATCH};
-                }
-                return sql::value_t{val};
-            },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
+    case sql::type::id_t::TINYINT:  return cast_to_numeric<i8>(val);
+    case sql::type::id_t::SMALLINT: return cast_to_numeric<i16>(val);
+    case sql::type::id_t::INTEGER:  return cast_to_numeric<i32>(val);
+    case sql::type::id_t::BIGINT:   return cast_to_numeric<i64>(val);
+    case sql::type::id_t::FLOAT:    return cast_to_numeric<f32>(val);
+    case sql::type::id_t::DOUBLE:   return cast_to_numeric<f64>(val);
     case sql::type::id_t::VARCHAR:
         return value.visit(
             [](stdx::monostate m) -> result<sql::value_t> { return sql::value_t{m}; },
@@ -241,6 +146,37 @@ auto expression_evaluator_t::operator()(const sql::binder::column_ref_expr_t& no
     return input_tuple.get_value(sch_, node.column_idx);
 }
 
+template <typename T>
+[[nodiscard]] auto
+evaluate_binary_op(T l, T r, sql::parser::binary_op_t op, sql::type::id_t common_type)
+    -> result<sql::value_t> {
+    using sql::parser::binary_op_t;
+    switch (op) {
+    case binary_op_t::ADD: return sql::value_t{static_cast<T>(l + r)};
+    case binary_op_t::SUB: return sql::value_t{static_cast<T>(l - r)};
+    case binary_op_t::MUL: return sql::value_t{static_cast<T>(l * r)};
+    case binary_op_t::DIV: {
+        if (r == 0) { return sql::value_t::make_null(common_type); }
+        return sql::value_t{static_cast<T>(l / r)};
+    }
+    case binary_op_t::MOD: {
+        if (r == 0) { return sql::value_t::make_null(common_type); }
+        if constexpr (std::floating_point<T>) {
+            return sql::value_t{std::fmod(l, r)};
+        } else {
+            return sql::value_t{static_cast<T>(l % r)};
+        }
+    }
+    case binary_op_t::EQ:   return sql::value_t{l == r};
+    case binary_op_t::NEQ:  return sql::value_t{l != r};
+    case binary_op_t::LT:   return sql::value_t{l < r};
+    case binary_op_t::GT:   return sql::value_t{l > r};
+    case binary_op_t::LTEQ: return sql::value_t{l <= r};
+    case binary_op_t::GTEQ: return sql::value_t{l >= r};
+    default:                return stdx::err{error::SQL_TYPE_MISMATCH};
+    }
+}
+
 auto expression_evaluator_t::operator()(const sql::binder::binary_expr_t& node,
                                         const sql::tuple& input_tuple) -> result<sql::value_t> {
     PROFILE_FUNCTION();
@@ -248,31 +184,27 @@ auto expression_evaluator_t::operator()(const sql::binder::binary_expr_t& node,
 
     // Binary boolean operators short circuit
     if (node.op == binary_op_t::AND) {
-        auto       lhs_val{TRY(evaluate(node.lhs, input_tuple))};
-        const auto lhs_value{lhs_val.get_value().as_opt<bool>()};
-        if (!lhs_val.is_null() && !*lhs_value) { return sql::value_t{false}; }
+        auto lhs_val{TRY(evaluate(node.lhs, input_tuple))};
+        if (!lhs_val.is_null() && !lhs_val.get_value().as<bool>()) { return sql::value_t{false}; }
 
-        auto       rhs_val{TRY(evaluate(node.rhs, input_tuple))};
-        const auto rhs_value{rhs_val.get_value().as_opt<bool>()};
-        if (!rhs_val.is_null() && !*rhs_value) { return sql::value_t{false}; }
+        auto rhs_val{TRY(evaluate(node.rhs, input_tuple))};
+        if (!rhs_val.is_null() && !rhs_val.get_value().as<bool>()) { return sql::value_t{false}; }
 
         if (lhs_val.is_null() || rhs_val.is_null()) {
             return sql::value_t::make_null(sql::type::id_t::BOOLEAN);
         }
-        return sql::value_t{*lhs_value && *rhs_value};
+        return sql::value_t{lhs_val.get_value().as<bool>() && rhs_val.get_value().as<bool>()};
     } else if (node.op == binary_op_t::OR) {
-        auto       lhs_val{TRY(evaluate(node.lhs, input_tuple))};
-        const auto lhs_value{lhs_val.get_value().as_opt<bool>()};
-        if (!lhs_val.is_null() && *lhs_value) { return sql::value_t{true}; }
+        auto lhs_val{TRY(evaluate(node.lhs, input_tuple))};
+        if (!lhs_val.is_null() && lhs_val.get_value().as<bool>()) { return sql::value_t{true}; }
 
-        auto       rhs_val{TRY(evaluate(node.rhs, input_tuple))};
-        const auto rhs_value{rhs_val.get_value().as_opt<bool>()};
-        if (!rhs_val.is_null() && *rhs_value) { return sql::value_t{true}; }
+        auto rhs_val{TRY(evaluate(node.rhs, input_tuple))};
+        if (!rhs_val.is_null() && !rhs_val.get_value().as<bool>()) { return sql::value_t{true}; }
 
         if (lhs_val.is_null() || rhs_val.is_null()) {
             return sql::value_t::make_null(sql::type::id_t::BOOLEAN);
         }
-        return sql::value_t{*lhs_value || *rhs_value};
+        return sql::value_t{lhs_val.get_value().as<bool>() || rhs_val.get_value().as<bool>()};
     }
 
     const auto lhs_val{TRY(evaluate(node.lhs, input_tuple))};
@@ -307,142 +239,22 @@ auto expression_evaluator_t::operator()(const sql::binder::binary_expr_t& node,
             }
         },
         [&](i8 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<i8>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{static_cast<i8>(l + r)};
-            case binary_op_t::SUB: return sql::value_t{static_cast<i8>(l - r)};
-            case binary_op_t::MUL: return sql::value_t{static_cast<i8>(l * r)};
-            case binary_op_t::DIV: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i8>(l / r)};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i8>(l % r)};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<i8>(l, r_promoted_val.as<i8>(), op, *common);
         },
         [&](i16 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<i16>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{static_cast<i16>(l + r)};
-            case binary_op_t::SUB: return sql::value_t{static_cast<i16>(l - r)};
-            case binary_op_t::MUL: return sql::value_t{static_cast<i16>(l * r)};
-            case binary_op_t::DIV: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i16>(l / r)};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i16>(l % r)};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<i16>(l, r_promoted_val.as<i16>(), op, *common);
         },
         [&](i32 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<i32>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{l + r};
-            case binary_op_t::SUB: return sql::value_t{l - r};
-            case binary_op_t::MUL: return sql::value_t{l * r};
-            case binary_op_t::DIV: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l / r};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l % r};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<i32>(l, r_promoted_val.as<i32>(), op, *common);
         },
         [&](i64 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<i64>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{l + r};
-            case binary_op_t::SUB: return sql::value_t{l - r};
-            case binary_op_t::MUL: return sql::value_t{l * r};
-            case binary_op_t::DIV: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l / r};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l % r};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<i64>(l, r_promoted_val.as<i64>(), op, *common);
         },
         [&](f32 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<f32>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{l + r};
-            case binary_op_t::SUB: return sql::value_t{l - r};
-            case binary_op_t::MUL: return sql::value_t{l * r};
-            case binary_op_t::DIV: {
-                if (r == 0.0f) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l / r};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0.0f) { return sql::value_t::make_null(*common); }
-                return sql::value_t{std::fmod(l, r)};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<f32>(l, r_promoted_val.as<f32>(), op, *common);
         },
         [&](f64 l) -> result<sql::value_t> {
-            auto r{r_promoted_val.as<f64>()};
-            switch (op) {
-            case binary_op_t::ADD: return sql::value_t{l + r};
-            case binary_op_t::SUB: return sql::value_t{l - r};
-            case binary_op_t::MUL: return sql::value_t{l * r};
-            case binary_op_t::DIV: {
-                if (r == 0.0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l / r};
-            }
-            case binary_op_t::MOD: {
-                if (r == 0.0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{std::fmod(l, r)};
-            }
-            case binary_op_t::EQ:   return sql::value_t{l == r};
-            case binary_op_t::NEQ:  return sql::value_t{l != r};
-            case binary_op_t::LT:   return sql::value_t{l < r};
-            case binary_op_t::GT:   return sql::value_t{l > r};
-            case binary_op_t::LTEQ: return sql::value_t{l <= r};
-            case binary_op_t::GTEQ: return sql::value_t{l >= r};
-            default:                return stdx::err{error::SQL_TYPE_MISMATCH};
-            }
+            return evaluate_binary_op<f64>(l, r_promoted_val.as<f64>(), op, *common);
         },
         [&](std::string_view l) -> result<sql::value_t> {
             auto r{r_promoted_val.as<std::string_view>()};
@@ -473,6 +285,13 @@ auto expression_evaluator_t::operator()(const sql::binder::cast_expr_t& node,
     return cast_value(child_val, node.target_type);
 }
 
+template <typename T> [[nodiscard]] auto evaluate_minus(T val) -> result<sql::value_t> {
+    if constexpr ((std::integral<T> && !std::same_as<T, bool>) || std::floating_point<T>) {
+        return sql::value_t{static_cast<T>(-val)};
+    }
+    return stdx::err{error::SQL_TYPE_MISMATCH};
+}
+
 auto expression_evaluator_t::operator()(const sql::binder::unary_expr_t& node,
                                         const sql::tuple& input_tuple) -> result<sql::value_t> {
     PROFILE_FUNCTION();
@@ -484,15 +303,7 @@ auto expression_evaluator_t::operator()(const sql::binder::unary_expr_t& node,
     case sql::binder::unary_op_t::MINUS:       {
         if (child_val.is_null()) { return child_val; }
         return child_val.get_value().visit(
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(-v)}; },
-            [](i16 v) -> result<sql::value_t> { return sql::value_t{static_cast<i16>(-v)}; },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{-v}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{-v}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{-v}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{-v}; },
-            [](const auto&) -> result<sql::value_t> {
-                return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
+            [](auto v) -> result<sql::value_t> { return evaluate_minus(v); });
     }
     case sql::binder::unary_op_t::NOT: {
         if (child_val.is_null()) { return sql::value_t::make_null(sql::type::id_t::BOOLEAN); }
@@ -623,18 +434,14 @@ auto expression_evaluator_t::operator()(const sql::binder::function_expr_t& node
         auto val{TRY(evaluate(node.args[0], input_tuple))};
         if (val.is_null()) { return val; }
 
-        return val.get_value().visit(
-            [](i8 v) -> result<sql::value_t> { return sql::value_t{static_cast<i8>(std::abs(v))}; },
-            [](i16 v) -> result<sql::value_t> {
-                return sql::value_t{static_cast<i16>(std::abs(v))};
-            },
-            [](i32 v) -> result<sql::value_t> { return sql::value_t{std::abs(v)}; },
-            [](i64 v) -> result<sql::value_t> { return sql::value_t{std::abs(v)}; },
-            [](f32 v) -> result<sql::value_t> { return sql::value_t{std::abs(v)}; },
-            [](f64 v) -> result<sql::value_t> { return sql::value_t{std::abs(v)}; },
-            [](const auto&) -> result<sql::value_t> {
+        return val.get_value().visit([](auto v) -> result<sql::value_t> {
+            using T = decltype(v);
+            if constexpr ((std::integral<T> && !std::same_as<T, bool>) || std::floating_point<T>) {
+                return sql::value_t{static_cast<T>(std::abs(v))};
+            } else {
                 return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
+            }
+        });
     }
     case sql::binder::func_type_t::MOD: {
         ASSERT(node.args.size() == 2, "Invariant from binder invalidated");
@@ -652,40 +459,20 @@ auto expression_evaluator_t::operator()(const sql::binder::function_expr_t& node
         const auto  r_promoted{TRY(cast_value(e2, *common))};
         const auto& r_promoted_val{r_promoted.get_value()};
 
-        return l_promoted_val.visit(
-            [&](i8 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<i8>()};
+        return l_promoted_val.visit([&](auto l) -> result<sql::value_t> {
+            using T = decltype(l);
+            if constexpr (std::integral<T> || std::floating_point<T>) {
+                const auto r{r_promoted_val.as<T>()};
                 if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i8>(l % r)};
-            },
-            [&](i16 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<i16>()};
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{static_cast<i16>(l % r)};
-            },
-            [&](i32 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<i32>()};
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l % r};
-            },
-            [&](i64 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<i64>()};
-                if (r == 0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{l % r};
-            },
-            [&](f32 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<f32>()};
-                if (r == 0.0f) { return sql::value_t::make_null(*common); }
-                return sql::value_t{std::fmod(l, r)};
-            },
-            [&](f64 l) -> result<sql::value_t> {
-                const auto r{r_promoted_val.as<f64>()};
-                if (r == 0.0) { return sql::value_t::make_null(*common); }
-                return sql::value_t{std::fmod(l, r)};
-            },
-            [&](const auto&) -> result<sql::value_t> {
+                if constexpr (std::floating_point<T>) {
+                    return sql::value_t{std::fmod(l, r)};
+                } else {
+                    return sql::value_t{static_cast<T>(l % r)};
+                }
+            } else {
                 return stdx::err{error::SQL_TYPE_MISMATCH};
-            });
+            }
+        });
     }
     default: return stdx::err{error::SQL_TYPE_MISMATCH};
     }
