@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <ranges>
+#include <string>
 #include <string_view>
 
 #include <stdx/hash.hh>
@@ -10,6 +12,19 @@ namespace cairn::string_utils {
 [[nodiscard]] constexpr auto to_lower(char c) noexcept -> char {
     if (c >= 'A' && c <= 'Z') { return c + ('a' - 'A'); }
     return c;
+}
+
+[[nodiscard]] constexpr auto to_upper(char c) noexcept -> char {
+    if (c >= 'a' && c <= 'z') { return c - ('a' - 'A'); }
+    return c;
+}
+
+constexpr auto inplace_lower(std::string& str) noexcept -> void {
+    std::ranges::transform(str, str.begin(), [](auto c) { return to_lower(c); });
+}
+
+constexpr auto inplace_upper(std::string& str) noexcept -> void {
+    std::ranges::transform(str, str.begin(), [](auto c) { return to_upper(c); });
 }
 
 // Case insensitive string equality
