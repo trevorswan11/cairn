@@ -18,8 +18,9 @@ struct mand_space : peg::plus<sep> {};
 
 template <typename Rule> struct padded : peg::pad<Rule, sep> {};
 
-#define SQL_KEYWORD(name, str) \
-    struct name : TAO_PEGTL_ISTRING(str) {}
+#define SQL_KEYWORD(name, str)                     \
+    struct name : peg::seq<TAO_PEGTL_ISTRING(str), \
+                           peg::not_at<peg::sor<peg::ascii::alnum, peg::one<'_'>>>> {}
 
 SQL_KEYWORD(select_kw, "SELECT");
 SQL_KEYWORD(from_kw, "FROM");

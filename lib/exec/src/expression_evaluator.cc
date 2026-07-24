@@ -199,6 +199,7 @@ auto expression_evaluator_t::cast_value(const sql::value_t& val, sql::type::id_t
             });
     case sql::type::id_t::VARCHAR:
         return value.visit(
+            [](stdx::monostate m) -> result<sql::value_t> { return sql::value_t{m}; },
             [](sql::type::datetime_t) -> result<sql::value_t> {
                 // TODO(tcs) stringify datetime support
                 return stdx::err{error::SQL_TYPE_MISMATCH};
@@ -248,30 +249,30 @@ auto expression_evaluator_t::operator()(const sql::binder::binary_expr_t& node,
     // Binary boolean operators short circuit
     if (node.op == binary_op_t::AND) {
         auto       lhs_val{TRY(evaluate(node.lhs, input_tuple))};
-        const auto lhs_value{lhs_val.get_value().as<bool>()};
-        if (!lhs_val.is_null() && !lhs_value) { return sql::value_t{false}; }
+        const auto lhs_value{lhs_val.get_value().as_opt<bool>()};
+        if (!lhs_val.is_null() && !*lhs_value) { return sql::value_t{false}; }
 
         auto       rhs_val{TRY(evaluate(node.rhs, input_tuple))};
-        const auto rhs_value{lhs_val.get_value().as<bool>()};
-        if (!rhs_val.is_null() && !rhs_value) { return sql::value_t{false}; }
+        const auto rhs_value{rhs_val.get_value().as_opt<bool>()};
+        if (!rhs_val.is_null() && !*rhs_value) { return sql::value_t{false}; }
 
         if (lhs_val.is_null() || rhs_val.is_null()) {
             return sql::value_t::make_null(sql::type::id_t::BOOLEAN);
         }
-        return sql::value_t{lhs_value && rhs_value};
+        return sql::value_t{*lhs_value && *rhs_value};
     } else if (node.op == binary_op_t::OR) {
         auto       lhs_val{TRY(evaluate(node.lhs, input_tuple))};
-        const auto lhs_value{lhs_val.get_value().as<bool>()};
-        if (!lhs_val.is_null() && lhs_value) { return sql::value_t{true}; }
+        const auto lhs_value{lhs_val.get_value().as_opt<bool>()};
+        if (!lhs_val.is_null() && *lhs_value) { return sql::value_t{true}; }
 
         auto       rhs_val{TRY(evaluate(node.rhs, input_tuple))};
-        const auto rhs_value{lhs_val.get_value().as<bool>()};
-        if (!rhs_val.is_null() && rhs_value) { return sql::value_t{true}; }
+        const auto rhs_value{rhs_val.get_value().as_opt<bool>()};
+        if (!rhs_val.is_null() && *rhs_value) { return sql::value_t{true}; }
 
         if (lhs_val.is_null() || rhs_val.is_null()) {
             return sql::value_t::make_null(sql::type::id_t::BOOLEAN);
         }
-        return sql::value_t{lhs_value || rhs_value};
+        return sql::value_t{*lhs_value || *rhs_value};
     }
 
     const auto lhs_val{TRY(evaluate(node.lhs, input_tuple))};
@@ -614,7 +615,7 @@ auto expression_evaluator_t::operator()(const sql::binder::function_expr_t& node
         auto substr_len{
             std::min(static_cast<usize>(len), sv.size() - static_cast<usize>(start_idx))};
         std::string s{stdx::string::substr(sv, static_cast<usize>(start_idx), substr_len)};
-        auto&       emplaced{string_pool_.emplace_back(std::move(s))};
+        const auto& emplaced{string_pool_.emplace_back(std::move(s))};
         return sql::value_t{std::string_view{emplaced}};
     }
     case sql::binder::func_type_t::ABS: {
