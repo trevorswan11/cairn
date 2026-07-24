@@ -1,0 +1,30 @@
+var data = {lines:[
+{"lineNum":"    1","line":"#pragma once"},
+{"lineNum":"    2","line":""},
+{"lineNum":"    3","line":"#include <stdx/fixed/vector.hh>"},
+{"lineNum":"    4","line":"#include <stdx/option.hh>"},
+{"lineNum":"    5","line":"#include <stdx/types.hh>"},
+{"lineNum":"    6","line":""},
+{"lineNum":"    7","line":"#include \"txn/id.hh\""},
+{"lineNum":"    8","line":""},
+{"lineNum":"    9","line":"namespace cairn::txn {"},
+{"lineNum":"   10","line":""},
+{"lineNum":"   11","line":"constexpr usize MAX_ACTIVE_TXNS{128};"},
+{"lineNum":"   12","line":""},
+{"lineNum":"   13","line":"struct snapshot_t {","class":"lineCov","hits":"1","order":"1950",},
+{"lineNum":"   14","line":"    using txn_buf_t = stdx::fixed::vector<id_t, MAX_ACTIVE_TXNS>;"},
+{"lineNum":"   15","line":""},
+{"lineNum":"   16","line":"    timestamp_t read_ts;"},
+{"lineNum":"   17","line":"    id_t        xmin; // Lower bound to search, [xmin, xmax)"},
+{"lineNum":"   18","line":"    id_t        xmax; // Upper bound to search, [xmin, xmax)"},
+{"lineNum":"   19","line":""},
+{"lineNum":"   20","line":"    txn_buf_t active_txns{}; // Sorted"},
+{"lineNum":"   21","line":""},
+{"lineNum":"   22","line":"    [[nodiscard]] auto is_active(id_t id) const noexcept -> bool;"},
+{"lineNum":"   23","line":"};"},
+{"lineNum":"   24","line":""},
+{"lineNum":"   25","line":"} // namespace cairn::txn"},
+]};
+var percent_low = 25;var percent_high = 75;
+var header = { "command" : "", "date" : "2026-07-24 01:31:31", "instrumented" : 1, "covered" : 1,};
+var merged_data = [];
