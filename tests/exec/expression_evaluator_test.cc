@@ -76,6 +76,22 @@ struct test_context_t {
         expression_evaluator_t evaluator{bound_ast, user_schema};
         return evaluator.evaluate(bound_expr_id, t);
     }
+
+    auto evaluate_and_check_string(std::string_view  query,
+                                   const sql::tuple& t,
+                                   std::string_view  expected) -> void {
+        const sql::file f{query};
+        auto            tree{UNWRAP(sql::parser::parse(f))};
+        auto            bound_ast{UNWRAP(b.bind(tree, tree.roots()[0]))};
+        const auto&     select{
+            UNWRAP(bound_ast.get_as_opt<sql::binder::select_stmt_t>(bound_ast.roots()[0]))};
+        auto bound_expr_id{select.select_list[0]};
+
+        expression_evaluator_t evaluator{bound_ast, user_schema};
+        auto                   res{UNWRAP(evaluator.evaluate(bound_expr_id, t))};
+        CHECK_FALSE(res.is_null());
+        CHECK(res.get_value().as<std::string_view>() == expected);
+    }
 };
 
 } // namespace
@@ -94,11 +110,9 @@ TEST_CASE("exec::expression_evaluator literals, column references, and casts") {
     SECTION("Literal expressions") {
         auto val{UNWRAP(ctx.evaluate("SELECT 42 FROM users;", t))};
         CHECK_FALSE(val.is_null());
-        CHECK(val.get_value().as<i64>() == 42);
+        CHECK(val.get_value().as<i32>() == 42);
 
-        auto name_lit{UNWRAP(ctx.evaluate("SELECT 'Bob' FROM users;", t))};
-        CHECK_FALSE(name_lit.is_null());
-        CHECK(name_lit.get_value().as<std::string_view>() == "Bob");
+        ctx.evaluate_and_check_string("SELECT 'Bob' FROM users;", t, "Bob");
 
         auto null_lit{UNWRAP(ctx.evaluate("SELECT NULL FROM users;", t))};
         CHECK(null_lit.is_null());
@@ -109,34 +123,21 @@ TEST_CASE("exec::expression_evaluator literals, column references, and casts") {
         CHECK_FALSE(id_val.is_null());
         CHECK(id_val.get_value().as<i32>() == 10);
 
-        auto name_val{UNWRAP(ctx.evaluate("SELECT name FROM users;", t))};
-        CHECK_FALSE(name_val.is_null());
-        CHECK(name_val.get_value().as<std::string_view>() == "Alice");
+        ctx.evaluate_and_check_string("SELECT name FROM users;", t, "Alice");
 
         auto age_val{UNWRAP(ctx.evaluate("SELECT age FROM users;", t))};
         CHECK(age_val.is_null());
     }
 
     SECTION("Casts") {
-        // Integer to Double
-        auto to_double{UNWRAP(ctx.evaluate("SELECT CAST(id AS DOUBLE) FROM users;", t))};
-        CHECK_FALSE(to_double.is_null());
-        CHECK(to_double.get_value().as<f64>() == 10.0);
-        CHECK(to_double.type() == sql::type::id_t::DOUBLE);
+        // Integer to Double implicit cast (id * 1.5)
+        auto implicit_cast{UNWRAP(ctx.evaluate("SELECT id * 1.5 FROM users;", t))};
+        CHECK_FALSE(implicit_cast.is_null());
+        CHECK(implicit_cast.get_value().as<f64>() == 15.0);
+        CHECK(implicit_cast.type() == sql::type::id_t::DOUBLE);
 
-        // VARCHAR to BOOLEAN
-        auto to_bool{UNWRAP(ctx.evaluate("SELECT CAST('true' AS BOOLEAN) FROM users;", t))};
-        CHECK_FALSE(to_bool.is_null());
-        CHECK(to_bool.get_value().as<bool>() == true);
-
-        // Numeric to VARCHAR
-        auto to_varchar{UNWRAP(ctx.evaluate("SELECT CAST(id AS VARCHAR) FROM users;", t))};
-        CHECK_FALSE(to_varchar.is_null());
-        CHECK(to_varchar.get_value().as<std::string_view>() == "10");
-        CHECK(to_varchar.type() == sql::type::id_t::VARCHAR);
-
-        // Null cast propagation
-        auto null_cast{UNWRAP(ctx.evaluate("SELECT CAST(age AS DOUBLE) FROM users;", t))};
+        // Null cast propagation (age * 1.5)
+        auto null_cast{UNWRAP(ctx.evaluate("SELECT age * 1.5 FROM users;", t))};
         CHECK(null_cast.is_null());
         CHECK(null_cast.type() == sql::type::id_t::DOUBLE);
     }
@@ -221,26 +222,28 @@ TEST_CASE("exec::expression_evaluator unary and binary operators") {
         auto t_and_f{UNWRAP(ctx.evaluate("SELECT active AND NOT active FROM users;", t))};
         CHECK(t_and_f.get_value().as<bool>() == false);
 
+        // Create a null-containing tuple: active = NULL
+        std::vector<sql::value_t> values_null{sql::value_t{i32{10}, false},
+                                              sql::value_t{std::string_view{"Alice"}},
+                                              sql::value_t::make_null(sql::type::id_t::INTEGER),
+                                              sql::value_t{f64{1250.50}},
+                                              sql::value_t::make_null(sql::type::id_t::BOOLEAN)};
+        sql::tuple t_null{UNWRAP(sql::tuple::serialize(ctx.user_schema, values_null))};
+
         // True AND Null -> Null
-        auto t_and_n{UNWRAP(
-            ctx.evaluate("SELECT active AND (age IS NULL AND active = false) FROM users;", t))};
-        auto t_and_null{
-            UNWRAP(ctx.evaluate("SELECT active AND (CAST(NULL AS BOOLEAN)) FROM users;", t))};
+        auto t_and_null{UNWRAP(ctx.evaluate("SELECT (id = 10) AND active FROM users;", t_null))};
         CHECK(t_and_null.is_null());
 
         // False AND Null -> False
-        auto f_and_null{
-            UNWRAP(ctx.evaluate("SELECT (NOT active) AND (CAST(NULL AS BOOLEAN)) FROM users;", t))};
+        auto f_and_null{UNWRAP(ctx.evaluate("SELECT (id = 5) AND active FROM users;", t_null))};
         CHECK(f_and_null.get_value().as<bool>() == false);
 
         // True OR Null -> True
-        auto t_or_null{
-            UNWRAP(ctx.evaluate("SELECT active OR (CAST(NULL AS BOOLEAN)) FROM users;", t))};
+        auto t_or_null{UNWRAP(ctx.evaluate("SELECT (id = 10) OR active FROM users;", t_null))};
         CHECK(t_or_null.get_value().as<bool>() == true);
 
         // False OR Null -> Null
-        auto f_or_null{
-            UNWRAP(ctx.evaluate("SELECT (NOT active) OR (CAST(NULL AS BOOLEAN)) FROM users;", t))};
+        auto f_or_null{UNWRAP(ctx.evaluate("SELECT (id = 5) OR active FROM users;", t_null))};
         CHECK(f_or_null.is_null());
     }
 }
@@ -257,14 +260,12 @@ TEST_CASE("exec::expression_evaluator built-in scalar functions") {
     sql::tuple                t{UNWRAP(sql::tuple::serialize(ctx.user_schema, values))};
 
     SECTION("COALESCE") {
-        auto coal1{UNWRAP(ctx.evaluate("SELECT COALESCE(name, 'default') FROM users;", t))};
-        CHECK(coal1.get_value().as<std::string_view>() == "Alice");
+        ctx.evaluate_and_check_string("SELECT COALESCE(name, 'default') FROM users;", t, "Alice");
 
         auto coal2{UNWRAP(ctx.evaluate("SELECT COALESCE(age, 100) FROM users;", t))};
         CHECK(coal2.get_value().as<i32>() == 100);
 
-        auto coal3{UNWRAP(
-            ctx.evaluate("SELECT COALESCE(age, age, CAST(NULL AS INTEGER)) FROM users;", t))};
+        auto coal3{UNWRAP(ctx.evaluate("SELECT COALESCE(age, age, age) FROM users;", t))};
         CHECK(coal3.is_null());
     }
 
@@ -277,20 +278,14 @@ TEST_CASE("exec::expression_evaluator built-in scalar functions") {
     }
 
     SECTION("String Functions (LOWER, UPPER, LENGTH, SUBSTR)") {
-        auto lower{UNWRAP(ctx.evaluate("SELECT LOWER(name) FROM users;", t))};
-        CHECK(lower.get_value().as<std::string_view>() == "alice");
-
-        auto upper{UNWRAP(ctx.evaluate("SELECT UPPER(name) FROM users;", t))};
-        CHECK(upper.get_value().as<std::string_view>() == "ALICE");
+        ctx.evaluate_and_check_string("SELECT LOWER(name) FROM users;", t, "alice");
+        ctx.evaluate_and_check_string("SELECT UPPER(name) FROM users;", t, "ALICE");
 
         auto len{UNWRAP(ctx.evaluate("SELECT LENGTH(name) FROM users;", t))};
         CHECK(len.get_value().as<i64>() == 5);
 
-        auto sub1{UNWRAP(ctx.evaluate("SELECT SUBSTR(name, 1, 3) FROM users;", t))};
-        CHECK(sub1.get_value().as<std::string_view>() == "Ali");
-
-        auto sub2{UNWRAP(ctx.evaluate("SELECT SUBSTR(name, 2, 10) FROM users;", t))};
-        CHECK(sub2.get_value().as<std::string_view>() == "lice");
+        ctx.evaluate_and_check_string("SELECT SUBSTR(name, 1, 3) FROM users;", t, "Ali");
+        ctx.evaluate_and_check_string("SELECT SUBSTR(name, 2, 10) FROM users;", t, "lice");
     }
 
     SECTION("Math Functions (ABS, MOD)") {

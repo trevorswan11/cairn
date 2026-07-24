@@ -21,6 +21,7 @@ namespace cairn::exec {
         return stdx::err{error::SQL_UNEXPECTED_NODE};                       \
     }
 
+// Owns a buffer of evaluated strings which returned values have views into
 class expression_evaluator_t {
   public:
     expression_evaluator_t(const sql::binder::ast_t& ast, const sql::schema& sch) noexcept
