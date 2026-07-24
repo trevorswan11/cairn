@@ -6,6 +6,7 @@
 #include <concepts>
 #include <string>
 #include <string_view>
+#include <system_error>
 
 #include <stdx/assert.hh>
 #include <stdx/fixed/string.hh>
@@ -52,9 +53,12 @@ template <typename TargetType>
                 }
                 return sql::value_t{static_cast<TargetType>(parsed)};
             } else {
-                try {
-                    return sql::value_t{static_cast<TargetType>(std::stod(std::string{v}))};
-                } catch (...) { return stdx::err{error::SQL_TYPE_MISMATCH}; }
+                f64        parsed;
+                const auto res{std::from_chars(v.begin(), v.end(), parsed)};
+                if (res.ec != std::errc{} || res.ptr != v.end()) {
+                    return stdx::err{error::SQL_TYPE_MISMATCH};
+                }
+                return sql::value_t{static_cast<TargetType>(parsed)};
             }
         },
         [](auto v) -> result<sql::value_t> {
@@ -146,6 +150,8 @@ auto expression_evaluator_t::operator()(const sql::binder::column_ref_expr_t& no
     return input_tuple.get_value(sch_, node.column_idx);
 }
 
+namespace {
+
 template <typename T>
 [[nodiscard]] auto
 evaluate_binary_op(T l, T r, sql::parser::binary_op_t op, sql::type::id_t common_type)
@@ -176,6 +182,8 @@ evaluate_binary_op(T l, T r, sql::parser::binary_op_t op, sql::type::id_t common
     default:                return stdx::err{error::SQL_TYPE_MISMATCH};
     }
 }
+
+} // namespace
 
 auto expression_evaluator_t::operator()(const sql::binder::binary_expr_t& node,
                                         const sql::tuple& input_tuple) -> result<sql::value_t> {
@@ -285,12 +293,16 @@ auto expression_evaluator_t::operator()(const sql::binder::cast_expr_t& node,
     return cast_value(child_val, node.target_type);
 }
 
+namespace {
+
 template <typename T> [[nodiscard]] auto evaluate_minus(T val) -> result<sql::value_t> {
     if constexpr ((std::integral<T> && !std::same_as<T, bool>) || std::floating_point<T>) {
         return sql::value_t{static_cast<T>(-val)};
     }
     return stdx::err{error::SQL_TYPE_MISMATCH};
 }
+
+} // namespace
 
 auto expression_evaluator_t::operator()(const sql::binder::unary_expr_t& node,
                                         const sql::tuple& input_tuple) -> result<sql::value_t> {
